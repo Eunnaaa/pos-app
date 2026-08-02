@@ -1,17 +1,96 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { usePathname } from "next/navigation"
+import { Bell, ChevronsUpDown, Wifi } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { useOrganization } from "@/components/kasir/organization-provider"
+
+const titles: Record<string, string> = {
+  dashboard: "Dashboard",
+  pos: "Kasir / POS",
+  sales: "Transaksi Penjualan",
+  products: "Manajemen Produk",
+  inventory: "Inventory & Stok",
+  purchases: "Pembelian",
+  suppliers: "Supplier",
+  customers: "Customer CRM",
+  loyalty: "Loyalty & Membership",
+  promotions: "Promosi",
+  kitchen: "Kitchen Display",
+  reservations: "Reservasi",
+  finance: "Keuangan",
+  employees: "Karyawan",
+  branches: "Cabang & Gudang",
+  reports: "Laporan Bisnis",
+  ai: "AI Insights",
+  settings: "Pengaturan",
+}
 
 export function SiteHeader() {
+  const pathname = usePathname()
+  const { organization, branch, selectBranch } = useOrganization()
+  const [online, setOnline] = useState(true)
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    update()
+    window.addEventListener("online", update)
+    window.addEventListener("offline", update)
+    return () => {
+      window.removeEventListener("online", update)
+      window.removeEventListener("offline", update)
+    }
+  }, [])
+  const segment = pathname.split("/").filter(Boolean).at(-1) || "dashboard"
+  const title = titles[segment] || "Kasir-Ku"
+
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
-      <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      <div className="flex w-full items-center gap-2 px-4 lg:px-6">
         <SidebarTrigger className="-ml-1" />
-        <Separator
-          orientation="vertical"
-          className="mx-2 data-[orientation=vertical]:h-4"
-        />
-        <h1 className="text-base font-medium">Dashboard</h1>
+        <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-semibold">{title}</h1>
+          <p className="hidden text-xs text-muted-foreground sm:block">{new Intl.DateTimeFormat("id-ID", { dateStyle: "full" }).format(new Date())}</p>
+        </div>
+        <Badge variant="outline" className={`hidden gap-1.5 md:flex ${online ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"}`}>
+          <Wifi className="size-3" /> {online ? "Online" : "Offline"}
+        </Badge>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
+              <span className="truncate">{branch?.name || organization?.name || "Pilih cabang"}</span>
+              <ChevronsUpDown className="size-4 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>{organization?.name || "Pilih cabang"}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {organization?.branches.map((item) => (
+              <DropdownMenuItem key={item.id} onClick={() => selectBranch(item.id)}>
+                {item.name}{item.id === branch?.id ? " ✓" : ""}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <Button variant="ghost" size="icon" className="relative">
+          <Bell className="size-5" />
+          <span className="absolute right-2 top-2 size-2 rounded-full bg-rose-500 ring-2 ring-background" />
+          <span className="sr-only">Notifikasi</span>
+        </Button>
+        <ThemeToggle />
       </div>
     </header>
   )

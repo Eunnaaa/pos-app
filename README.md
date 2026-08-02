@@ -1,329 +1,215 @@
-# Codeguide Starter Fullstack
+# Kasir-Ku
 
-A modern web application starter template built with Next.js 15, featuring authentication, database integration, and dark mode support.
+Kasir-Ku is a responsive, multi-tenant Point of Sale platform for Indonesian retail, food & beverage, and service businesses. It combines POS, inventory, purchasing, CRM, loyalty, promotions, kitchen/reservations, finance, employees, reporting, offline workflows, integrations, and AI insights.
 
-## Tech Stack
+## Stack
 
-- **Framework:** [Next.js 15](https://nextjs.org/) (App Router with Turbopack)
-- **Language:** TypeScript
-- **Authentication:** [Better Auth](https://better-auth.com/)
-- **Database:** [Drizzle ORM](https://orm.drizzle.team/) with PostgreSQL
-- **Styling:** [Tailwind CSS v4](https://tailwindcss.com/)
-- **UI Components:** [shadcn/ui](https://ui.shadcn.com/) (New York style)
-- **Theme System:** [next-themes](https://github.com/pacocoursey/next-themes)
-- **Icons:** [Lucide React](https://lucide.dev/)
-
-## Prerequisites
-
-Before you begin, ensure you have the following:
-- Node.js 18+ installed
-- Docker and Docker Compose (for database setup)
-- Generated project documents from [CodeGuide](https://codeguide.dev/) for best development experience
-
-## Getting Started
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd codeguide-starter-fullstack
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
-
-3. **Environment Variables Setup**
-   - Copy the `.env.example` file to `.env`:
-     ```bash
-     cp .env.example .env
-     ```
-   - The default values work with Docker setup, modify as needed
-
-4. **Start the development server**
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   # or
-   pnpm dev
-   ```
-
-5. **Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.**
-
-## Configuration
-
-### Option 1: Docker Setup (Recommended)
-1. **Start PostgreSQL with Docker:**
-   ```bash
-   npm run db:up
-   ```
-   This starts PostgreSQL in a Docker container with default credentials.
-
-2. **Push database schema:**
-   ```bash
-   npm run db:push
-   ```
-
-### Option 2: Local Database Setup
-1. Create a PostgreSQL database locally
-2. Update your environment variables in `.env`:
-   ```env
-   DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-   POSTGRES_DB=your_database_name
-   POSTGRES_USER=your_username
-   POSTGRES_PASSWORD=your_password
-   ```
-3. Run database migrations:
-   ```bash
-   npm run db:push
-   ```
-
-## Environment Variables
-
-Create a `.env` file in the root directory with the following variables:
-
-```env
-# Database Configuration (defaults work with Docker)
-DATABASE_URL=postgresql://postgres:postgres@localhost:5433/postgres
-POSTGRES_DB=postgres
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-
-# Authentication
-BETTER_AUTH_SECRET=your_secret_key_here
-BETTER_AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
-```
+- Next.js 15 App Router, React 19, strict TypeScript
+- Tailwind CSS 4, shadcn/Radix UI, Recharts, TanStack Table
+- Better Auth: email/password, admin controls, 2FA, optional Google/Apple
+- Drizzle ORM + PostgreSQL/Supabase; 76 domain tables
+- REST API under `/api/v1`
+- PWA service worker + IndexedDB offline mutation queue
+- Optional Midtrans, Xendit, WhatsApp, Telegram, email, Supabase Storage, and OpenAI-compatible AI adapters
 
 ## Features
 
-- 🔐 Authentication with Better Auth (email/password)
-- 🗄️ PostgreSQL Database with Drizzle ORM
-- 🎨 40+ shadcn/ui components (New York style)
-- 🌙 Dark mode with system preference detection
-- 🚀 App Router with Server Components and Turbopack
-- 📱 Responsive design with TailwindCSS v4
-- 🎯 Type-safe database operations
-- 🔒 Modern authentication patterns
-- 🐳 Full Docker support with multi-stage builds
-- 🚀 Production-ready deployment configuration
+- KPI dashboard, sales trend, top products, activity, low-stock alerts
+- Split-screen POS, barcode search, cart notes, hold, multi-payment, receipt
+- Product/variant/bundle/composite, category, brand, unit, barcode, serial, expiry
+- Stock ledger, reservation, adjustment, opname, warehouse transfer
+- Purchase order, receipt, invoice, payment, purchase return
+- Sales order, quotation, invoice, sales return, partial/full refund
+- Customer CRM, membership, points, vouchers, referral, store credit
+- Promotion engine foundations: percentage, fixed, BOGO, bundle, cashback, happy hour, flash sale, birthday
+- Kitchen display, table reservation, waiting list
+- Income/expense, accounts, cash register, cash flow/profit data model
+- Employee, shift, attendance, commission
+- Multi-branch and multi-warehouse tenancy with RBAC
+- Reports and AI assistant/forecast/stock/fraud/segmentation data model
+- PWA install, offline status/fallback, replay-safe mutation queue
 
-## Project Structure
+## Quick start
 
-```
-codeguide-starter-fullstack/
-├── app/                        # Next.js app router pages
-│   ├── globals.css            # Global styles with dark mode
-│   ├── layout.tsx             # Root layout with providers
-│   └── page.tsx               # Main page
-├── components/                # React components
-│   └── ui/                    # shadcn/ui components (40+)
-├── db/                        # Database configuration
-│   ├── index.ts              # Database connection
-│   └── schema/               # Database schemas
-├── docker/                    # Docker configuration
-│   └── postgres/             # PostgreSQL initialization
-├── hooks/                     # Custom React hooks
-├── lib/                       # Utility functions
-│   ├── auth.ts               # Better Auth configuration
-│   └── utils.ts              # General utilities
-├── auth-schema.ts            # Authentication schema
-├── docker-compose.yml        # Docker services configuration
-├── Dockerfile                # Application container definition
-├── drizzle.config.ts         # Drizzle configuration
-└── components.json           # shadcn/ui configuration
-```
-
-## Database Integration
-
-This starter includes modern database integration:
-
-- **Drizzle ORM** for type-safe database operations
-- **PostgreSQL** as the database provider
-- **Better Auth** integration with Drizzle adapter
-- **Database migrations** with Drizzle Kit
-
-## Development Commands
-
-### Application
-- `npm run dev` - Start development server with Turbopack
-- `npm run build` - Build for production with Turbopack
-- `npm start` - Start production server
-- `npm run lint` - Run ESLint
-
-### Database
-- `npm run db:up` - Start PostgreSQL in Docker
-- `npm run db:down` - Stop PostgreSQL container
-- `npm run db:dev` - Start development PostgreSQL (port 5433)
-- `npm run db:dev-down` - Stop development PostgreSQL
-- `npm run db:push` - Push schema changes to database
-- `npm run db:generate` - Generate Drizzle migration files
-- `npm run db:studio` - Open Drizzle Studio (database GUI)
-- `npm run db:reset` - Reset database (drop all tables and recreate)
-
-### Styling with shadcn/ui
-- Pre-configured with 40+ shadcn/ui components in New York style
-- Components are fully customizable and use CSS variables for theming
-- Automatic dark mode support with next-themes integration
-- Add new components: `npx shadcn@latest add [component-name]`
-
-### Docker
-- `npm run docker:build` - Build application Docker image
-- `npm run docker:up` - Start full application stack (app + database)
-- `npm run docker:down` - Stop all containers
-- `npm run docker:logs` - View container logs
-- `npm run docker:clean` - Stop containers and clean up volumes
-
-## Docker Development
-
-### Quick Start with Docker
-```bash
-# Start the entire stack (recommended for new users)
-npm run docker:up
-
-# View logs
-npm run docker:logs
-
-# Stop everything
-npm run docker:down
-```
-
-### Development Workflow
-```bash
-# Option 1: Database only (develop app locally)
-npm run db:up          # Start PostgreSQL
-npm run dev            # Start Next.js development server
-
-# Option 2: Full Docker stack
-npm run docker:up      # Start both app and database
-```
-
-### Docker Services
-
-The `docker-compose.yml` includes:
-
-- **postgres**: Main PostgreSQL database (port 5432)
-- **postgres-dev**: Development database (port 5433) - use `--profile dev`
-- **app**: Next.js application container (port 3000)
-
-### Docker Profiles
+### 1. Install
 
 ```bash
-# Start development database on port 5433
-docker-compose --profile dev up postgres-dev -d
-
-# Or use the npm script
-npm run db:dev
+npm install
+cp .env.example .env
 ```
 
-## Deployment
+Generate a secure auth secret:
 
-### Production Deployment
+```bash
+openssl rand -base64 32
+```
 
-#### Option 1: Docker Compose (VPS/Server)
+### 2. Configure Supabase PostgreSQL
 
-1. **Clone and setup on your server:**
-   ```bash
-   git clone <your-repo>
-   cd codeguide-starter-fullstack
-   cp .env.example .env
-   ```
-
-2. **Configure environment variables:**
-   ```bash
-   # Edit .env with production values
-   DATABASE_URL=postgresql://postgres:your_secure_password@postgres:5432/postgres
-   POSTGRES_DB=postgres
-   POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=your_secure_password
-   BETTER_AUTH_SECRET=your-very-secure-secret-key
-   BETTER_AUTH_URL=https://yourdomain.com
-   NEXT_PUBLIC_BETTER_AUTH_URL=https://yourdomain.com
-   ```
-
-3. **Deploy:**
-   ```bash
-   npm run docker:up
-   ```
-
-#### Option 2: Container Registry (AWS/GCP/Azure)
-
-1. **Build and push image:**
-   ```bash
-   # Build the image
-   docker build -t your-registry/codeguide-starter-fullstack:latest .
-   
-   # Push to registry
-   docker push your-registry/codeguide-starter-fullstack:latest
-   ```
-
-2. **Deploy using your cloud provider's container service**
-
-#### Option 3: Vercel + External Database
-
-1. **Deploy to Vercel:**
-   ```bash
-   npm i -g vercel
-   vercel
-   ```
-
-2. **Add environment variables in Vercel dashboard:**
-   - `DATABASE_URL`: Your managed PostgreSQL connection string
-   - `BETTER_AUTH_SECRET`: Generate a secure secret
-   - `BETTER_AUTH_URL`: Your Vercel deployment URL
-
-3. **Setup database:**
-   ```bash
-   # Push schema to your managed database
-   npm run db:push
-   ```
-
-### Environment Variables for Production
+Create a Supabase project. In `.env`, configure the **transaction pooler URL** for the app:
 
 ```env
-# Required for production
-DATABASE_URL=postgresql://user:password@host:port/database
-BETTER_AUTH_SECRET=generate-a-very-secure-32-character-key
-BETTER_AUTH_URL=https://yourdomain.com
-
-# Optional optimizations
-NODE_ENV=production
+DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+DATABASE_SSL=require
+DB_POOL_MAX=10
+BETTER_AUTH_SECRET=<at-least-32-random-characters>
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+TRUSTED_ORIGINS=http://localhost:3000
 ```
 
-### Production Considerations
+For migration tooling, the direct URL or session pooler is usually preferable when IPv6/direct connectivity is available. Temporarily set `DATABASE_URL` to that URL when running migration commands.
 
-- **Database**: Use managed PostgreSQL (AWS RDS, Google Cloud SQL, etc.)
-- **Security**: Generate strong secrets, use HTTPS
-- **Performance**: Enable Next.js output: 'standalone' for smaller containers
-- **Monitoring**: Add logging and health checks
-- **Backup**: Regular database backups
-- **SSL**: Terminate SSL at load balancer or reverse proxy
+### 3. Apply migration and seed
 
-### Health Checks
-
-The application includes basic health checks. You can extend them:
-
-```dockerfile
-# In Dockerfile, add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
+```bash
+npm run db:migrate
+npm run db:seed
 ```
 
-## AI Coding Agent Integration
+The seed command only verifies database connectivity. It intentionally inserts no business or demo data. Create the first owner through sign-up/onboarding, then enter products, stock, customers, and suppliers from the management UI.
 
-This starter is optimized for AI coding agents:
+### 4. Run
 
-- **Clear file structure** and naming conventions
-- **TypeScript integration** with proper type definitions
-- **Modern authentication** patterns
-- **Database schema** examples
+```bash
+npm run dev
+```
 
-## Contributing
+Open:
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-# codeguide-starter-fullstack
+- Landing: http://localhost:3000
+- Dashboard: http://localhost:3000/dashboard
+- POS: http://localhost:3000/dashboard/pos
+- Health check: http://localhost:3000/api/v1/health
+
+The dashboard starts empty and displays only authenticated tenant data. Sign up, complete onboarding, then let management enter all business master data.
+
+## Commands
+
+```bash
+npm run dev           # development server
+npm run build         # production build
+npm run start         # production server
+npm run typecheck     # strict TypeScript check
+npm run lint          # ESLint
+npm test              # Node-native core tests via tsx
+npm run db:generate   # generate Drizzle migration
+npm run db:migrate    # apply migrations
+npm run db:seed       # verify DB connection; inserts no demo data
+npm run db:clear -- --yes # remove all records; keep schema/migrations
+npm run db:studio     # Drizzle Studio
+```
+
+## Environment variables
+
+Required:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL/Supabase connection string |
+| `DATABASE_SSL` | `require` for Supabase; `disable` for local Docker |
+| `BETTER_AUTH_SECRET` | Random secret, minimum 32 characters |
+| `BETTER_AUTH_URL` | Server-side public application URL |
+| `NEXT_PUBLIC_BETTER_AUTH_URL` | Browser auth URL |
+
+Optional provider groups activate only when all credentials for that provider exist:
+
+- Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`
+- Apple: `APPLE_CLIENT_ID`, `APPLE_CLIENT_SECRET`
+- Supabase services: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- Midtrans: `MIDTRANS_SERVER_KEY`, `MIDTRANS_BASE_URL`
+- Xendit: `XENDIT_SECRET_KEY`
+- WhatsApp: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+- Telegram: `TELEGRAM_BOT_TOKEN`
+- Email: `EMAIL_API_URL`, `EMAIL_API_KEY`
+- AI: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`
+- Webhooks: `WEBHOOK_SECRET`
+
+Never expose service-role, payment, AI, or webhook secrets with a `NEXT_PUBLIC_` prefix.
+
+## API
+
+All tenant APIs require a Better Auth session and:
+
+```http
+x-organization-id: <organization UUID>
+x-branch-id: <branch UUID> # when branch-scoped
+```
+
+State-changing transactional APIs also require:
+
+```http
+idempotency-key: <unique client key, 8-200 chars>
+```
+
+Representative endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/onboarding` | Create first organization/branch/warehouse |
+| `GET /api/v1/dashboard` | Tenant dashboard metrics |
+| `GET/POST /api/v1/resources/:resource` | Validated tenant CRUD/list |
+| `GET/PATCH/DELETE /api/v1/resources/:resource/:id` | Validated item operations |
+| `POST /api/v1/pos/checkout` | Atomic multi-payment checkout |
+| `POST /api/v1/inventory/adjustments` | Stock adjustment ledger entry |
+| `POST /api/v1/inventory/transfers` | Create stock transfer |
+| `POST /api/v1/inventory/transfers/:id/ship` | Deduct source stock |
+| `POST /api/v1/inventory/transfers/:id/receive` | Add destination stock |
+| `POST /api/v1/purchases/receipts` | Receive PO and add stock |
+| `POST /api/v1/sales/returns` | Return/refund and optional restock |
+| `POST /api/v1/sync` | Replay-safe offline change ingestion |
+| `POST /api/v1/ai/assistant` | Business analytics assistant |
+| `POST /api/v1/integrations/payments` | Midtrans/Xendit payment request |
+| `POST /api/v1/integrations/notifications` | WhatsApp/Telegram/email dispatch |
+
+Responses use `{ "data": ..., "meta": ... }`; errors use `{ "error": { "code", "message", "details" }, "requestId" }`.
+
+## RBAC
+
+| Role | Primary permissions |
+|---|---|
+| Owner | Full organization access |
+| Manager | Dashboard, POS, sales, inventory, purchasing, customers, suppliers, reports, employees |
+| Cashier | Dashboard, POS, sales/return, customers |
+| Warehouse | Inventory, purchasing, suppliers |
+| Accountant | Dashboard, sales/purchase read, finance, reports |
+
+Authorization is checked server-side. Hiding navigation does not grant or revoke access.
+
+## Data and security conventions
+
+- Tenant is resolved from authenticated membership; request headers are never trusted without membership validation.
+- Money is stored as PostgreSQL `bigint` integer rupiah/minor units.
+- Quantities and stock changes are posted through an append-only movement ledger plus current balances.
+- Checkout, receiving, transfers, returns, and loyalty run inside DB transactions.
+- Mutating workflows use idempotency records to prevent duplicated transactions.
+- Better Auth uses secure production cookies, session rotation/freshness, rate limits, token encryption, and optional TOTP 2FA.
+- Global CSP, HSTS in production, frame denial, nosniff, referrer, resource, opener, and permissions headers are configured.
+- Webhook utilities use HMAC, expiry checks, constant-time comparison, and private-network URL rejection.
+
+For Supabase defense-in-depth, enable RLS for any tables exposed through Supabase APIs. The application server uses PostgreSQL with server-side tenant filters and should use a database role limited to required tables.
+
+## PWA and offline behavior
+
+The production build registers `/sw.js`, caches only public shell/static assets, and never caches `/api/*` or private dashboard responses. Offline mutations are stored in IndexedDB with an idempotency key and replayed after connectivity returns. Keep the POS tab open during an outage; full cold-start private dashboard caching is intentionally disabled to avoid leaking tenant data on shared devices.
+
+## Integrations and AI
+
+Provider adapters are inactive unless configured. Missing credentials return explicit configuration errors. The AI assistant uses deterministic SQL analytics when no AI provider is configured; configured mode expects an OpenAI-compatible `/chat/completions` endpoint. OCR, provider settlement, WhatsApp template approval, and live payment webhook behavior still require vendor accounts and sandbox/production verification.
+
+## Production checklist
+
+1. Use a production Supabase project and restricted DB credentials.
+2. Run `npm run db:migrate` in a controlled deploy step.
+3. Set HTTPS URLs and a new `BETTER_AUTH_SECRET`.
+4. Configure exact `TRUSTED_ORIGINS`.
+5. Enable Google/Apple callback URLs only when used.
+6. Configure payment webhook signatures and idempotency keys.
+7. Set Supabase backups/PITR; test restore procedures.
+8. Configure monitoring/log redaction and alerting.
+9. Run `npm run typecheck && npm run lint && npm test && npm run build`.
+10. Perform vendor sandbox tests before enabling live payments/messages/AI.
+
+## Verification limitations
+
+Automated checks validate schema generation, TypeScript, lint, unit behavior, and production compilation. Live Supabase migration/seed and third-party provider calls cannot be verified without the corresponding project credentials. Do not treat an adapter build as proof of vendor approval or successful production settlement.

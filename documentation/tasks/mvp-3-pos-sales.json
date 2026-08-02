@@ -1,0 +1,11 @@
+{
+  "id": "mvp-3-pos-sales",
+  "title": "MVP POS and sales workflows",
+  "description": "Connect POS catalog, checkout, receipt, offline queue, sales, purchase, and return interfaces.",
+  "status": "completed",
+  "createdAt": "2026-07-28T11:20:02.282Z",
+  "updatedAt": "2026-07-28T13:46:40.330Z",
+  "startedAt": "2026-07-28T11:37:29.997Z",
+  "completion": "Connected POS to real catalog, customer, stock, checkout, receipt, hold, discount, manual payments, and offline queue; added real sales/detail/return UI with cumulative-return guard; added real purchase-order creation, detail, and receiving UI; removed all frontend business mock records and reset all 76 DB tables while retaining schema; typecheck, lint, tests, and production build pass.",
+  "completedAt": "2026-07-28T13:46:40.329Z"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "mvp-1-auth-tenancy",
+  "title": "MVP authentication and tenant onboarding",
+  "description": "Protect dashboard routes and connect signup, onboarding, organization, branch, and API context.",
+  "status": "completed",
+  "createdAt": "2026-07-28T11:20:02.280Z",
+  "updatedAt": "2026-07-28T11:29:36.429Z",
+  "startedAt": "2026-07-28T11:20:02.331Z",
+  "completion": "Connected Better Auth navigation to tenant onboarding, added authenticated organization/branch/warehouse lookup and persistence, protected dashboard server-side, added active organization provider and real branch selector, centralized tenant-aware API client with idempotency/offline queue, and cleared context on logout; typecheck, lint, and tests pass.",
+  "completedAt": "2026-07-28T11:29:36.428Z"
+}

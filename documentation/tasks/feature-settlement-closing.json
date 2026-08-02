@@ -1,0 +1,11 @@
+{
+  "id": "feature-settlement-closing",
+  "title": "Settlement and book closing",
+  "description": "Implement mandatory register settlement plus daily, monthly, and yearly audited period closing.",
+  "status": "completed",
+  "createdAt": "2026-07-28T15:01:43.564Z",
+  "updatedAt": "2026-07-30T16:40:54.619Z",
+  "startedAt": "2026-07-28T15:01:43.617Z",
+  "completion": "Settlement + tutup buku selesai end-to-end. Backend sudah ada (cash-sessions, book-closing, assertPeriodOpen guard, 9 route API). Ditambah: UI /dashboard/finance (FinancePage) untuk tutup periode harian/bulanan/tahunan, riwayat periode + reopen beralasan, tabel settlement shift kasir dengan ekspektasi/aktual/selisih. Rollup math diekstrak ke lib/services/closing-totals.ts (bebas import db) + test addClosingTotals. Placeholder finance dihapus dari [module] route. typecheck/lint/build/test 10/10 lolos.",
+  "completedAt": "2026-07-30T16:40:54.618Z"
+}

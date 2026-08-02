@@ -1,0 +1,11 @@
+{
+  "id": "mvp-4-dashboard-verification",
+  "title": "MVP dashboard and end-to-end verification",
+  "description": "Connect real dashboard data and verify the complete operational MVP workflow.",
+  "status": "completed",
+  "createdAt": "2026-07-28T11:20:02.282Z",
+  "updatedAt": "2026-07-28T14:12:20.643Z",
+  "startedAt": "2026-07-28T13:46:40.378Z",
+  "completion": "Connected dashboard to actual tenant KPIs, sales trend, top products, low stock, and recent transactions with honest zero/empty states; removed all remaining frontend dummy business data and obsolete mock components; added safe full-data reset command and no-data seed behavior; fixed bigint idempotency; verified disposable E2E signup→onboarding→product→stock→checkout→dashboard→sales, 8/8 tests, lint, typecheck, production build, then cleared all test data.",
+  "completedAt": "2026-07-28T14:12:20.642Z"
+}

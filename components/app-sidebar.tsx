@@ -1,188 +1,135 @@
 "use client"
 
-import * as React from "react"
 import Link from "next/link"
-import Image from "next/image"
+import { usePathname } from "next/navigation"
 import { useSession } from "@/lib/auth-client"
 import {
-  IconCamera,
-  IconChartBar,
-  IconDashboard,
-  IconDatabase,
-  IconFileAi,
-  IconFileDescription,
-  IconFileWord,
-  IconFolder,
-  IconHelp,
-  IconListDetails,
-  IconReport,
-  IconSearch,
-  IconSettings,
-  IconUsers,
-} from "@tabler/icons-react"
-
-import { NavDocuments } from "@/components/nav-documents"
-import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
+  Boxes,
+  BrainCircuit,
+  Building2,
+  CalendarDays,
+  ChefHat,
+  ContactRound,
+  FileBarChart,
+  Landmark,
+  LayoutDashboard,
+  PackageSearch,
+  Percent,
+  ReceiptText,
+  Settings,
+  ShoppingCart,
+  Store,
+  Truck,
+  UserRoundCog,
+  UsersRound,
+  Warehouse,
+} from "lucide-react"
 import { NavUser } from "@/components/nav-user"
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-const staticData = {
-  navMain: [
-    {
-      title: "Dashboard",
-      url: "#",
-      icon: IconDashboard,
-    },
-    {
-      title: "Lifecycle",
-      url: "#",
-      icon: IconListDetails,
-    },
-    {
-      title: "Analytics",
-      url: "#",
-      icon: IconChartBar,
-    },
-    {
-      title: "Projects",
-      url: "#",
-      icon: IconFolder,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: IconUsers,
-    },
-  ],
-  navClouds: [
-    {
-      title: "Capture",
-      icon: IconCamera,
-      isActive: true,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Proposal",
-      icon: IconFileDescription,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Prompts",
-      icon: IconFileAi,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-  ],
-  navSecondary: [
-    {
-      title: "Settings",
-      url: "#",
-      icon: IconSettings,
-    },
-    {
-      title: "Get Help",
-      url: "#",
-      icon: IconHelp,
-    },
-    {
-      title: "Search",
-      url: "#",
-      icon: IconSearch,
-    },
-  ],
-  documents: [
-    {
-      name: "Data Library",
-      url: "#",
-      icon: IconDatabase,
-    },
-    {
-      name: "Reports",
-      url: "#",
-      icon: IconReport,
-    },
-    {
-      name: "Word Assistant",
-      url: "#",
-      icon: IconFileWord,
-    },
-  ],
-}
+const groups = [
+  {
+    label: "Operasional",
+    items: [
+      ["Dashboard", "/dashboard", LayoutDashboard],
+      ["Kasir / POS", "/dashboard/pos", ShoppingCart],
+      ["Transaksi", "/dashboard/sales", ReceiptText],
+      ["Kitchen Display", "/dashboard/kitchen", ChefHat],
+      ["Reservasi", "/dashboard/reservations", CalendarDays],
+    ],
+  },
+  {
+    label: "Produk & Stok",
+    items: [
+      ["Produk", "/dashboard/products", PackageSearch],
+      ["Inventory", "/dashboard/inventory", Boxes],
+      ["Pembelian", "/dashboard/purchases", Truck],
+      ["Supplier", "/dashboard/suppliers", Warehouse],
+    ],
+  },
+  {
+    label: "Pelanggan",
+    items: [
+      ["Customer CRM", "/dashboard/customers", ContactRound],
+      ["Loyalty", "/dashboard/loyalty", UsersRound],
+      ["Promosi", "/dashboard/promotions", Percent],
+    ],
+  },
+  {
+    label: "Manajemen",
+    items: [
+      ["Keuangan", "/dashboard/finance", Landmark],
+      ["Karyawan", "/dashboard/employees", UserRoundCog],
+      ["Cabang", "/dashboard/branches", Building2],
+      ["Laporan", "/dashboard/reports", FileBarChart],
+      ["AI Insights", "/dashboard/ai", BrainCircuit],
+      ["Pengaturan", "/dashboard/settings", Settings],
+    ],
+  },
+] as const
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const pathname = usePathname()
   const { data: session } = useSession()
-  
-  const userData = session?.user ? {
-    name: session.user.name || "User",
-    email: session.user.email,
-    avatar: session.user.image || "/codeguide-logo.png",
-  } : {
-    name: "Guest",
-    email: "guest@example.com", 
-    avatar: "/codeguide-logo.png",
-  }
+  const userData = session?.user
+    ? { name: session.user.name || "Pengguna", email: session.user.email, avatar: session.user.image || "" }
+    : { name: "Pengguna", email: "", avatar: "" }
 
   return (
-    <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarHeader className="border-b border-sidebar-border/70">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <Link href="/">
-                <Image src="/codeguide-logo.png" alt="CodeGuide" width={32} height={32} className="rounded-lg" />
-                <span className="text-base font-semibold font-parkinsans">CodeGuide</span>
+            <SidebarMenuButton asChild size="lg" className="h-14 data-[slot=sidebar-menu-button]:!p-2">
+              <Link href="/dashboard">
+                <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
+                  <Store className="size-5" />
+                </span>
+                <span className="grid flex-1 text-left leading-tight">
+                  <span className="truncate text-base font-bold tracking-tight">Kasir-Ku</span>
+                  <span className="truncate text-xs text-muted-foreground">Smart Point of Sale</span>
+                </span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <NavMain items={staticData.navMain} />
-        <NavDocuments items={staticData.documents} />
-        <NavSecondary items={staticData.navSecondary} className="mt-auto" />
+        {groups.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map(([title, href, Icon]) => {
+                  const active = href === "/dashboard" ? pathname === href : pathname.startsWith(href)
+                  return (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton asChild tooltip={title} isActive={active}>
+                        <Link href={href}>
+                          <Icon />
+                          <span>{title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border/70">
         <NavUser user={userData} />
       </SidebarFooter>
     </Sidebar>

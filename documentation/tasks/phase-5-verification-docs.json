@@ -1,0 +1,11 @@
+{
+  "id": "phase-5-verification-docs",
+  "title": "Verification and production documentation",
+  "description": "Add tests, run quality gates, and document Supabase deployment and operations.",
+  "status": "completed",
+  "createdAt": "2026-07-28T09:03:40.248Z",
+  "updatedAt": "2026-07-28T10:59:31.087Z",
+  "startedAt": "2026-07-28T10:54:50.071Z",
+  "completion": "Added core regression tests and full production operations documentation; 7/7 tests, TypeScript, ESLint, Drizzle schema-current check, and Next.js production build pass. Live Supabase migration/seed and provider calls skipped because .env credentials are absent.",
+  "completedAt": "2026-07-28T10:59:31.086Z"
+}

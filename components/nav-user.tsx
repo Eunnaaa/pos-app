@@ -49,7 +49,10 @@ export function NavUser({
     setIsSigningOut(true)
     try {
       await signOut()
-      router.push("/")
+      localStorage.removeItem("kasir-ku-organization-id")
+      localStorage.removeItem("kasir-ku-branch-id")
+      localStorage.removeItem("kasir-ku-warehouse-id")
+      router.replace("/sign-in")
     } catch (error) {
       console.error("Sign out error:", error)
     } finally {
@@ -107,7 +110,7 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <IconUserCircle />
-                Account
+                Akun
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconCreditCard />
@@ -115,13 +118,13 @@ export function NavUser({
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconNotification />
-                Notifications
+                Notifikasi
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
               <IconLogout />
-              {isSigningOut ? "Signing out..." : "Log out"}
+              {isSigningOut ? "Keluar..." : "Keluar"}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

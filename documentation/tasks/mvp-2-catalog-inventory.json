@@ -1,0 +1,11 @@
+{
+  "id": "mvp-2-catalog-inventory",
+  "title": "MVP catalog and inventory UI",
+  "description": "Connect product, variant, stock, customer, and supplier interfaces to real APIs.",
+  "status": "completed",
+  "createdAt": "2026-07-28T11:20:02.282Z",
+  "updatedAt": "2026-07-28T11:37:29.963Z",
+  "startedAt": "2026-07-28T11:29:36.463Z",
+  "completion": "Connected real product and default-variant CRUD, initial stock posting, stock balance/movement views, inventory adjustments, and customer/supplier CRUD to tenant-scoped APIs with search, empty/loading/error handling; schema current, typecheck, lint, and tests pass.",
+  "completedAt": "2026-07-28T11:37:29.962Z"
+}

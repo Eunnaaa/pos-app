@@ -1,0 +1,169 @@
+#!/usr/bin/env node
+
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+
+const tasksDir = join(process.cwd(), "documentation", "tasks")
+const defaultTasks = [
+  {
+    id: "phase-1-platform-data",
+    title: "Platform, tenancy, security, and database",
+    description: "Build the secure multi-tenant foundation, Drizzle schemas, migration, and seed data.",
+    status: "pending",
+  },
+  {
+    id: "phase-2-api-services",
+    title: "REST API and transactional services",
+    description: "Build versioned APIs and transactional domain services for all POS modules.",
+    status: "pending",
+  },
+  {
+    id: "phase-3-responsive-ui",
+    title: "Responsive Kasir-Ku application UI",
+    description: "Build Indonesian role-aware dashboard and operational module interfaces.",
+    status: "pending",
+  },
+  {
+    id: "phase-4-pwa-integrations-ai",
+    title: "PWA, offline, integrations, and AI",
+    description: "Add offline sync, provider adapters, realtime fallback, and AI workflows.",
+    status: "pending",
+  },
+  {
+    id: "phase-5-verification-docs",
+    title: "Verification and production documentation",
+    description: "Add tests, run quality gates, and document Supabase deployment and operations.",
+    status: "pending",
+  },
+  {
+    id: "mvp-1-auth-tenancy",
+    title: "MVP authentication and tenant onboarding",
+    description: "Protect dashboard routes and connect signup, onboarding, organization, branch, and API context.",
+    status: "pending",
+  },
+  {
+    id: "mvp-2-catalog-inventory",
+    title: "MVP catalog and inventory UI",
+    description: "Connect product, variant, stock, customer, and supplier interfaces to real APIs.",
+    status: "pending",
+  },
+  {
+    id: "mvp-3-pos-sales",
+    title: "MVP POS and sales workflows",
+    description: "Connect POS catalog, checkout, receipt, offline queue, sales, purchase, and return interfaces.",
+    status: "pending",
+  },
+  {
+    id: "mvp-4-dashboard-verification",
+    title: "MVP dashboard and end-to-end verification",
+    description: "Connect real dashboard data and verify the complete operational MVP workflow.",
+    status: "pending",
+  },
+  {
+    id: "feature-settlement-closing",
+    title: "Settlement and book closing",
+    description: "Implement mandatory register settlement plus daily, monthly, and yearly audited period closing.",
+    status: "pending",
+  },
+]
+
+function ensureTasks() {
+  mkdirSync(tasksDir, { recursive: true })
+  for (const task of defaultTasks) {
+    const taskPath = join(tasksDir, `${task.id}.json`)
+    if (!existsSync(taskPath)) {
+      writeFileSync(
+        taskPath,
+        `${JSON.stringify({ ...task, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, null, 2)}\n`,
+      )
+    }
+  }
+}
+
+function loadTasks() {
+  ensureTasks()
+  return readdirSync(tasksDir)
+    .filter((file) => file.endsWith(".json"))
+    .map((file) => {
+      const path = join(tasksDir, file)
+      return { path, task: JSON.parse(readFileSync(path, "utf8")) }
+    })
+    .sort((a, b) => a.task.id.localeCompare(b.task.id))
+}
+
+function findTask(id) {
+  const item = loadTasks().find(({ task }) => task.id === id)
+  if (!item) {
+    console.error(`Task not found: ${id}`)
+    process.exit(1)
+  }
+  return item
+}
+
+function saveTask(path, task) {
+  writeFileSync(path, `${JSON.stringify({ ...task, updatedAt: new Date().toISOString() }, null, 2)}\n`)
+}
+
+const [command, id, ...detailParts] = process.argv.slice(2)
+const detail = detailParts.join(" ").trim()
+
+switch (command) {
+  case "list-tasks": {
+    const tasks = loadTasks()
+    console.log("ID                          STATUS       TITLE")
+    for (const { task } of tasks) {
+      console.log(`${task.id.padEnd(27)} ${task.status.padEnd(12)} ${task.title}`)
+    }
+    break
+  }
+  case "start-task": {
+    if (!id) {
+      console.error("Usage: task-manager start-task <task_id>")
+      process.exit(1)
+    }
+    const active = loadTasks().find(({ task }) => task.status === "in_progress" && task.id !== id)
+    if (active) {
+      console.error(`Complete or cancel active task first: ${active.task.id}`)
+      process.exit(1)
+    }
+    const { path, task } = findTask(id)
+    if (task.status !== "pending" && task.status !== "blocked") {
+      console.error(`Task ${id} cannot start from status ${task.status}`)
+      process.exit(1)
+    }
+    saveTask(path, { ...task, status: "in_progress", startedAt: new Date().toISOString() })
+    console.log(`Started ${id}: ${task.title}`)
+    break
+  }
+  case "complete-task": {
+    if (!id || !detail) {
+      console.error('Usage: task-manager complete-task <task_id> "description"')
+      process.exit(1)
+    }
+    const { path, task } = findTask(id)
+    if (task.status !== "in_progress") {
+      console.error(`Task ${id} is not in progress`)
+      process.exit(1)
+    }
+    saveTask(path, { ...task, status: "completed", completion: detail, completedAt: new Date().toISOString() })
+    console.log(`Completed ${id}: ${detail}`)
+    break
+  }
+  case "cancel-task": {
+    if (!id || !detail) {
+      console.error('Usage: task-manager cancel-task <task_id> "reason"')
+      process.exit(1)
+    }
+    const { path, task } = findTask(id)
+    if (task.status === "completed" || task.status === "cancelled") {
+      console.error(`Task ${id} cannot be cancelled from status ${task.status}`)
+      process.exit(1)
+    }
+    saveTask(path, { ...task, status: "cancelled", cancellation: detail, cancelledAt: new Date().toISOString() })
+    console.log(`Cancelled ${id}: ${detail}`)
+    break
+  }
+  default:
+    console.error("Commands: list-tasks, start-task, complete-task, cancel-task")
+    process.exit(1)
+}

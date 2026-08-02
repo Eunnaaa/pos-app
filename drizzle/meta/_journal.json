@@ -8,6 +8,20 @@
       "when": 1756202589329,
       "tag": "0000_overjoyed_morlun",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785233447922,
+      "tag": "0001_zippy_blockbuster",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785252017902,
+      "tag": "0002_bumpy_starhawk",
+      "breakpoints": true
     }
   ]
 }

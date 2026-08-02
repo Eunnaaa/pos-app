@@ -1,0 +1,11 @@
+{
+  "id": "phase-2-api-services",
+  "title": "REST API and transactional services",
+  "description": "Build versioned APIs and transactional domain services for all POS modules.",
+  "status": "completed",
+  "createdAt": "2026-07-28T09:03:40.248Z",
+  "updatedAt": "2026-07-28T10:31:34.831Z",
+  "startedAt": "2026-07-28T10:12:24.051Z",
+  "completion": "Built versioned tenant/RBAC REST foundation, resource CRUD registry, POS multi-payment checkout with idempotency, stock ledger adjustments/transfers, purchase receiving, sales returns/refunds, onboarding, dashboard, and health APIs; TypeScript passes and ESLint has zero errors.",
+  "completedAt": "2026-07-28T10:31:34.830Z"
+}

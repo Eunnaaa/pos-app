@@ -1,224 +1,49 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { signUp } from "@/lib/auth-client";
-import { Loader2, Eye, EyeOff } from "lucide-react";
-
-const signUpSchema = z.object({
-    name: z.string().min(2, "Name must be at least 2 characters"),
-    email: z.string().email("Invalid email address"),
-    password: z
-        .string()
-        .min(8, "Password must be at least 8 characters")
-        .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, "Password must contain at least one uppercase letter, one lowercase letter, and one number"),
-    confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-});
-
-type SignUpForm = z.infer<typeof signUpSchema>;
+import { useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Eye, EyeOff, Loader2, LockKeyhole, Mail, UserRound } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { AuthLayout } from "@/components/kasir/auth-layout"
+import { signUp } from "@/lib/auth-client"
+import { resolveAuthenticatedDestination } from "@/lib/client"
 
 export default function SignUpPage() {
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState("");
-    const [showPassword, setShowPassword] = useState(false);
-    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-    const router = useRouter();
+  const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" })
+  const [show, setShow] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const router = useRouter()
 
-    const form = useForm<SignUpForm>({
-        resolver: zodResolver(signUpSchema),
-        defaultValues: {
-            name: "",
-            email: "",
-            password: "",
-            confirmPassword: "",
-        },
-    });
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setError("")
+    if (form.password.length < 12) return setError("Kata sandi minimal 12 karakter")
+    if (form.password !== form.confirm) return setError("Konfirmasi kata sandi tidak sama")
+    setLoading(true)
+    try {
+      const result = await signUp.email({ name: form.name, email: form.email, password: form.password })
+      if (result.error) setError(result.error.message || "Pendaftaran gagal")
+      else router.replace(await resolveAuthenticatedDestination())
+    } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
+    finally { setLoading(false) }
+  }
 
-    const onSubmit = async (data: SignUpForm) => {
-        setIsLoading(true);
-        setError("");
+  const update = (field: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, [field]: event.target.value }))
 
-        try {
-            const result = await signUp.email({
-                email: data.email,
-                password: data.password,
-                name: data.name,
-            });
-
-            if (result.error) {
-                setError(result.error.message || "Sign up failed");
-            } else {
-                router.push("/dashboard");
-            }
-        } catch (err) {
-            setError("An unexpected error occurred");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-background px-4 py-8">
-            <Card className="w-full max-w-md">
-                <CardHeader className="text-center">
-                    <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
-                    <CardDescription>
-                        Enter your details to create a new account
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Form {...form}>
-                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            {error && (
-                                <Alert variant="destructive">
-                                    <AlertDescription>{error}</AlertDescription>
-                                </Alert>
-                            )}
-                            
-                            <FormField
-                                control={form.control}
-                                name="name"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Full Name</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                placeholder="Enter your full name"
-                                                {...field}
-                                                disabled={isLoading}
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            <FormField
-                                control={form.control}
-                                name="email"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Email</FormLabel>
-                                        <FormControl>
-                                            <Input
-                                                type="email"
-                                                placeholder="Enter your email"
-                                                {...field}
-                                                disabled={isLoading}
-                                            />
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            <FormField
-                                control={form.control}
-                                name="password"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Password</FormLabel>
-                                        <FormControl>
-                                            <div className="relative">
-                                                <Input
-                                                    type={showPassword ? "text" : "password"}
-                                                    placeholder="Create a strong password"
-                                                    {...field}
-                                                    disabled={isLoading}
-                                                    className="pr-10"
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                                    onClick={() => setShowPassword(!showPassword)}
-                                                    disabled={isLoading}
-                                                >
-                                                    {showPassword ? (
-                                                        <EyeOff className="h-4 w-4" />
-                                                    ) : (
-                                                        <Eye className="h-4 w-4" />
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            <FormField
-                                control={form.control}
-                                name="confirmPassword"
-                                render={({ field }) => (
-                                    <FormItem>
-                                        <FormLabel>Confirm Password</FormLabel>
-                                        <FormControl>
-                                            <div className="relative">
-                                                <Input
-                                                    type={showConfirmPassword ? "text" : "password"}
-                                                    placeholder="Confirm your password"
-                                                    {...field}
-                                                    disabled={isLoading}
-                                                    className="pr-10"
-                                                />
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                                                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                                                    disabled={isLoading}
-                                                >
-                                                    {showConfirmPassword ? (
-                                                        <EyeOff className="h-4 w-4" />
-                                                    ) : (
-                                                        <Eye className="h-4 w-4" />
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        </FormControl>
-                                        <FormMessage />
-                                    </FormItem>
-                                )}
-                            />
-
-                            <Button type="submit" className="w-full" disabled={isLoading}>
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        Creating account...
-                                    </>
-                                ) : (
-                                    "Create Account"
-                                )}
-                            </Button>
-                        </form>
-                    </Form>
-                </CardContent>
-                <CardFooter className="text-center">
-                    <p className="text-sm text-muted-foreground">
-                        Already have an account?{" "}
-                        <Link href="/sign-in" className="font-medium text-primary hover:underline">
-                            Sign in
-                        </Link>
-                    </p>
-                </CardFooter>
-            </Card>
-        </div>
-    );
+  return <AuthLayout title="Mulai kelola bisnis" description="Buat akun Kasir-Ku gratis dalam beberapa langkah.">
+    <form onSubmit={submit} className="space-y-4">
+      {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
+      <div className="space-y-2"><Label htmlFor="name">Nama lengkap</Label><div className="relative"><UserRound className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="name" placeholder="Nama Anda" value={form.name} onChange={update("name")} className="h-12 pl-10" minLength={2} required /></div></div>
+      <div className="space-y-2"><Label htmlFor="email">Email bisnis</Label><div className="relative"><Mail className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="email" type="email" placeholder="nama@bisnis.com" value={form.email} onChange={update("email")} className="h-12 pl-10" required /></div></div>
+      <div className="space-y-2"><Label htmlFor="password">Kata sandi</Label><div className="relative"><LockKeyhole className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="password" type={show ? "text" : "password"} placeholder="Minimal 12 karakter" value={form.password} onChange={update("password")} className="h-12 px-10" required /><Button type="button" variant="ghost" size="icon" className="absolute right-1 top-1/2 size-9 -translate-y-1/2" onClick={() => setShow(!show)}>{show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</Button></div></div>
+      <div className="space-y-2"><Label htmlFor="confirm">Konfirmasi kata sandi</Label><Input id="confirm" type={show ? "text" : "password"} placeholder="Ulangi kata sandi" value={form.confirm} onChange={update("confirm")} className="h-12" required /></div>
+      <label className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><input type="checkbox" required className="mt-0.5 size-4 accent-emerald-600" />Saya menyetujui Syarat Layanan dan Kebijakan Privasi Kasir-Ku.</label>
+      <Button type="submit" className="h-12 w-full bg-emerald-600 text-base hover:bg-emerald-700" disabled={loading}>{loading && <Loader2 className="animate-spin" />}{loading ? "Membuat akun..." : "Buat akun gratis"}</Button>
+    </form>
+    <p className="mt-7 text-center text-sm text-muted-foreground">Sudah punya akun? <Link href="/sign-in" className="font-semibold text-emerald-600 hover:underline">Masuk</Link></p>
+  </AuthLayout>
 }

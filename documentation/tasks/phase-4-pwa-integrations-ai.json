@@ -1,0 +1,11 @@
+{
+  "id": "phase-4-pwa-integrations-ai",
+  "title": "PWA, offline, integrations, and AI",
+  "description": "Add offline sync, provider adapters, realtime fallback, and AI workflows.",
+  "status": "completed",
+  "createdAt": "2026-07-28T09:03:40.248Z",
+  "updatedAt": "2026-07-28T10:54:50.037Z",
+  "startedAt": "2026-07-28T10:44:45.436Z",
+  "completion": "Added installable PWA manifest/icons/service worker/offline fallback, IndexedDB mutation queue and online sync, live connectivity state, env-gated Midtrans/Xendit/WhatsApp/Telegram/email/Supabase Storage adapters, AI assistant with deterministic fallback, and sync APIs; typecheck, lint, and production build pass.",
+  "completedAt": "2026-07-28T10:54:50.036Z"
+}
