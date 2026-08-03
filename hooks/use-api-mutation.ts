@@ -6,18 +6,18 @@
 import { useState, useCallback } from 'react';
 import toastHandler from '@/lib/toast-handler';
 
-interface UseMutationOptions {
-  onSuccess?: (data: any) => void | Promise<void>;
-  onError?: (error: any) => void;
+interface UseMutationOptions<TData, TError> {
+  onSuccess?: (data: TData) => void | Promise<void>;
+  onError?: (error: TError) => void;
   showSuccessToast?: boolean;
   showErrorToast?: boolean;
   successMessage?: string;
   errorMessage?: string;
 }
 
-export function useApiMutation<TData = any, TError = any>(
-  mutationFn: (data: any) => Promise<TData>,
-  options: UseMutationOptions = {}
+export function useApiMutation<TData = unknown, TPayload = unknown, TError = unknown>(
+  mutationFn: (data: TPayload) => Promise<TData>,
+  options: UseMutationOptions<TData, TError> = {}
 ) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<TError | null>(null);
@@ -33,7 +33,7 @@ export function useApiMutation<TData = any, TError = any>(
   } = options;
 
   const mutate = useCallback(
-    async (payload: any) => {
+    async (payload: TPayload) => {
       setIsLoading(true);
       setError(null);
 
@@ -54,7 +54,7 @@ export function useApiMutation<TData = any, TError = any>(
           toastHandler.handleApiError(err, errorMessage);
         }
 
-        onError?.(err);
+        onError?.(err as TError);
         throw err;
       } finally {
         setIsLoading(false);

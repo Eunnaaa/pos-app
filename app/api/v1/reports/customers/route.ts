@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { AppError } from "@/lib/server";
 import { customerReport } from "@/lib/services/reporting";
 
 const querySchema = z.object({
@@ -16,6 +17,7 @@ export const GET = apiHandler(async (request) => {
   const startDate = query.startDate
     ? new Date(query.startDate)
     : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (startDate >= endDate) throw new AppError("VALIDATION_ERROR", "startDate must be before endDate");
 
   const report = await customerReport(context.organizationId, context.branchId || null, startDate, endDate);
   return dataResponse(report);

@@ -16,6 +16,7 @@ export const GET = apiHandler(async (request) => {
   const startDate = query.startDate
     ? new Date(query.startDate)
     : new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (startDate >= endDate) return new Response(JSON.stringify({ error: { code: "VALIDATION_ERROR", message: "startDate must be before endDate" } }), { status: 422, headers: { "content-type": "application/json" } });
 
   const report = await salesReport(context.organizationId, context.branchId || null, startDate, endDate);
   return dataResponse(report);

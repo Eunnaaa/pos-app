@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { PwaRegister } from "@/components/pwa-register"
-import { Toaster } from "@/components/ui/sonner"
+import { GooeyToaster } from "@/components/gooey-toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
@@ -23,7 +23,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           {children}
           <PwaRegister />
-          <Toaster richColors position="top-center" />
+          <GooeyToaster />
         </ThemeProvider>
       </body>
     </html>

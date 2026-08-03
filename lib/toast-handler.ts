@@ -11,7 +11,7 @@
  * - Custom styling & positioning
  */
 
-import { toast } from 'sonner';
+import { gooeyToast } from 'gooey-toast';
 
 // Types
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -55,7 +55,7 @@ export function showSuccess(
 
   const duration = options?.duration ?? SUCCESS_DURATION;
 
-  toast.success(message, { duration });
+  gooeyToast.success({ title: message, duration });
 
   // Track timeout untuk cleanup
   const timeoutId = setTimeout(() => {
@@ -90,7 +90,7 @@ export function showError(
     });
   }
 
-  toast.error(message, { duration });
+  gooeyToast.error({ title: message, duration });
 
   const timeoutId = setTimeout(() => {
     activeToasts.delete(toastId);
@@ -115,7 +115,7 @@ export function showWarning(
 
   const duration = options?.duration ?? DEFAULT_DURATION;
 
-  toast.warning(message, { duration });
+  gooeyToast.warning({ title: message, duration });
 
   const timeoutId = setTimeout(() => {
     activeToasts.delete(toastId);
@@ -140,7 +140,7 @@ export function showInfo(
 
   const duration = options?.duration ?? DEFAULT_DURATION;
 
-  toast.info(message, { duration });
+  gooeyToast.info({ title: message, duration });
 
   const timeoutId = setTimeout(() => {
     activeToasts.delete(toastId);
@@ -242,7 +242,7 @@ export function showLoading(
 ): string {
   const toastId = generateToastId(message, 'info');
   
-  toast.loading(message);
+  gooeyToast.show({ id: toastId, title: message, duration: null });
 
   return toastId;
 }
@@ -255,6 +255,7 @@ export function clearAllToasts(): void {
     clearTimeout(timeoutId);
   });
   activeToasts.clear();
+  gooeyToast.clear();
 }
 
 /**

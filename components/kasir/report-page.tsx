@@ -29,8 +29,8 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
     setError("")
     try {
       const params = new URLSearchParams()
-      if (startDate) params.append("startDate", new Date(startDate).toISOString())
-      if (endDate) params.append("endDate", new Date(endDate).toISOString())
+      if (startDate) params.append("startDate", new Date(`${startDate}T00:00:00`).toISOString())
+      if (endDate) params.append("endDate", new Date(`${endDate}T23:59:59.999`).toISOString())
       const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`)
       setReport(response.data)
     } catch (caught) {
@@ -46,12 +46,18 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
 
   const handleExport = () => {
     if (!report) return
-    const csvContent = JSON.stringify(report, null, 2)
-    const blob = new Blob([csvContent], { type: "application/json" })
+    const rows = Object.entries(report).flatMap(([section, value]) => {
+      if (!Array.isArray(value)) return [[section, typeof value === "object" ? JSON.stringify(value) : String(value)]]
+      return value.map((item) => [section, JSON.stringify(item)])
+    })
+    const csv = [["section", "value"], ...rows]
+      .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
+      .join("\n")
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${reportType}-report-${new Date().toISOString()}.json`
+    a.download = `${reportType}-report-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -65,7 +71,7 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
         </div>
         <Button onClick={handleExport} disabled={!report} variant="outline">
           <Download className="mr-2 size-4" />
-          Export JSON
+          Export CSV
         </Button>
       </section>
 

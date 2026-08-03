@@ -97,30 +97,32 @@ export async function salesReport(
     `),
     db.execute(sql`
       SELECT 
-        method,
-        SUM(amount)::text as amount,
+        sp.method,
+        SUM(sp.amount)::text as amount,
         COUNT(*)::int as count
-      FROM sales_payments
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND created_at >= ${startDate}
-        AND created_at < ${endDate}
-      GROUP BY method
-      ORDER BY SUM(amount) DESC
+      FROM sales_payments sp
+      JOIN sales_orders so ON so.id = sp.order_id
+      WHERE sp.organization_id = ${organizationId}
+        ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+        AND sp.created_at >= ${startDate}
+        AND sp.created_at < ${endDate}
+      GROUP BY sp.method
+      ORDER BY SUM(sp.amount) DESC
     `),
     db.execute(sql`
       SELECT 
-        item_name as name,
-        SUM(quantity)::text as quantity,
-        SUM(total_amount)::text as sales,
-        SUM(COALESCE(cost_amount, 0))::text as profit
-      FROM sales_order_items
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND created_at >= ${startDate}
-        AND created_at < ${endDate}
-      GROUP BY item_name
-      ORDER BY SUM(quantity) DESC
+        soi.item_name as name,
+        SUM(soi.quantity)::text as quantity,
+        SUM(soi.total_amount)::text as sales,
+        SUM(COALESCE(soi.unit_cost_amount, 0) * soi.quantity)::text as profit
+      FROM sales_order_items soi
+      JOIN sales_orders so ON so.id = soi.order_id
+      WHERE soi.organization_id = ${organizationId}
+        ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+        AND soi.created_at >= ${startDate}
+        AND soi.created_at < ${endDate}
+      GROUP BY soi.item_name
+      ORDER BY SUM(soi.quantity) DESC
       LIMIT 20
     `),
     db.execute(sql`
@@ -128,10 +130,10 @@ export async function salesReport(
         COALESCE(c.name, 'Pelanggan Umum') as name,
         COUNT(*)::int as orders,
         SUM(so.total_amount)::text as total,
-        COALESCE(SUM(la.points_earned), 0)::text as points
+        COALESCE(SUM(la.points), 0)::text as points
       FROM sales_orders so
       LEFT JOIN customers c ON c.id = so.customer_id
-      LEFT JOIN loyalty_transactions la ON la.order_id = so.id AND la.type = 'earn'
+      LEFT JOIN loyalty_transactions la ON la.reference_id = so.id AND la.reference_type = 'sale' AND la.type = 'earn'
       WHERE so.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
         AND so.occurred_at >= ${startDate}
@@ -184,7 +186,7 @@ export async function inventoryReport(
     db.execute(sql`
       SELECT 
         COUNT(DISTINCT variant_id)::int as total_skus,
-        COALESCE(SUM(available * unit_cost), 0)::text as total_value,
+        COALESCE(SUM(available * average_cost_amount), 0)::text as total_value,
         COALESCE(SUM(available), 0)::text as total_quantity,
         COUNT(CASE WHEN available <= reorder_point THEN 1 END)::int as low_stock,
         COUNT(CASE WHEN available = 0 THEN 1 END)::int as out_of_stock
@@ -196,7 +198,7 @@ export async function inventoryReport(
       SELECT 
         c.name,
         COALESCE(SUM(sb.available), 0)::text as quantity,
-        COALESCE(SUM(sb.available * sb.unit_cost), 0)::text as value,
+        COALESCE(SUM(sb.available * sb.average_cost_amount), 0)::text as value,
         COUNT(DISTINCT sb.variant_id)::int as items
       FROM stock_balances sb
       JOIN product_variants pv ON pv.id = sb.variant_id
@@ -205,20 +207,20 @@ export async function inventoryReport(
       WHERE sb.organization_id = ${organizationId}
         ${branchId ? sql`AND sb.warehouse_id IN (SELECT id FROM warehouses WHERE branch_id = ${branchId})` : sql``}
       GROUP BY c.id, c.name
-      ORDER BY SUM(sb.available * sb.unit_cost) DESC
+      ORDER BY SUM(sb.available * sb.average_cost_amount) DESC
     `),
     db.execute(sql`
       SELECT 
-        movement_type as type,
+        type,
         COALESCE(SUM(quantity), 0)::text as quantity,
-        COALESCE(SUM(quantity * unit_cost), 0)::text as value,
+        COALESCE(SUM(quantity * unit_cost_amount), 0)::text as value,
         COUNT(*)::int as count
       FROM stock_movements
       WHERE organization_id = ${organizationId}
         ${branchId ? sql`AND warehouse_id IN (SELECT id FROM warehouses WHERE branch_id = ${branchId})` : sql``}
         AND created_at >= ${startDate}
         AND created_at < ${endDate}
-      GROUP BY movement_type
+      GROUP BY type
       ORDER BY SUM(quantity) DESC
     `),
     db.execute(sql`
@@ -290,7 +292,7 @@ export async function purchaseReport(
         s.name,
         COUNT(po.id)::int as orders,
         COALESCE(SUM(po.total_amount), 0)::text as amount,
-        COALESCE(AVG(EXTRACT(DAY FROM (po.received_at - po.created_at))), 0)::int as avg_days
+        0::int as avg_days
       FROM purchase_orders po
       JOIN suppliers s ON s.id = po.supplier_id
       WHERE po.organization_id = ${organizationId}
@@ -315,17 +317,19 @@ export async function purchaseReport(
     `),
     db.execute(sql`
       SELECT 
-        TO_CHAR(DATE_TRUNC('day', received_at), 'YYYY-MM-DD') as date,
-        COALESCE(SUM(total_quantity), 0)::text as quantity,
-        COUNT(*)::int as orders
-      FROM purchase_orders
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND status = 'received'
-        AND received_at >= ${startDate}
-        AND received_at < ${endDate}
-      GROUP BY DATE_TRUNC('day', received_at)
-      ORDER BY DATE_TRUNC('day', received_at)
+        TO_CHAR(DATE_TRUNC('day', gr.received_at), 'YYYY-MM-DD') as date,
+        COALESCE(SUM(gri.accepted_quantity), 0)::text as quantity,
+        COUNT(DISTINCT gr.id)::int as orders
+      FROM goods_receipts gr
+      JOIN goods_receipt_items gri ON gri.goods_receipt_id = gr.id
+      JOIN warehouses w ON w.id = gr.warehouse_id
+      WHERE gr.organization_id = ${organizationId}
+        ${branchId ? sql`AND w.branch_id = ${branchId}` : sql``}
+        AND gr.status = 'posted'
+        AND gr.received_at >= ${startDate}
+        AND gr.received_at < ${endDate}
+      GROUP BY DATE_TRUNC('day', gr.received_at)
+      ORDER BY DATE_TRUNC('day', gr.received_at)
     `),
   ]);
 
@@ -354,73 +358,75 @@ export async function financeReport(
   const [summary, byAccount, incomeBreakdown, expenseBreakdown, dailyFlow] = await Promise.all([
     db.execute(sql`
       SELECT 
-        COALESCE(SUM(CASE WHEN debit_account_id IN (SELECT id FROM financial_accounts WHERE type IN ('income', 'revenue')) THEN credit ELSE 0 END), 0)::text as income,
-        COALESCE(SUM(CASE WHEN debit_account_id IN (SELECT id FROM financial_accounts WHERE type = 'expense') THEN debit ELSE 0 END), 0)::text as expenses,
-        COALESCE(SUM(credit) - SUM(debit), 0)::text as profit,
-        COALESCE((SUM(credit) - SUM(debit)) * 100 / NULLIF(SUM(credit), 0), 0)::text as profit_margin,
-        COALESCE(SUM(CASE WHEN debit_account_id IN (SELECT id FROM financial_accounts WHERE type = 'cash') THEN credit - debit ELSE 0 END), 0)::text as cash_balance
-      FROM financial_transactions
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND created_at >= ${startDate}
-        AND created_at < ${endDate}
-    `),
-    db.execute(sql`
-      SELECT 
-        fa.name,
-        COALESCE(SUM(ft.debit), 0)::text as debit,
-        COALESCE(SUM(ft.credit), 0)::text as credit,
-        COALESCE(SUM(ft.credit - ft.debit), 0)::text as balance
+COALESCE(SUM(CASE WHEN fa.type = 'income' AND ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as income,
+         COALESCE(SUM(CASE WHEN fa.type = 'expense' AND ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as expenses,
+         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as profit,
+         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END) * 100 / NULLIF(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0), 0)::text as profit_margin,
+         COALESCE(SUM(CASE WHEN fa.type = 'cash' AND ft.direction = 'credit' THEN ft.amount WHEN fa.type = 'cash' THEN -ft.amount ELSE 0 END), 0)::text as cash_balance
+       FROM financial_transactions ft
+       JOIN financial_accounts fa ON fa.id = ft.account_id
+       WHERE ft.organization_id = ${organizationId}
+         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
+         AND ft.transaction_date >= ${startDate}
+         AND ft.transaction_date < ${endDate}
+     `),
+     db.execute(sql`
+       SELECT 
+         fa.name,
+         COALESCE(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as debit,
+         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as credit,
+         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as balance
       FROM financial_transactions ft
-      JOIN financial_accounts fa ON fa.id IN (ft.debit_account_id, ft.credit_account_id)
+      JOIN financial_accounts fa ON fa.id = ft.account_id
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.created_at >= ${startDate}
-        AND ft.created_at < ${endDate}
+        AND ft.transaction_date >= ${startDate}
+        AND ft.transaction_date < ${endDate}
       GROUP BY fa.id, fa.name
-      ORDER BY SUM(ft.credit - ft.debit) DESC
+      ORDER BY SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END) DESC
     `),
     db.execute(sql`
       SELECT 
         fa.name as category,
-        COALESCE(SUM(ft.credit), 0)::text as amount,
-        COALESCE(ROUND(SUM(ft.credit) * 100.0 / NULLIF(SUM(SUM(ft.credit)) OVER (), 0), 2), 0)::text as percentage
+        COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as amount,
+        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'income' AND ft2.direction = 'credit' AND ft2.transaction_date >= ${startDate} AND ft2.transaction_date < ${endDate}), 0), 2), 0)::text as percentage
       FROM financial_transactions ft
-      JOIN financial_accounts fa ON fa.id = ft.credit_account_id AND fa.type IN ('income', 'revenue')
+      JOIN financial_accounts fa ON fa.id = ft.account_id AND fa.type = 'income'
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.created_at >= ${startDate}
-        AND ft.created_at < ${endDate}
+        AND ft.transaction_date >= ${startDate}
+        AND ft.transaction_date < ${endDate}
       GROUP BY fa.id, fa.name
-      ORDER BY SUM(ft.credit) DESC
+      ORDER BY SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END) DESC
     `),
     db.execute(sql`
       SELECT 
         fa.name as category,
-        COALESCE(SUM(ft.debit), 0)::text as amount,
-        COALESCE(ROUND(SUM(ft.debit) * 100.0 / NULLIF(SUM(SUM(ft.debit)) OVER (), 0), 2), 0)::text as percentage
+        COALESCE(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as amount,
+        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'expense' AND ft2.direction = 'debit' AND ft2.transaction_date >= ${startDate} AND ft2.transaction_date < ${endDate}), 0), 2), 0)::text as percentage
       FROM financial_transactions ft
-      JOIN financial_accounts fa ON fa.id = ft.debit_account_id AND fa.type = 'expense'
+      JOIN financial_accounts fa ON fa.id = ft.account_id AND fa.type = 'expense'
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.created_at >= ${startDate}
-        AND ft.created_at < ${endDate}
+        AND ft.transaction_date >= ${startDate}
+        AND ft.transaction_date < ${endDate}
       GROUP BY fa.id, fa.name
-      ORDER BY SUM(ft.debit) DESC
+      ORDER BY SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END) DESC
     `),
     db.execute(sql`
       SELECT 
-        TO_CHAR(DATE_TRUNC('day', created_at), 'YYYY-MM-DD') as date,
-        COALESCE(SUM(CASE WHEN debit_account_id IN (SELECT id FROM financial_accounts WHERE type IN ('income', 'revenue')) THEN credit ELSE 0 END), 0)::text as income,
-        COALESCE(SUM(CASE WHEN debit_account_id IN (SELECT id FROM financial_accounts WHERE type = 'expense') THEN debit ELSE 0 END), 0)::text as expenses,
-        COALESCE(SUM(credit - debit), 0)::text as balance
-      FROM financial_transactions
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND created_at >= ${startDate}
-        AND created_at < ${endDate}
-      GROUP BY DATE_TRUNC('day', created_at)
-      ORDER BY DATE_TRUNC('day', created_at)
+        TO_CHAR(DATE_TRUNC('day', ft.transaction_date::timestamp), 'YYYY-MM-DD') as date,
+COALESCE(SUM(CASE WHEN fa.type = 'income' AND ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as income,
+         COALESCE(SUM(CASE WHEN fa.type = 'expense' AND ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as expenses,
+         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as balance
+       FROM financial_transactions ft
+       JOIN financial_accounts fa ON fa.id = ft.account_id
+       WHERE ft.organization_id = ${organizationId}
+         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
+         AND ft.transaction_date >= ${startDate}
+         AND ft.transaction_date < ${endDate}
+       GROUP BY DATE_TRUNC('day', ft.transaction_date::timestamp)
+       ORDER BY DATE_TRUNC('day', ft.transaction_date::timestamp)
     `),
   ]);
 
@@ -455,59 +461,54 @@ export async function customerReport(
         COUNT(DISTINCT CASE WHEN EXISTS (
           SELECT 1 FROM sales_orders so 
           WHERE so.customer_id = c.id 
-          AND so.created_at >= ${new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)}
+          AND so.occurred_at >= ${startDate} AND so.occurred_at < ${endDate}
         ) THEN c.id END)::int as active_customers,
         COALESCE(SUM(CASE WHEN so.status IN ('paid', 'partially_refunded', 'refunded') THEN so.total_amount ELSE 0 END), 0)::text as total_spent,
         COALESCE(AVG(CASE WHEN so.status IN ('paid', 'partially_refunded', 'refunded') THEN so.total_amount ELSE 0 END), 0)::text as avg_spent,
         COALESCE(AVG(la.points_balance), 0)::text as avg_points
       FROM customers c
-      LEFT JOIN sales_orders so ON so.customer_id = c.id AND so.created_at >= ${startDate} AND so.created_at < ${endDate}
+      LEFT JOIN sales_orders so ON so.customer_id = c.id AND so.occurred_at >= ${startDate} AND so.occurred_at < ${endDate}
       LEFT JOIN loyalty_accounts la ON la.customer_id = c.id
       WHERE c.organization_id = ${organizationId}
-        ${branchId ? sql`AND c.branch_id = ${branchId}` : sql``}
+        ${branchId ? sql`AND (so.branch_id = ${branchId} OR so.branch_id IS NULL)` : sql``}
     `),
     db.execute(sql`
-      SELECT 
-        CASE 
-          WHEN SUM(so.total_amount) IS NULL THEN 'Tidak Aktif'
-          WHEN SUM(so.total_amount) < 500000 THEN 'Bronze'
-          WHEN SUM(so.total_amount) < 2000000 THEN 'Silver'
-          ELSE 'Gold'
-        END as segment,
-        COUNT(DISTINCT c.id)::int as count,
-        COALESCE(SUM(so.total_amount), 0)::text as spent,
-        COALESCE(AVG(COUNT(DISTINCT so.id)), 0)::int as frequency
-      FROM customers c
-      LEFT JOIN sales_orders so ON so.customer_id = c.id 
-        AND so.status IN ('paid', 'partially_refunded', 'refunded')
-        AND so.created_at >= ${startDate}
-        AND so.created_at < ${endDate}
-      WHERE c.organization_id = ${organizationId}
-        ${branchId ? sql`AND c.branch_id = ${branchId}` : sql``}
-      GROUP BY segment
+      WITH customer_totals AS (
+        SELECT c.id, COALESCE(SUM(so.total_amount), 0)::bigint AS spent, COUNT(DISTINCT so.id)::int AS frequency
+        FROM customers c
+        LEFT JOIN sales_orders so ON so.customer_id = c.id
+          AND so.organization_id = ${organizationId}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+        WHERE c.organization_id = ${organizationId}
+        GROUP BY c.id
+      )
+      SELECT CASE WHEN spent = 0 THEN 'Tidak Aktif' WHEN spent < 500000 THEN 'Bronze' WHEN spent < 2000000 THEN 'Silver' ELSE 'Gold' END AS segment,
+             COUNT(*)::int AS count, SUM(spent)::text AS spent, SUM(frequency)::int AS frequency
+      FROM customer_totals
+      GROUP BY CASE WHEN spent = 0 THEN 'Tidak Aktif' WHEN spent < 500000 THEN 'Bronze' WHEN spent < 2000000 THEN 'Silver' ELSE 'Gold' END
       ORDER BY COUNT(*) DESC
     `),
     db.execute(sql`
-      SELECT 
-        CASE 
-          WHEN SUM(so.total_amount) IS NULL OR SUM(so.total_amount) = 0 THEN 'Rp 0'
-          WHEN SUM(so.total_amount) < 500000 THEN 'Rp 0 - Rp 500K'
-          WHEN SUM(so.total_amount) < 2000000 THEN 'Rp 500K - Rp 2M'
-          WHEN SUM(so.total_amount) < 10000000 THEN 'Rp 2M - Rp 10M'
-          ELSE 'Rp 10M+'
-        END as range,
-        COUNT(DISTINCT c.id)::int as count,
-        COALESCE(SUM(so.total_amount), 0)::text as spent,
-        COALESCE(AVG(COUNT(DISTINCT so.id)), 0)::int as avg_frequency
-      FROM customers c
-      LEFT JOIN sales_orders so ON so.customer_id = c.id 
-        AND so.status IN ('paid', 'partially_refunded', 'refunded')
-        AND so.created_at >= ${startDate}
-        AND so.created_at < ${endDate}
-      WHERE c.organization_id = ${organizationId}
-        ${branchId ? sql`AND c.branch_id = ${branchId}` : sql``}
-      GROUP BY range
-      ORDER BY count DESC
+      WITH customer_totals AS (
+        SELECT c.id, COALESCE(SUM(so.total_amount), 0)::bigint AS spent, COUNT(DISTINCT so.id)::int AS frequency
+        FROM customers c
+        LEFT JOIN sales_orders so ON so.customer_id = c.id
+          AND so.organization_id = ${organizationId}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+        WHERE c.organization_id = ${organizationId}
+        GROUP BY c.id
+      )
+      SELECT CASE WHEN spent = 0 THEN 'Rp 0' WHEN spent < 500000 THEN 'Rp 0 - Rp 500K' WHEN spent < 2000000 THEN 'Rp 500K - Rp 2M' WHEN spent < 10000000 THEN 'Rp 2M - Rp 10M' ELSE 'Rp 10M+' END AS range,
+             COUNT(*)::int AS count, SUM(spent)::text AS spent, SUM(frequency)::int AS avg_frequency
+      FROM customer_totals
+      GROUP BY CASE WHEN spent = 0 THEN 'Rp 0' WHEN spent < 500000 THEN 'Rp 0 - Rp 500K' WHEN spent < 2000000 THEN 'Rp 500K - Rp 2M' WHEN spent < 10000000 THEN 'Rp 2M - Rp 10M' ELSE 'Rp 10M+' END
+      ORDER BY COUNT(*) DESC
     `),
     db.execute(sql`
       SELECT 
@@ -518,11 +519,11 @@ export async function customerReport(
       FROM customers c
       LEFT JOIN sales_orders so ON so.customer_id = c.id 
         AND so.status IN ('paid', 'partially_refunded', 'refunded')
-        AND so.created_at >= ${startDate}
-        AND so.created_at < ${endDate}
+        AND so.occurred_at >= ${startDate}
+        AND so.occurred_at < ${endDate}
       LEFT JOIN loyalty_accounts la ON la.customer_id = c.id
       WHERE c.organization_id = ${organizationId}
-        ${branchId ? sql`AND c.branch_id = ${branchId}` : sql``}
+        ${branchId ? sql`AND (so.branch_id = ${branchId} OR so.branch_id IS NULL)` : sql``}
       GROUP BY c.id, c.name
       ORDER BY SUM(so.total_amount) DESC NULLS LAST
       LIMIT 20

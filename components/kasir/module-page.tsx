@@ -16,6 +16,7 @@ import {
   Warehouse,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { FoundationModulePage } from "./foundation-module-page"
 
 type ModuleConfig = { title: string; description: string; icon: typeof PackagePlus; guidance: string }
 
@@ -38,6 +39,7 @@ const configs: Record<string, ModuleConfig> = {
 }
 
 export function ModulePage({ module }: { module: string }) {
+  if (["loyalty", "promotions", "kitchen", "reservations", "employees"].includes(module)) return <FoundationModulePage module={module} />
   const config = configs[module] || configs.settings
   const Icon = config.icon
   return <div className="flex flex-1 flex-col gap-5 p-4 md:p-6"><div className="flex items-start gap-3"><span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"><Icon className="size-5" /></span><div><h2 className="text-2xl font-bold tracking-tight">{config.title}</h2><p className="text-sm text-muted-foreground">{config.description}</p></div></div><Card><CardContent className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center"><span className="flex size-16 items-center justify-center rounded-2xl bg-muted"><Icon className="size-8 text-muted-foreground" /></span><h3 className="mt-5 text-lg font-semibold">Belum ada data</h3><p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">{config.guidance}</p></CardContent></Card></div>
