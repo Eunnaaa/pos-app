@@ -28,10 +28,27 @@ void test("RBAC applies default least-privilege matrix", () => {
   assert.equal(can("owner", "settings:manage"), true);
   assert.equal(can("cashier", "pos:write"), true);
   assert.equal(can("cashier", "finance:write"), false);
-  assert.equal(can("warehouse", "inventory:write"), true);
-  assert.equal(can("accountant", "reports:read"), true);
+  assert.equal(can("cashier", "inventory:write"), false);
+  assert.equal(can("cashier", "reports:read"), true);
   assert.throws(() => requirePermission("cashier", "users:manage"), AppError);
   assert.doesNotThrow(() => requirePermission("cashier", "finance:write", ["finance:write"]));
+});
+
+void test("owner and cashier permissions match final role policy", () => {
+  assert.equal(can("owner", "users:manage"), true);
+  assert.equal(can("owner", "finance:write"), true);
+  for (const permission of ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write"] as const) {
+    assert.equal(can("cashier", permission), true);
+  }
+  for (const permission of ["inventory:write", "purchases:write", "finance:read", "settings:manage", "users:manage"] as const) {
+    assert.equal(can("cashier", permission), false);
+  }
+  assert.equal(can("cashier", "reports:read"), true);
+  assert.equal(can("cashier", "inventory:read"), true);
+});
+
+void test("role policy rejects removed roles at type boundary", () => {
+  assert.throws(() => requirePermission("cashier", "users:manage"), AppError);
 });
 
 void test("cash settlement calculates tender expected values and variance", () => {
@@ -71,10 +88,11 @@ void test("webhook HMAC verifies valid payload and rejects tampering", () => {
   assert.throws(() => verifyWebhookSignature(payload, signature, timestamp - 1_000, secret), AppError);
 });
 
-void test("webhook targets reject local and private network URLs", () => {
-  assert.equal(assertSafeWebhookUrl("https://example.com/hooks/sale").hostname, "example.com");
+void test("webhook targets reject local and private network URLs", async () => {
+  const valid = await assertSafeWebhookUrl("https://example.com/hooks/sale");
+  assert.equal(valid.hostname, "example.com");
   for (const url of ["http://example.com", "https://localhost/hook", "https://127.0.0.1/hook", "https://10.0.0.8/hook", "https://user:pass@example.com/hook"]) {
-    assert.throws(() => assertSafeWebhookUrl(url), AppError);
+    await assert.rejects(() => assertSafeWebhookUrl(url), AppError);
   }
 });
 

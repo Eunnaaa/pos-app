@@ -22,6 +22,7 @@ type OrganizationContextValue = {
   refresh: () => Promise<void>
   selectOrganization: (id: string) => void
   selectBranch: (id: string) => void
+  selectAllBranches: () => void
 }
 
 const OrganizationContext = createContext<OrganizationContextValue | null>(null)
@@ -46,8 +47,8 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       const storedOrganizationId = localStorage.getItem(ACTIVE_ORGANIZATION_KEY)
       const selected = payload.data.find((item) => item.id === storedOrganizationId) ?? payload.data[0]
       const storedBranchId = localStorage.getItem(ACTIVE_BRANCH_KEY)
-      const selectedBranch = selected.branches.find((item) => item.id === storedBranchId) ?? selected.branches[0]
-      const storedWarehouseId = localStorage.getItem(ACTIVE_WAREHOUSE_KEY)
+      const selectedBranch = storedBranchId ? selected.branches.find((item) => item.id === storedBranchId) : undefined
+      const storedWarehouseId = selectedBranch ? localStorage.getItem(ACTIVE_WAREHOUSE_KEY) : undefined
       const selectedWarehouse = selectedBranch?.warehouses.find((item) => item.id === storedWarehouseId)
         ?? selectedBranch?.warehouses.find((item) => item.isDefault)
         ?? selectedBranch?.warehouses[0]
@@ -81,7 +82,14 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     window.dispatchEvent(new Event("kasir-ku-context-change"))
   }
 
-  const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch }
+  function selectAllBranches() {
+    if (!organization) return
+    persistActiveContext({ organizationId: organization.id })
+    setBranchId(undefined); setWarehouseId(undefined)
+    window.dispatchEvent(new Event("kasir-ku-context-change"))
+  }
+
+  const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }
 
   if (loading && !organization) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>

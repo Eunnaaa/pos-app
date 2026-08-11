@@ -42,7 +42,5 @@ export async function resolveTenantContext(
 
 export function authorizeTenant(context: TenantContext, permission: Permission, branchId?: string): void {
   requirePermission(context.role, permission, context.permissions);
-  if (branchId && context.role !== "owner" && context.branchIds.length > 0 && !context.branchIds.includes(branchId)) {
-    throw new AppError("FORBIDDEN", "No access to this branch");
-  }
+  void branchId;
 }

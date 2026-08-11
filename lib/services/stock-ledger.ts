@@ -24,10 +24,13 @@ export async function postStockMovement(tx: DbTransaction, input: LedgerStockInp
   if (input.quantity === 0n) throw new AppError("VALIDATION_ERROR", "Stock movement quantity cannot be zero");
 
   const [[warehouse], [variant]] = await Promise.all([
-    tx.select({ id: warehouses.id }).from(warehouses).where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, input.organizationId))).limit(1),
+    tx.select({ id: warehouses.id, branchId: warehouses.branchId }).from(warehouses).where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, input.organizationId))).limit(1),
     tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.id, input.variantId), eq(productVariants.organizationId, input.organizationId))).limit(1),
   ]);
   if (!warehouse || !variant) throw new AppError("NOT_FOUND", "Warehouse or product variant not found in organization");
+  if (input.branchId && warehouse.branchId && input.branchId !== warehouse.branchId) {
+    throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
+  }
 
   await tx
     .insert(stockBalances)

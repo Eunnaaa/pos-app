@@ -1,15 +1,32 @@
 import "server-only";
 import { getServerEnv } from "@/config/env";
+import { AppError } from "@/lib/server";
 import { providerRequest, requireProviderConfig } from "./http";
 
 export async function sendWhatsApp(to: string, message: string) {
   const env = getServerEnv();
-  const config = requireProviderConfig("WhatsApp", { token: env.WHATSAPP_ACCESS_TOKEN, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID });
-  return providerRequest("WhatsApp", `https://graph.facebook.com/v22.0/${config.phoneNumberId}/messages`, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${config.token}` },
-    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", to, type: "text", text: { preview_url: false, body: message } }),
-  });
+  const config = requireProviderConfig("Fonnte", { token: env.WHATSAPP_ACCESS_TOKEN });
+  const body = new URLSearchParams({ target: to, message, countryCode: "62" });
+  let response: Response;
+  try {
+    response = await fetch("https://api.fonnte.com/send", {
+      method: "POST",
+      headers: { authorization: config.token, "content-type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new AppError("BAD_REQUEST", "Fonnte is unavailable", { details: { provider: "Fonnte" } });
+  }
+  const text = await response.text();
+  let payload: unknown = null;
+  try { payload = text ? JSON.parse(text) : null; } catch { payload = text.slice(0, 1_000); }
+  if (!response.ok) {
+    const code = response.status === 429 ? "RATE_LIMITED" : response.status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST";
+    throw new AppError(code, "Fonnte send failed", { details: { provider: "Fonnte", status: response.status, response: payload } });
+  }
+  return payload;
 }
 
 export async function sendTelegram(chatId: string, message: string) {

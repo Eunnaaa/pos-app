@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Loader2, Plus, Search, Truck } from "lucide-react"
-import { toast } from "sonner"
+import { showError, showInfo, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,12 +49,12 @@ export function PurchasesPage() {
       if (!warehouse?.id) throw new Error("Gudang belum dipilih")
       if (lines.some((line) => !line.variantId || Number(line.quantity) <= 0)) throw new Error("Lengkapi item purchase order")
       await apiFetch("/api/v1/purchases/orders", { method: "POST", body: JSON.stringify({ branchId: branch?.id, warehouseId: warehouse.id, supplierId, expectedDate: expectedDate || undefined, notes: notes || undefined, status: "submitted", items: lines.map((line) => ({ variantId: line.variantId, quantity: line.quantity, unitCostAmount: line.cost })) }) })
-      toast.success("Purchase order dibuat"); setOpen(false); reset(); await orders.refresh()
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal membuat purchase order") }
+      showSuccess("Purchase order dibuat"); setOpen(false); reset(); await orders.refresh()
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal membuat purchase order") }
     finally { setSaving(false) }
   }
   async function showDetail(id: string) {
-    try { setDetail((await apiFetch<PurchaseDetail>(`/api/v1/purchases/orders/${id}`)).data) } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal mengambil detail") }
+    try { setDetail((await apiFetch<PurchaseDetail>(`/api/v1/purchases/orders/${id}`)).data) } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal mengambil detail") }
   }
   async function receiveAll() {
     if (!detail || !warehouse?.id) return
@@ -64,10 +64,10 @@ export function PurchasesPage() {
       acceptedQuantity: String(BigInt(item.quantity) - BigInt(item.receivedQuantity || item.received_quantity || "0")),
       unitCostAmount: item.unitCostAmount || item.unit_cost_amount || "0",
     })).filter((item) => BigInt(item.acceptedQuantity) > 0n)
-    if (!items.length) return toast.info("Semua item sudah diterima")
+    if (!items.length) return showInfo("Semua item sudah diterima")
     setSaving(true)
-    try { await apiFetch("/api/v1/purchases/receipts", { method: "POST", body: JSON.stringify({ purchaseOrderId: detail.order.id, warehouseId: detail.order.warehouseId || detail.order.warehouse_id || warehouse.id, notes: "Penerimaan melalui management", items }) }); toast.success("Barang diterima dan stok diperbarui"); setDetail(undefined); await orders.refresh() }
-    catch (caught) { toast.error(caught instanceof Error ? caught.message : "Penerimaan gagal") }
+    try { await apiFetch("/api/v1/purchases/receipts", { method: "POST", body: JSON.stringify({ purchaseOrderId: detail.order.id, warehouseId: detail.order.warehouseId || detail.order.warehouse_id || warehouse.id, notes: "Penerimaan melalui management", items }) }); showSuccess("Barang diterima dan stok diperbarui"); setDetail(undefined); await orders.refresh() }
+    catch (caught) { showError(caught instanceof Error ? caught.message : "Penerimaan gagal") }
     finally { setSaving(false) }
   }
   const total = orders.data.reduce((sum, order) => sum + Number(order.total_amount), 0)

@@ -22,9 +22,13 @@ export async function createPurchaseOrder(input: z.infer<typeof createPurchaseOr
   return db.transaction(async (tx) => {
     const [[supplier], [warehouse]] = await Promise.all([
       tx.select({ id: suppliers.id }).from(suppliers).where(and(eq(suppliers.id, input.supplierId), eq(suppliers.organizationId, context.organizationId))).limit(1),
-      tx.select({ id: warehouses.id }).from(warehouses).where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, context.organizationId))).limit(1),
+      tx.select({ id: warehouses.id, branchId: warehouses.branchId }).from(warehouses).where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, context.organizationId))).limit(1),
     ]);
     if (!supplier || !warehouse) throw new AppError("NOT_FOUND", "Supplier or warehouse not found");
+    const branchId = input.branchId ?? warehouse.branchId ?? undefined;
+    if (input.branchId && warehouse.branchId && input.branchId !== warehouse.branchId) {
+      throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
+    }
     const variants = await Promise.all(input.items.map(async (item) => {
       const [variant] = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.id, item.variantId), eq(productVariants.organizationId, context.organizationId))).limit(1);
       if (!variant) throw new AppError("NOT_FOUND", "Product variant not found");
@@ -36,7 +40,7 @@ export async function createPurchaseOrder(input: z.infer<typeof createPurchaseOr
     const [order] = await tx.insert(purchaseOrders).values({
       id,
       organizationId: context.organizationId,
-      branchId: input.branchId,
+      branchId,
       warehouseId: input.warehouseId,
       supplierId: input.supplierId,
       orderNumber,

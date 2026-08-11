@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -104,6 +105,7 @@ export const cashRegisterSessions = pgTable(
     userId: text("user_id").notNull().references(() => user.id, { onDelete: "restrict" }),
     status: text("status").$type<"open" | "closed">().default("open").notNull(),
     openingAmount: moneyColumn("opening_amount"),
+    shiftHours: integer("shift_hours"),
     expectedClosingAmount: moneyColumn("expected_closing_amount"),
     actualClosingAmount: moneyColumn("actual_closing_amount"),
     varianceAmount: moneyColumn("variance_amount"),
@@ -112,6 +114,7 @@ export const cashRegisterSessions = pgTable(
     settledBy: text("settled_by").references(() => user.id, { onDelete: "set null" }),
     openedAt: timestamp("opened_at", { withTimezone: true }).defaultNow().notNull(),
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    notifiedAt: timestamp("notified_at", { withTimezone: true }),
     ...timestamps(),
   },
   (table) => [

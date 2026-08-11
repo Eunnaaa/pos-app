@@ -250,7 +250,7 @@ export function throwInternalError(
   throw new ApiError(500, ERROR_CODES.INTERNAL_ERROR, message, details);
 }
 
-export default {
+const errorHandler = {
   ApiError,
   ERROR_CODES,
   successResponse,
@@ -265,3 +265,5 @@ export default {
   throwValidationError,
   throwInternalError,
 };
+
+export default errorHandler;

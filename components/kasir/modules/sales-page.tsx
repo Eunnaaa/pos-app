@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { Loader2, RefreshCw, RotateCcw, Search } from "lucide-react"
-import { toast } from "sonner"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,14 +30,14 @@ export function SalesPage() {
   const load = useCallback(async () => {
     setLoading(true)
     try { setData((await apiFetch<Sale[]>(`/api/v1/sales?q=${encodeURIComponent(search)}&limit=100`)).data) }
-    catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal mengambil transaksi") }
+    catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal mengambil transaksi") }
     finally { setLoading(false) }
   }, [search])
   useEffect(() => { const timer = window.setTimeout(() => void load(), 250); return () => window.clearTimeout(timer) }, [load])
 
   async function showDetail(id: string) {
     try { setDetail((await apiFetch<SaleDetail>(`/api/v1/sales/${id}`)).data) }
-    catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal mengambil detail") }
+    catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal mengambil detail") }
   }
 
   function prepareReturn() {
@@ -48,12 +48,12 @@ export function SalesPage() {
   async function submitReturn(event: React.FormEvent) {
     event.preventDefault(); if (!detail) return
     const items = detail.items.map((item) => ({ orderItemId: item.id, quantity: returnQuantities[item.id] || "0", restock: true })).filter((item) => BigInt(item.quantity) > 0n)
-    if (!items.length) return toast.error("Masukkan minimal satu kuantitas return")
+    if (!items.length) return showError("Masukkan minimal satu kuantitas return")
     setSaving(true)
     try {
       await apiFetch("/api/v1/sales/returns", { method: "POST", body: JSON.stringify({ orderId: detail.order.id, reason: returnReason, items }), queueOffline: true })
-      toast.success("Return dan refund diproses"); setReturnOpen(false); setDetail(undefined); await load()
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Return gagal") }
+      showSuccess("Return dan refund diproses"); setReturnOpen(false); setDetail(undefined); await load()
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Return gagal") }
     finally { setSaving(false) }
   }
 

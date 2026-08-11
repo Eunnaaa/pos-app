@@ -28,8 +28,8 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=${DATABASE_URL}
-      - BETTER_AUTH_SECRET=your-super-secret-key-change-in-production
-      - BETTER_AUTH_URL=http://localhost:3000
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
     ports:
       - "3000:3000"
     depends_on:

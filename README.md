@@ -119,13 +119,84 @@ Optional provider groups activate only when all credentials for that provider ex
 - Supabase services: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - Midtrans: `MIDTRANS_SERVER_KEY`, `MIDTRANS_BASE_URL`
 - Xendit: `XENDIT_SECRET_KEY`
-- WhatsApp: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`
+- WhatsApp (via Fonnte): `WHATSAPP_ACCESS_TOKEN` (Fonnte API token)
 - Telegram: `TELEGRAM_BOT_TOKEN`
 - Email: `EMAIL_API_URL`, `EMAIL_API_KEY`
 - AI: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`
 - Webhooks: `WEBHOOK_SECRET`
 
 Never expose service-role, payment, AI, or webhook secrets with a `NEXT_PUBLIC_` prefix.
+
+## Supabase
+
+The app runs on any PostgreSQL. For a managed Supabase deployment:
+
+1. Create a Supabase project.
+2. Point `DATABASE_URL` at the **transaction pooler** (best for the app):
+
+   ```env
+   DATABASE_URL=postgresql://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+   DATABASE_SSL=require
+   ```
+
+   For migration tooling (`drizzle-kit`) a direct/session connection is usually more reliable; temporarily use that URL when running `npm run db:migrate`.
+3. Apply schema: `npm run db:migrate`.
+4. Storage — bucket `product-images` (public) + upload via `POST /api/v1/product-images/upload`:
+
+   ```env
+   SUPABASE_URL=https://PROJECT_REF.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+   ```
+
+   Run `supabase/storage-policies.sql` once in SQL Editor to lock down the bucket: public read, service-role-only write/delete.
+5. Auth stays on Better Auth (cookie sessions, RBAC). Supabase Auth/RLS are optional layers; do **not** enable RLS on business tables while the app connects through a pooler login, or the server queries will be blocked. Authorization is enforced in-app via `tenant_members` + server-side tenant filters.
+
+Storage is inactive until both `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` exist.
+
+### Realtime dashboard
+
+The Owner and Cashier dashboards refresh automatically when a `sales_orders` row is inserted/updated for the active organization. Requires:
+
+1. Public env keys (safe to expose):
+
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=https://PROJECT_REF.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+   ```
+
+2. Enable Realtime replication in Supabase: Database → Replication → enable on `sales_orders` (others: `stock_balances`, `cash_register_sessions`).
+
+Without replication the app keeps working via manual/context refresh; with it the dashboard is live.
+
+### Database webhook: automatic receipts
+
+When an order becomes `paid`, Supabase can POST the inserted row to `/api/v1/webhooks/db`, which sends WhatsApp/email receipts if the customer has contact data and the provider is configured.
+
+1. Set a secret: `WEBHOOK_SECRET=<random-32+>` in `.env`.
+2. Supabase → Database → Webhooks → create webhook:
+   - Table: `sales_orders`, event: **INSERT**
+   - URL: `https://APP/api/v1/webhooks/db`
+   - Headers: `Authorization: Bearer <WEBHOOK_SECRET>`
+3. Providers are best-effort: failures never fail the order. Fields `whatsapp_sent_at`/`email_sent_at` on `receipts` prevent duplicate sends.
+
+### Signed URLs & image transformation
+
+For private buckets, generate time-limited read URLs server-side:
+
+- `POST /api/v1/integrations/storage/signed-url` (requires `settings:manage`)
+  ```json
+  { "bucket": "private-files", "path": "org/product/file.png", "expiresIn": 3600 }
+  ```
+- `transformImageUrl(url, { width, quality })` in `lib/integrations/storage.ts` appends Supabase image CDN params (`?width=…&quality=…`) to any storage URL.
+
+### Scheduled jobs (pg_cron)
+
+`supabase/cron-jobs.sql` provides:
+
+1. **Expire held orders** every 5 minutes (pure SQL).
+2. Optional `pg_net` job posting to `/api/v1/webhooks/cron`, a secret-guarded endpoint that also runs the cleanup server-side (`WEBHOOK_SECRET`).
+
+Run the SQL once in Supabase SQL Editor; edit schedule as needed.
 
 ## API
 
@@ -169,10 +240,7 @@ Responses use `{ "data": ..., "meta": ... }`; errors use `{ "error": { "code", "
 | Role | Primary permissions |
 |---|---|
 | Owner | Full organization access |
-| Manager | Dashboard, POS, sales, inventory, purchasing, customers, suppliers, reports, employees |
-| Cashier | Dashboard, POS, sales/return, customers |
-| Warehouse | Inventory, purchasing, suppliers |
-| Accountant | Dashboard, sales/purchase read, finance, reports |
+| Cashier | Dashboard, POS, sales/return, customers, own cash session |
 
 Authorization is checked server-side. Hiding navigation does not grant or revoke access.
 

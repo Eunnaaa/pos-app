@@ -30,5 +30,10 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("sync", (event) => {
-  if (event.tag === "kasir-ku-sync") self.clients.matchAll().then((clients) => clients.forEach((client) => client.postMessage({ type: "SYNC_PENDING_TRANSACTIONS" })));
+  if (event.tag !== "kasir-ku-sync") return;
+  event.waitUntil(
+    self.clients.matchAll().then((clients) => {
+      clients.forEach((client) => client.postMessage({ type: "SYNC_PENDING_TRANSACTIONS" }));
+    }),
+  );
 });

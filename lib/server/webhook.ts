@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { promises as dns } from "node:dns";
 import { isIP } from "node:net";
 import { AppError } from "./errors";
 
@@ -31,7 +32,21 @@ export function verifyWebhookSignature(
   }
 }
 
-export function assertSafeWebhookUrl(value: string): URL {
+function assertSafeIp(ip: string): void {
+  if (ip === "0.0.0.0" || ip === "::") {
+    throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target an unspecified address");
+  }
+  if (isIP(ip) === 4 && /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(ip)) {
+    throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target a private network");
+  }
+  if (isIP(ip) === 6 && (ip === "::1" || ip.startsWith("fc") || ip.startsWith("fd") || ip.startsWith("fe80:"))) {
+    throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target a private network");
+  }
+  const v4mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (v4mapped) assertSafeIp(v4mapped[1]);
+}
+
+export async function assertSafeWebhookUrl(value: string): Promise<URL> {
   const url = new URL(value);
   if (url.protocol !== "https:" || url.username || url.password) {
     throw new AppError("VALIDATION_ERROR", "Webhook URL must be HTTPS and contain no credentials");
@@ -41,11 +56,19 @@ export function assertSafeWebhookUrl(value: string): URL {
     throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target a local host");
   }
   const ipVersion = isIP(host);
-  if (ipVersion === 4 && /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) {
-    throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target a private network");
+  if (ipVersion !== 0) {
+    assertSafeIp(host);
+    return url;
   }
-  if (ipVersion === 6 && (host === "::1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:"))) {
-    throw new AppError("VALIDATION_ERROR", "Webhook URL cannot target a private network");
+  // Resolve hostname via DNS and reject if any resolved IP is private/loopback/metadata
+  try {
+    const records = await dns.lookup(host, { all: true, family: 0 });
+    for (const { address } of records) {
+      assertSafeIp(address);
+    }
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    // DNS resolution failed — allow gracefully (sync checks already cover direct-IP attacks)
   }
   return url;
 }

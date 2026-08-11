@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession } from "@/lib/auth-client"
+import { useOrganization } from "@/components/kasir/organization-provider"
 import {
   Boxes,
   BrainCircuit,
@@ -74,6 +75,7 @@ const groups = [
       ["Cabang", "/dashboard/branches", Building2],
       ["Laporan", "/dashboard/reports", FileBarChart],
       ["AI Insights", "/dashboard/ai", BrainCircuit],
+      ["Cashier", "/dashboard/cashiers", UsersRound],
       ["Pengaturan", "/dashboard/settings", Settings],
     ],
   },
@@ -82,6 +84,14 @@ const groups = [
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
   const { data: session } = useSession()
+  const { organization } = useOrganization()
+  const isOwner = organization?.role === "owner"
+  const allowed = new Set(isOwner ? ["all"] : ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "reports:read"])
+  const itemPermission: Record<string, string> = {
+    "/dashboard": "dashboard:read", "/dashboard/pos": "pos:write", "/dashboard/sales": "sales:read",
+    "/dashboard/customers": "customers:read", "/dashboard/cashiers": "users:manage", "/dashboard/reports": "reports:read",
+  }
+  const visibleGroups = groups.map((group) => ({ ...group, items: group.items.filter(([, href]) => allowed.has("all") || allowed.has(itemPermission[href] || "")) })).filter((group) => group.items.length)
   const userData = session?.user
     ? { name: session.user.name || "Pengguna", email: session.user.email, avatar: session.user.image || "" }
     : { name: "Pengguna", email: "", avatar: "" }
@@ -106,7 +116,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        {groups.map((group) => (
+        {visibleGroups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>

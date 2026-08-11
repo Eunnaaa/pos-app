@@ -1,15 +1,18 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type Database } from "@/db";
 import {
   cashRegisters,
   cashRegisterSessions,
   customers,
+  kitchenTickets,
+  kitchenTicketItems,
   loyaltyAccounts,
   loyaltyTransactions,
   productVariants,
   products,
   receipts,
+  warehouses,
   salesOrderItems,
   salesOrders,
   salesPayments,
@@ -17,6 +20,7 @@ import {
 import type { ApiContext } from "@/lib/api";
 import { assertPeriodOpen, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
+import { postSaleToLedger } from "./ledger";
 
 const bigintInput = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveBigint = bigintInput.refine((value) => value > 0n, "Must be greater than zero");
@@ -51,10 +55,15 @@ export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
 export async function checkout(input: CheckoutInput, context: ApiContext) {
   return db.transaction(async (tx) => {
-    if (context.tenant.role !== "owner" && context.tenant.branchIds.length > 0 && !context.tenant.branchIds.includes(input.branchId)) {
-      throw new AppError("FORBIDDEN", "No access to checkout branch");
-    }
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });
+    const [warehouse] = await tx
+      .select({ id: warehouses.id, branchId: warehouses.branchId })
+      .from(warehouses)
+      .where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, context.organizationId), eq(warehouses.isActive, true)))
+      .limit(1);
+    if (!warehouse || (warehouse.branchId && warehouse.branchId !== input.branchId)) {
+      throw new AppError("FORBIDDEN", "Gudang tidak tersedia untuk cabang ini");
+    }
     const [cashSession] = await tx
       .select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId })
       .from(cashRegisterSessions)
@@ -84,7 +93,12 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       })
       .from(productVariants)
       .innerJoin(products, eq(products.id, productVariants.productId))
-      .where(and(eq(productVariants.organizationId, context.organizationId), inArray(productVariants.id, input.items.map((item) => item.variantId))));
+      .where(and(
+        eq(productVariants.organizationId, context.organizationId),
+        eq(productVariants.isActive, true),
+        eq(products.isActive, true),
+        inArray(productVariants.id, input.items.map((item) => item.variantId)),
+      ));
     const byId = new Map(variants.map((variant) => [variant.id, variant]));
     if (byId.size !== new Set(input.items.map((item) => item.variantId)).size) throw new AppError("NOT_FOUND", "One or more variants are unavailable");
 
@@ -92,7 +106,7 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     let costAmount = 0n;
     const calculated = input.items.map((item) => {
       const variant = byId.get(item.variantId)!;
-      const unitPriceAmount = item.unitPriceAmount ?? variant.priceAmount;
+      const unitPriceAmount = variant.priceAmount;
       const gross = unitPriceAmount * item.quantity;
       if (item.discountAmount > gross) throw new AppError("VALIDATION_ERROR", "Item discount cannot exceed item gross amount");
       const totalAmount = gross - item.discountAmount;
@@ -106,7 +120,9 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     const totalAmount = subtotalAmount - input.discountAmount + input.serviceChargeAmount + taxAmount;
     const paymentAmount = input.payments.reduce((sum, payment) => sum + payment.amount, 0n);
     const isDeferred = input.payments.some((payment) => payment.method === "pay_later");
+    const hasCash = input.payments.some((payment) => payment.method === "cash");
     if (input.status === "paid" && paymentAmount < totalAmount && !isDeferred) throw new AppError("VALIDATION_ERROR", "Payment total is less than order total");
+    if (input.status === "paid" && paymentAmount > totalAmount && !hasCash) throw new AppError("VALIDATION_ERROR", "Non-cash payment cannot exceed order total");
     const paidAmount = paymentAmount > totalAmount ? totalAmount : paymentAmount;
     const changeAmount = paymentAmount > totalAmount ? paymentAmount - totalAmount : 0n;
 
@@ -168,6 +184,25 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
           allowNegative: variant.allowNegativeStock,
         });
       }
+
+      const ticketId = crypto.randomUUID();
+      const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
+      await tx.insert(kitchenTickets).values({
+        id: ticketId,
+        organizationId: context.organizationId,
+        branchId: input.branchId,
+        orderId,
+        number: ticketNumber,
+        status: "queued",
+        priority: 0,
+      });
+      await tx.insert(kitchenTicketItems).values(orderItems.map((orderItem) => ({
+        organizationId: context.organizationId,
+        ticketId,
+        orderItemId: orderItem.id,
+        status: "queued" as const,
+        notes: orderItem.notes,
+      })));
     }
 
     const payments = input.payments.length ? await tx.insert(salesPayments).values(input.payments.map((payment) => ({
@@ -191,6 +226,20 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
         const [account] = await tx.insert(loyaltyAccounts).values({ organizationId: context.organizationId, customerId: customer.id }).onConflictDoUpdate({ target: loyaltyAccounts.customerId, set: { pointsBalance: sql`${loyaltyAccounts.pointsBalance} + ${pointsEarned}`, lifetimePoints: sql`${loyaltyAccounts.lifetimePoints} + ${pointsEarned}`, updatedAt: new Date() } }).returning();
         await tx.insert(loyaltyTransactions).values({ organizationId: context.organizationId, loyaltyAccountId: account.id, type: "earn", points: pointsEarned, referenceType: "sales_order", referenceId: orderId, description: `Poin transaksi ${orderNumber}` });
       }
+    }
+
+    // Post to financial ledger (double-entry)
+    if (input.status === "paid") {
+      await postSaleToLedger(tx as unknown as Database, {
+        organizationId: context.organizationId,
+        branchId: input.branchId,
+        orderId,
+        orderNumber,
+        totalAmount,
+        changeAmount,
+        payments: input.payments.filter((p) => p.method !== "pay_later").map((p) => ({ method: p.method, amount: p.amount })),
+        actorUserId: context.session.user.id,
+      });
     }
 
     const verificationToken = crypto.randomUUID().replaceAll("-", "");

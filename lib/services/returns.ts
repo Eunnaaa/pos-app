@@ -5,12 +5,15 @@ import {
   refunds,
   salesOrderItems,
   salesOrders,
+  salesPayments,
   salesReturnItems,
   salesReturns,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
 import { assertPeriodOpen, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
+import { postReturnToLedger } from "./ledger";
+import type { Database } from "@/db";
 
 const positive = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
 
@@ -103,7 +106,26 @@ export async function processSalesReturn(input: z.infer<typeof salesReturnSchema
 
     const existingRefunds = await tx.select({ total: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).where(and(eq(salesReturns.orderId, order.id), eq(refunds.status, "processed")));
     const refundedAmount = BigInt(existingRefunds[0]?.total ?? "0");
-    await tx.update(salesOrders).set({ status: refundedAmount >= order.totalAmount ? "refunded" : "partially_refunded", updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
+    // Adjust costAmount for returned items (COGS recovery)
+    const costAdjustment = calculated.reduce((sum, { inputItem, orderItem }) => sum + (orderItem.unitCostAmount ?? 0n) * inputItem.quantity, 0n);
+    await tx.update(salesOrders).set({ status: refundedAmount >= order.totalAmount ? "refunded" as const : "partially_refunded" as const, costAmount: sql`${salesOrders.costAmount} - ${costAdjustment}`, updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
+
+    // Post to financial ledger (reverse entry)
+    let refundMethod = "cash";
+    if (input.paymentId) {
+      const [payment] = await tx.select({ method: salesPayments.method }).from(salesPayments).where(and(eq(salesPayments.id, input.paymentId), eq(salesPayments.organizationId, context.organizationId))).limit(1);
+      if (payment) refundMethod = payment.method;
+    }
+    await postReturnToLedger(tx as unknown as Database, {
+      organizationId: context.organizationId,
+      branchId: order.branchId,
+      returnId,
+      returnNumber,
+      refundAmount: totalAmount,
+      paymentMethod: refundMethod,
+      actorUserId: context.session.user.id,
+    });
+
     return { return: salesReturn, items, refund };
   });
 }

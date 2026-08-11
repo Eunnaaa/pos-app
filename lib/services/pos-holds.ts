@@ -224,3 +224,12 @@ export async function cleanupExpiredHeldOrders(organizationId: string): Promise<
 
   return result.rowCount || 0;
 }
+
+export async function cleanupAllExpiredHeldOrders(): Promise<number> {
+  const now = new Date();
+  const result = await db
+    .update(heldOrders)
+    .set({ status: "expired" })
+    .where(and(eq(heldOrders.status, "held"), lte(heldOrders.expiresAt, now)));
+  return result.rowCount || 0;
+}

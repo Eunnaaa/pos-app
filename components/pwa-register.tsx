@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { toast } from "sonner"
+import { showError } from "@/lib/toast-handler"
 import { syncOfflineMutations } from "@/lib/offline/queue"
 
 export function PwaRegister() {
@@ -10,7 +10,7 @@ export function PwaRegister() {
     
     const sync = async () => {
       const { failed } = await syncOfflineMutations()
-      if (failed > 0) toast.error(`${failed} transaksi offline ditolak server`, { description: "Perlu diperiksa dan diinput ulang manual.", duration: 15_000 })
+      if (failed > 0) showError(`${failed} transaksi offline ditolak server — perlu diperiksa dan diinput ulang manual`, { duration: 15_000 })
     }
 
     navigator.serviceWorker.register("/sw.js").then((registration) => {

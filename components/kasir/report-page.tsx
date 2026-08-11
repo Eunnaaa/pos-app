@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Calendar, Download, Loader2, TrendingDown, TrendingUp } from "lucide-react"
+import { Building2, Calendar, Download, Loader2, TrendingDown, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/client"
+import { useOrganization } from "@/components/kasir/organization-provider"
 import type { SalesReport, InventoryReport, PurchaseReport, FinanceReport, CustomerReport } from "@/lib/services/reporting"
 
 const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`
@@ -17,6 +18,7 @@ interface ReportPageProps {
 }
 
 export function ReportPage({ reportType, title }: ReportPageProps) {
+  const { branch } = useOrganization()
   const searchParams = useSearchParams()
   const [report, setReport] = useState<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -31,14 +33,14 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
       const params = new URLSearchParams()
       if (startDate) params.append("startDate", new Date(`${startDate}T00:00:00`).toISOString())
       if (endDate) params.append("endDate", new Date(`${endDate}T23:59:59.999`).toISOString())
-      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`)
+      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`, { branchId: branch?.id })
       setReport(response.data)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Gagal memuat laporan")
     } finally {
       setLoading(false)
     }
-  }, [reportType, startDate, endDate])
+  }, [reportType, startDate, endDate, branch?.id])
 
   useEffect(() => {
     void fetchReport()
@@ -69,10 +71,16 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
           <h1 className="text-3xl font-bold">{title}</h1>
           <p className="text-muted-foreground">Laporan terperinci untuk analisis bisnis</p>
         </div>
-        <Button onClick={handleExport} disabled={!report} variant="outline">
-          <Download className="mr-2 size-4" />
-          Export CSV
-        </Button>
+        <div className="flex items-center gap-3">
+          <Badge variant="secondary" className="gap-1.5 py-1.5 pl-3 pr-3.5 text-sm">
+            <Building2 className="size-3.5 text-muted-foreground" />
+            {branch?.name || "Semua Cabang"}
+          </Badge>
+          <Button onClick={handleExport} disabled={!report} variant="outline">
+            <Download className="mr-2 size-4" />
+            Export CSV
+          </Button>
+        </div>
       </section>
 
       <Card>
@@ -458,6 +466,7 @@ function FinanceReportContent({ report }: { report: FinanceReport }) {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Total Penjualan" value={rupiah(summary.totalSales)} icon={TrendingUp} />
         <MetricCard label="Pendapatan" value={rupiah(summary.income)} icon={TrendingUp} />
         <MetricCard
           label="Pengeluaran"
@@ -471,6 +480,10 @@ function FinanceReportContent({ report }: { report: FinanceReport }) {
           trend={profit > 0}
           icon={profit > 0 ? TrendingUp : TrendingDown}
         />
+      </section>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <MetricCard label="Laba Penjualan" value={rupiah(summary.salesProfit)} icon={TrendingUp} />
+        <MetricCard label="Total Order" value={String(summary.totalOrders)} icon={TrendingUp} />
         <MetricCard label="Margin Profit" value={`${summary.profitMargin}%`} icon={TrendingUp} />
       </section>
 

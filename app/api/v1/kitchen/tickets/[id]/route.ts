@@ -1,0 +1,38 @@
+import { sql } from "drizzle-orm";
+import { z } from "zod";
+import { db } from "@/db";
+import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { AppError, parseJson } from "@/lib/server";
+
+const statusSchema = z.object({
+  status: z.enum(["queued", "cooking", "ready", "served", "cancelled"]),
+});
+
+export const PATCH = apiHandler(async (request) => {
+  const id = z.string().uuid().parse(new URL(request.url).pathname.split("/").filter(Boolean).at(-1));
+  const context = await requireApiContext(request, "sales:write");
+  const input = await parseJson(request, statusSchema);
+
+  const existing = await db.execute<{ status: string }>(sql`
+    select status from kitchen_tickets
+    where id = ${id} and organization_id = ${context.organizationId}
+    ${context.branchId ? sql`and branch_id = ${context.branchId}` : sql``}
+    limit 1
+  `);
+  const row = existing.rows[0] as { status: string } | undefined;
+  if (!row) throw new AppError("NOT_FOUND", "Kitchen ticket not found");
+
+  const now = new Date();
+  const updates: Record<string, unknown> = { status: input.status, updated_at: now };
+  if (input.status === "cooking" && row.status === "queued") updates.started_at = now;
+  if (input.status === "ready" && row.status === "cooking") updates.ready_at = now;
+  if (input.status === "served" && row.status === "ready") updates.served_at = now;
+
+  const setClause = sql.join(
+    Object.entries(updates).map(([col, val]) => sql`${sql.identifier(col)} = ${val}`),
+    sql.raw(", "),
+  );
+
+  await db.execute(sql`update kitchen_tickets set ${setClause} where id = ${id}`);
+  return dataResponse({ id, status: input.status });
+});

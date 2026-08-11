@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { Bell, ChevronsUpDown, Wifi } from "lucide-react"
+import { Building2, ChevronsUpDown, Wifi } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,6 +16,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { NotificationBell } from "@/components/notification-bell"
 import { useOrganization } from "@/components/kasir/organization-provider"
 
 const titles: Record<string, string> = {
@@ -41,7 +42,7 @@ const titles: Record<string, string> = {
 
 export function SiteHeader() {
   const pathname = usePathname()
-  const { organization, branch, selectBranch } = useOrganization()
+  const { organization, branch, selectBranch, selectAllBranches } = useOrganization()
   const [online, setOnline] = useState(true)
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
@@ -71,12 +72,18 @@ export function SiteHeader() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
-              <span className="truncate">{branch?.name || organization?.name || "Pilih cabang"}</span>
+              <Building2 className="mr-1.5 size-4 text-muted-foreground" />
+              <span className="truncate">{branch?.name || "Semua Cabang"}</span>
               <ChevronsUpDown className="size-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>{organization?.name || "Pilih cabang"}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => selectAllBranches()}>
+              <Building2 className="mr-2 size-4 text-muted-foreground" />
+              Semua Cabang{!branch ? " ✓" : ""}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             {organization?.branches.map((item) => (
               <DropdownMenuItem key={item.id} onClick={() => selectBranch(item.id)}>
@@ -85,11 +92,7 @@ export function SiteHeader() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="size-5" />
-          <span className="absolute right-2 top-2 size-2 rounded-full bg-rose-500 ring-2 ring-background" />
-          <span className="sr-only">Notifikasi</span>
-        </Button>
+        <NotificationBell />
         <ThemeToggle />
       </div>
     </header>

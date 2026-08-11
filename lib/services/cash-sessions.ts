@@ -18,30 +18,33 @@ import { calculateSettlement } from "./cash-settlement";
 const nonnegativeMoney = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveMoney = nonnegativeMoney.refine((value) => value > 0n, "Nominal harus lebih dari nol");
 
-export const openCashSessionSchema = z.object({ registerId: z.string().uuid(), openingAmount: nonnegativeMoney });
+export const openCashSessionSchema = z.object({
+  branchId: z.string().uuid(),
+  openingAmount: nonnegativeMoney,
+  shiftHours: z.number().int().min(1).max(24).optional(),
+});
 export const cashMovementSchema = z.object({ direction: z.enum(["in", "out"]), amount: positiveMoney, category: z.string().min(2).max(100), reason: z.string().min(3).max(500) });
 export const closeCashSessionSchema = z.object({ tenderActuals: z.record(z.string(), nonnegativeMoney), notes: z.string().max(1_000).optional() });
 
-async function getRegister(registerId: string, organizationId: string, branchId?: string, database: Database = db) {
-  const [register] = await database.select().from(cashRegisters).where(and(
-    eq(cashRegisters.id, registerId),
-    eq(cashRegisters.organizationId, organizationId),
-    eq(cashRegisters.isActive, true),
-    ...(branchId ? [eq(cashRegisters.branchId, branchId)] : []),
-  )).limit(1);
-  if (!register) throw new AppError("NOT_FOUND", "Cash register tidak ditemukan");
-  return register;
+async function getRegisterForBranch(branchId: string, organizationId: string, database: Database = db) {
+  const where = and(eq(cashRegisters.organizationId, organizationId), eq(cashRegisters.branchId, branchId), eq(cashRegisters.isActive, true));
+  const [existing] = await database.select().from(cashRegisters).where(where).limit(1);
+  if (existing) return existing;
+  const [created] = await database.insert(cashRegisters).values({ organizationId, branchId, name: "Mesin Kasir Default", code: "DEFAULT", isActive: true }).onConflictDoNothing().returning();
+  if (created) return created;
+  const [reload] = await database.select().from(cashRegisters).where(where).limit(1);
+  return reload!;
 }
 
 export async function openCashSession(input: z.infer<typeof openCashSessionSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
-    const register = await getRegister(input.registerId, context.organizationId, context.branchId, tx as unknown as Database);
+    const register = await getRegisterForBranch(input.branchId, context.organizationId, tx as unknown as Database);
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: register.branchId });
     const [existing] = await tx.select({ id: cashRegisterSessions.id }).from(cashRegisterSessions).where(and(eq(cashRegisterSessions.registerId, register.id), eq(cashRegisterSessions.status, "open"))).limit(1);
     if (existing) throw new AppError("CONFLICT", "Cash register masih memiliki shift terbuka", { details: { sessionId: existing.id } });
-    const [session] = await tx.insert(cashRegisterSessions).values({ organizationId: context.organizationId, registerId: register.id, userId: context.session.user.id, openingAmount: input.openingAmount }).returning();
-    await writeAuditLog({ organizationId: context.organizationId, branchId: register.branchId, actorUserId: context.session.user.id, action: "cash_session.open", resourceType: "cash_register_session", resourceId: session.id, requestId: context.requestId, after: { openingAmount: input.openingAmount.toString(), status: "open" } }, tx as unknown as Database);
-    return session;
+    const [session] = await tx.insert(cashRegisterSessions).values({ organizationId: context.organizationId, registerId: register.id, userId: context.session.user.id, openingAmount: input.openingAmount, shiftHours: input.shiftHours }).returning();
+    await writeAuditLog({ organizationId: context.organizationId, branchId: register.branchId, actorUserId: context.session.user.id, action: "cash_session.open", resourceType: "cash_register_session", resourceId: session.id, requestId: context.requestId, after: { openingAmount: input.openingAmount.toString(), shiftHours: input.shiftHours ?? null, status: "open" } }, tx as unknown as Database);
+    return { ...session, registerName: register.name, registerCode: register.code, branchId: register.branchId };
   });
 }
 
@@ -50,6 +53,7 @@ export async function getActiveCashSession(context: ApiContext) {
     id: cashRegisterSessions.id,
     status: cashRegisterSessions.status,
     openingAmount: cashRegisterSessions.openingAmount,
+    shiftHours: cashRegisterSessions.shiftHours,
     openedAt: cashRegisterSessions.openedAt,
     registerId: cashRegisters.id,
     registerName: cashRegisters.name,
@@ -66,7 +70,11 @@ export async function getActiveCashSession(context: ApiContext) {
 
 export async function recordCashMovement(sessionId: string, input: z.infer<typeof cashMovementSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
-    const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(eq(cashRegisterSessions.id, sessionId), eq(cashRegisterSessions.organizationId, context.organizationId))).limit(1);
+    const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(
+       eq(cashRegisterSessions.id, sessionId),
+       eq(cashRegisterSessions.organizationId, context.organizationId),
+       ...(context.branchId ? [eq(cashRegisters.branchId, context.branchId)] : []),
+     )).limit(1);
     if (!session) throw new AppError("NOT_FOUND", "Shift kasir tidak ditemukan");
     if (session.status !== "open") throw new AppError("CONFLICT", "Shift kasir sudah ditutup");
     if (session.userId !== context.session.user.id && context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Hanya pemilik shift atau owner yang dapat mencatat pergerakan kas");
@@ -80,7 +88,11 @@ export async function recordCashMovement(sessionId: string, input: z.infer<typeo
 export async function closeCashSession(sessionId: string, input: z.infer<typeof closeCashSessionSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cash-session:${sessionId}`}))`);
-    const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, openingAmount: cashRegisterSessions.openingAmount, openedAt: cashRegisterSessions.openedAt, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(eq(cashRegisterSessions.id, sessionId), eq(cashRegisterSessions.organizationId, context.organizationId))).limit(1);
+    const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, openingAmount: cashRegisterSessions.openingAmount, openedAt: cashRegisterSessions.openedAt, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(
+       eq(cashRegisterSessions.id, sessionId),
+       eq(cashRegisterSessions.organizationId, context.organizationId),
+       ...(context.branchId ? [eq(cashRegisters.branchId, context.branchId)] : []),
+     )).limit(1);
     if (!session) throw new AppError("NOT_FOUND", "Shift kasir tidak ditemukan");
     if (session.status !== "open") throw new AppError("CONFLICT", "Shift kasir sudah ditutup");
     if (session.userId !== context.session.user.id && context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Hanya pemilik shift atau owner yang dapat settlement");
@@ -108,6 +120,7 @@ export async function closeCashSession(sessionId: string, input: z.infer<typeof 
 export async function listCashSessions(context: ApiContext) {
   return db.select({
     id: cashRegisterSessions.id, status: cashRegisterSessions.status, openingAmount: cashRegisterSessions.openingAmount,
+    shiftHours: cashRegisterSessions.shiftHours,
     expectedClosingAmount: cashRegisterSessions.expectedClosingAmount, actualClosingAmount: cashRegisterSessions.actualClosingAmount,
     varianceAmount: cashRegisterSessions.varianceAmount, paymentBreakdown: cashRegisterSessions.paymentBreakdown,
     openedAt: cashRegisterSessions.openedAt, closedAt: cashRegisterSessions.closedAt, userId: cashRegisterSessions.userId,

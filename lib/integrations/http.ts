@@ -6,17 +6,28 @@ export async function providerRequest<T>(
   url: string,
   init: RequestInit,
 ): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new AppError("BAD_REQUEST", `${provider} is unavailable`, { details: { provider } });
+  }
   const text = await response.text();
   let payload: unknown = null;
   try { payload = text ? JSON.parse(text) : null; } catch { payload = text.slice(0, 1_000); }
   if (!response.ok) {
-    throw new AppError("BAD_REQUEST", `${provider} request failed`, {
-      details: { provider, status: response.status, response: payload },
+    const code = response.status === 429 ? "RATE_LIMITED" : response.status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST";
+    throw new AppError(code, `${provider} request failed`, {
+      details: { provider, status: response.status },
+    });
+  }
+  if (payload === null || payload === undefined) {
+    throw new AppError("BAD_REQUEST", `${provider} returned an empty response`, {
+      details: { provider, status: response.status },
     });
   }
   return payload as T;

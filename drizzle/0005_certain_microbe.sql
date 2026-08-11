@@ -1,0 +1,1 @@
+ALTER TABLE "cash_register_sessions" ADD COLUMN "notified_at" timestamp with time zone;

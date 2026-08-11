@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { CalendarCheck, Loader2, LockKeyhole, RefreshCw, Unlock } from "lucide-react"
-import { toast } from "sonner"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +19,7 @@ type PeriodType = "day" | "month" | "year"
 type ClosingTotals = { salesNet: string; profit: string; refunds: string; expenses: string; cashIn: string; cashOut: string; orders: number }
 type ClosingPeriod = { id: string; periodType: PeriodType; periodKey: string; status: "closed" | "reopened"; closedAt?: string; reopenedAt?: string; reopenReason?: string; totals: Partial<ClosingTotals> }
 type CashSession = { id: string; status: string; registerName: string; registerCode: string; openingAmount: string; expectedClosingAmount?: string; actualClosingAmount?: string; varianceAmount?: string; openedAt: string; closedAt?: string }
+type FinanceOverview = { total_sales: string; total_profit: string; total_orders: number }
 
 const rupiah = (value: string | number | undefined) => `Rp ${Number(value ?? 0).toLocaleString("id-ID")}`
 const periodLabel: Record<PeriodType, string> = { day: "Harian", month: "Bulanan", year: "Tahunan" }
@@ -32,6 +33,7 @@ export function FinancePage() {
   const { branch } = useOrganization()
   const [periods, setPeriods] = useState<ClosingPeriod[]>([])
   const [sessions, setSessions] = useState<CashSession[]>([])
+  const [overview, setOverview] = useState<FinanceOverview>({ total_sales: "0", total_profit: "0", total_orders: 0 })
   const [loading, setLoading] = useState(true)
   const [periodType, setPeriodType] = useState<PeriodType>("day")
   const [periodKey, setPeriodKey] = useState(() => defaultKey("day", new Date()))
@@ -42,13 +44,15 @@ export function FinancePage() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [periodResponse, sessionResponse] = await Promise.all([
+      const [periodResponse, sessionResponse, overviewResponse] = await Promise.all([
         apiFetch<ClosingPeriod[]>("/api/v1/finance/closing"),
         apiFetch<CashSession[]>("/api/v1/finance/cash-sessions"),
+        apiFetch<FinanceOverview>("/api/v1/finance/overview"),
       ])
       setPeriods(periodResponse.data)
       setSessions(sessionResponse.data)
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal memuat data keuangan") }
+      setOverview(overviewResponse.data)
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal memuat data keuangan") }
     finally { setLoading(false) }
   }, [])
 
@@ -65,14 +69,14 @@ export function FinancePage() {
   }
 
   async function closePeriod() {
-    if (!branch) return toast.error("Pilih cabang terlebih dahulu")
+    if (!branch) return showError("Pilih cabang terlebih dahulu")
     const field = periodType === "day" ? "date" : periodType
     setSaving(true)
     try {
       await apiFetch(`/api/v1/finance/closing/${periodType}`, { method: "POST", body: JSON.stringify({ branchId: branch.id, [field]: periodKey }) })
-      toast.success(`Periode ${periodLabel[periodType].toLowerCase()} ${periodKey} ditutup`)
+      showSuccess(`Periode ${periodLabel[periodType].toLowerCase()} ${periodKey} ditutup`)
       await load()
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Tutup buku gagal") }
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Tutup buku gagal") }
     finally { setSaving(false) }
   }
 
@@ -82,9 +86,9 @@ export function FinancePage() {
     setSaving(true)
     try {
       await apiFetch(`/api/v1/finance/closing/${reopenTarget.id}/reopen`, { method: "POST", body: JSON.stringify({ reason: reopenReason }) })
-      toast.success("Periode dibuka kembali")
+      showSuccess("Periode dibuka kembali")
       setReopenTarget(undefined); setReopenReason(""); await load()
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Buka kembali gagal") }
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Buka kembali gagal") }
     finally { setSaving(false) }
   }
 
@@ -101,10 +105,11 @@ export function FinancePage() {
       <Button variant="outline" onClick={() => void load()}><RefreshCw /> Refresh</Button>
     </div>
 
-    <div className="grid gap-3 sm:grid-cols-3">
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Shift terbuka</p><p className="mt-2 text-2xl font-bold">{openSessions.length}</p></CardContent></Card>
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Penjualan hari ini</p><p className="mt-2 text-2xl font-bold">{rupiah(overview.total_sales)}</p></CardContent></Card>
+      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Laba hari ini</p><p className="mt-2 text-2xl font-bold text-emerald-600">{rupiah(overview.total_profit)}</p></CardContent></Card>
       <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Total selisih kas</p><p className={`mt-2 text-2xl font-bold ${variance === 0 ? "" : "text-rose-600"}`}>{rupiah(variance)}</p></CardContent></Card>
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Periode ditutup</p><p className="mt-2 text-2xl font-bold">{closedPeriods.length}</p></CardContent></Card>
+      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Shift terbuka / Periode tertutup</p><p className="mt-2 text-2xl font-bold">{openSessions.length} / {closedPeriods.length}</p></CardContent></Card>
     </div>
 
     <Card>

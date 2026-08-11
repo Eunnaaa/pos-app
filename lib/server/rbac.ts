@@ -29,14 +29,7 @@ export type Permission = (typeof permissions)[number];
 const all = new Set<Permission>(permissions);
 const rolePermissions: Record<TenantRole, ReadonlySet<Permission>> = {
   owner: all,
-  manager: new Set([
-    "dashboard:read", "pos:write", "sales:read", "sales:write", "inventory:read", "inventory:write",
-    "purchases:read", "purchases:write", "customers:read", "customers:write", "suppliers:read",
-    "suppliers:write", "reports:read", "employees:manage",
-  ]),
-  cashier: new Set(["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write"]),
-  warehouse: new Set(["inventory:read", "inventory:write", "purchases:read", "purchases:write", "suppliers:read"]),
-  accountant: new Set(["dashboard:read", "sales:read", "purchases:read", "finance:read", "finance:write", "finance:close", "reports:read"]),
+  cashier: new Set(["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "reports:read", "inventory:read"]),
 };
 
 export function can(role: TenantRole, permission: Permission, grants: readonly string[] = []): boolean {

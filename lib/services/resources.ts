@@ -1,10 +1,11 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type Database } from "@/db";
 import type { Permission } from "@/lib/server";
 import { assertAccountingDateOpen, AppError, paginationSchema, parseJson, parseSearchParams } from "@/lib/server";
 import { dataResponse } from "@/lib/api";
 import type { ApiContext } from "@/lib/api";
+import { postExpenseToLedger } from "./ledger";
 
 type FieldType = "text" | "uuid" | "boolean" | "integer" | "bigint" | "date" | "timestamp" | "json";
 type Field = { column?: string; type: FieldType; required?: boolean };
@@ -53,6 +54,8 @@ export const resources = {
   settings: { table: "organization_settings", read: "settings:manage", write: "settings:manage", search: ["namespace"], fields: { namespace: text(true), value: json(), isSecret: boolean() } },
   shifts: { table: "employee_shifts", read: "dashboard:read", write: "employees:manage", fields: { branchId: uuid(true), employeeId: uuid(true), startsAt: timestamp(), endsAt: timestamp(), status: text(), notes: text() } },
   attendance: { table: "attendance", read: "dashboard:read", write: "employees:manage", fields: { employeeId: uuid(true), shiftId: uuid(), clockedInAt: timestamp(), clockedOutAt: timestamp(), notes: text() } },
+  "membership-levels": { table: "membership_levels", read: "customers:read", write: "customers:write", search: ["name"], fields: { name: text(true), minimumSpendAmount: bigint(), pointMultiplier: integer(), benefits: json() } },
+  vouchers: { table: "vouchers", read: "customers:read", write: "customers:write", search: ["code"], fields: { customerId: uuid(), promotionId: uuid(), code: text(true), initialAmount: bigint(), remainingAmount: bigint(), status: text(), expiresAt: timestamp() } },
 } as const satisfies Record<string, ResourceConfig>;
 
 export type ResourceName = keyof typeof resources;
@@ -93,6 +96,19 @@ async function parseResourceBody(request: Request, config: ResourceConfig, parti
   );
 }
 
+function tenantScope(config: ResourceConfig, context: ApiContext) {
+  if (!config.fields.branchId || context.tenant.role === "owner" || !context.branchId) return sql``;
+  return sql` and branch_id = ${context.branchId}`;
+}
+
+function enforceBranchScope(config: ResourceConfig, body: Record<string, unknown>, context: ApiContext) {
+  if (!config.fields.branchId || context.tenant.role === "owner" || !context.branchId) return;
+  if (body.branch_id !== undefined && body.branch_id !== context.branchId) {
+    throw new AppError("FORBIDDEN", "No access to this branch");
+  }
+  body.branch_id = context.branchId;
+}
+
 function valuesSql(values: Record<string, unknown>) {
   const entries = Object.entries(values).filter(([, value]) => value !== undefined);
   if (!entries.length) throw new AppError("VALIDATION_ERROR", "At least one field is required");
@@ -112,7 +128,7 @@ export async function listResource(name: ResourceName, request: Request, context
     : sql``;
   const result = await db.execute(sql`
     select * from ${sql.identifier(config.table)}
-    where organization_id = ${context.organizationId}${search}
+    where organization_id = ${context.organizationId}${tenantScope(config, context)}${search}
     order by created_at desc, id desc
     limit ${query.limit + 1} offset ${offset}
   `);
@@ -123,7 +139,7 @@ export async function listResource(name: ResourceName, request: Request, context
 export async function getResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {
   z.string().uuid().parse(id);
   const config = resources[name];
-  const result = await db.execute(sql`select * from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId} limit 1`);
+  const result = await db.execute(sql`select * from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} limit 1`);
   if (!result.rows[0]) throw new AppError("NOT_FOUND", `${name} record not found`);
   return dataResponse(result.rows[0]);
 }
@@ -131,6 +147,7 @@ export async function getResource(name: ResourceName, id: string, context: ApiCo
 export async function createResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
   const config = resources[name];
   const body = await parseResourceBody(request, config, false);
+  enforceBranchScope(config, body, context);
   const id = crypto.randomUUID();
   const record = await db.transaction(async (tx) => {
     if (name === "expenses") {
@@ -143,7 +160,19 @@ export async function createResource(name: ResourceName, request: Request, conte
     }
     const values = valuesSql({ id, organization_id: context.organizationId, ...body });
     const result = await tx.execute(sql`insert into ${sql.identifier(config.table)} (${values.columns}) values (${values.values}) returning *`);
-    return result.rows[0];
+    const created = result.rows[0] as Record<string, unknown>;
+    if (name === "expenses" && (created.status === "approved" || created.status === "paid")) {
+      await postExpenseToLedger(tx as unknown as Database, {
+        organizationId: context.organizationId,
+        branchId: created.branch_id as string | undefined,
+        expenseId: id,
+        expenseNumber: created.expense_number as string,
+        amount: BigInt(created.amount as string),
+        category: created.category as string,
+        actorUserId: context.session.user.id,
+      });
+    }
+    return created;
   });
   return dataResponse(record, { status: 201 });
 }
@@ -152,9 +181,10 @@ export async function updateResource(name: ResourceName, id: string, request: Re
   z.string().uuid().parse(id);
   const config = resources[name];
   const body = await parseResourceBody(request, config, true);
+  enforceBranchScope(config, body, context);
   const record = await db.transaction(async (tx) => {
     if (name === "expenses") {
-      const existing = await tx.execute<{ branch_id: string; expense_date: string }>(sql`select branch_id, expense_date::text from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
+      const existing = await tx.execute<{ branch_id: string; expense_date: string; status: string }>(sql`select branch_id, expense_date::text, status from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
       const current = existing.rows[0];
       if (!current?.branch_id) throw new AppError("NOT_FOUND", "Expense record not found");
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: current.branch_id, date: current.expense_date });
@@ -163,8 +193,25 @@ export async function updateResource(name: ResourceName, id: string, request: Re
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: targetBranch, date: targetDate });
     }
     const values = valuesSql({ ...body, updated_at: new Date() });
-    const result = await tx.execute(sql`update ${sql.identifier(config.table)} set ${values.updates} where id = ${id} and organization_id = ${context.organizationId} returning *`);
-    return result.rows[0];
+    const result = await tx.execute(sql`update ${sql.identifier(config.table)} set ${values.updates} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} returning *`);
+    const updated = result.rows[0] as Record<string, unknown>;
+    // Post to ledger when expense transitions to approved/paid
+    if (name === "expenses" && (body.status === "approved" || body.status === "paid")) {
+      const prev = await tx.execute<{ status: string }>(sql`select status from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
+      const prevStatus = prev.rows[0]?.status;
+      if (prevStatus !== "approved" && prevStatus !== "paid") {
+        await postExpenseToLedger(tx as unknown as Database, {
+          organizationId: context.organizationId,
+          branchId: updated.branch_id as string | undefined,
+          expenseId: id,
+          expenseNumber: updated.expense_number as string,
+          amount: BigInt(updated.amount as string),
+          category: updated.category as string,
+          actorUserId: context.session.user.id,
+        });
+      }
+    }
+    return updated;
   });
   if (!record) throw new AppError("NOT_FOUND", `${name} record not found`);
   return dataResponse(record);
@@ -180,7 +227,7 @@ export async function deleteResource(name: ResourceName, id: string, context: Ap
       if (!current?.branch_id) throw new AppError("NOT_FOUND", "Expense record not found");
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: current.branch_id, date: current.expense_date });
     }
-    const result = await tx.execute(sql`delete from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId} returning id`);
+    const result = await tx.execute(sql`delete from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} returning id`);
     return result.rows[0];
   });
   if (!deleted) throw new AppError("NOT_FOUND", `${name} record not found`);

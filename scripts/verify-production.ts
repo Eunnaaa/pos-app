@@ -20,7 +20,7 @@ const providers = [
   ["Apple", ["APPLE_CLIENT_ID", "APPLE_CLIENT_SECRET"]],
   ["Midtrans", ["MIDTRANS_SERVER_KEY"]],
   ["Xendit", ["XENDIT_SECRET_KEY"]],
-  ["WhatsApp", ["WHATSAPP_ACCESS_TOKEN", "WHATSAPP_PHONE_NUMBER_ID"]],
+  ["WhatsApp", ["WHATSAPP_ACCESS_TOKEN"]],
   ["Telegram", ["TELEGRAM_BOT_TOKEN"]],
   ["Email", ["EMAIL_API_URL", "EMAIL_API_KEY"]],
   ["AI", ["AI_BASE_URL", "AI_API_KEY", "AI_MODEL"]],

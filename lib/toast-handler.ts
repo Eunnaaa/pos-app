@@ -26,7 +26,6 @@ interface ToastOptions {
 const DEFAULT_DURATION = 4000; // 4 seconds
 const ERROR_DURATION = 6000; // 6 seconds
 const SUCCESS_DURATION = 3000; // 3 seconds
-const DEFAULT_POSITION: ToastPosition = 'top-right';
 
 // Toast instances map untuk prevent duplicates
 const activeToasts = new Map<string, NodeJS.Timeout>();
@@ -83,11 +82,10 @@ export function showError(
 
   // Log error untuk debugging
   if (options?.error) {
-    console.error('Toast Error:', {
-      message,
-      error: options.error,
-      timestamp: new Date().toISOString(),
-    });
+    const detail = options.error instanceof Error
+      ? { name: options.error.name, message: options.error.message, stack: options.error.stack }
+      : { value: options.error };
+    console.error('Toast Error:', { message, ...detail, timestamp: new Date().toISOString() });
   }
 
   gooeyToast.error({ title: message, duration });
@@ -237,8 +235,7 @@ export function handleCrudSuccess(
  * Loading Toast (placeholder untuk operasi panjang)
  */
 export function showLoading(
-  message: string = 'Memproses...',
-  options?: ToastOptions
+  message: string = 'Memproses...'
 ): string {
   const toastId = generateToastId(message, 'info');
   
@@ -287,7 +284,7 @@ export async function withToastNotification<T>(
   }
 }
 
-export default {
+const toastHandler = {
   showSuccess,
   showError,
   showWarning,
@@ -299,3 +296,5 @@ export default {
   clearAllToasts,
   withToastNotification,
 };
+
+export default toastHandler;

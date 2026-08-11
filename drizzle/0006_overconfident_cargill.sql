@@ -1,0 +1,1 @@
+ALTER TABLE "cash_register_sessions" ADD COLUMN "shift_hours" integer;

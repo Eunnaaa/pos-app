@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { ArrowDown, ArrowUp, Boxes, Loader2, Search, SlidersHorizontal } from "lucide-react"
-import { toast } from "sonner"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -45,8 +45,8 @@ export function InventoryPage() {
     try {
       if (!warehouse?.id) throw new Error("Gudang belum dipilih")
       await apiFetch("/api/v1/inventory/adjustments", { method: "POST", queueOffline: true, body: JSON.stringify({ branchId: branch?.id, warehouseId: warehouse.id, variantId: form.variantId, quantity: form.quantity, reason: form.reason }) })
-      toast.success("Penyesuaian stok tersimpan"); setOpen(false); setForm({ variantId: "", quantity: "", reason: "" }); await Promise.all([balances.refresh(), movements.refresh()])
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal menyesuaikan stok") }
+      showSuccess("Penyesuaian stok tersimpan"); setOpen(false); setForm({ variantId: "", quantity: "", reason: "" }); await Promise.all([balances.refresh(), movements.refresh()])
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal menyesuaikan stok") }
     finally { setSaving(false) }
   }
 

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { ContactRound, Loader2, Pencil, Plus, Search, Trash2, Truck } from "lucide-react"
-import { toast } from "sonner"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,14 +38,14 @@ export function ContactsPage({ type }: { type: "customers" | "suppliers" }) {
         ? { code: form.code, name: form.name, contactName: form.contactName || null, email: form.email || null, phone: form.phone || null, address: form.address || null, paymentTermsDays: Number(form.paymentTermsDays), isActive: form.active }
         : { code: form.code, name: form.name, email: form.email || null, phone: form.phone || null, address: form.address || null, notes: form.notes || null, isActive: form.active }
       if (editing) await resource.update(editing.id, input); else await resource.create(input)
-      toast.success(`${supplier ? "Supplier" : "Customer"} ${editing ? "diperbarui" : "ditambahkan"}`); setOpen(false)
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal menyimpan data") }
+      showSuccess(`${supplier ? "Supplier" : "Customer"} ${editing ? "diperbarui" : "ditambahkan"}`); setOpen(false)
+    } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal menyimpan data") }
     finally { setSaving(false) }
   }
 
   async function remove(item: Contact) {
     if (!confirm(`Hapus ${item.name}?`)) return
-    try { await resource.remove(item.id); toast.success("Data dihapus") } catch (caught) { toast.error(caught instanceof Error ? caught.message : "Gagal menghapus") }
+    try { await resource.remove(item.id); showSuccess("Data dihapus") } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal menghapus") }
   }
 
   const Icon = supplier ? Truck : ContactRound

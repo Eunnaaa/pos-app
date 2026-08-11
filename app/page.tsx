@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { DemoCard } from "@/components/landing/demo-card"
 
 const features = [
   [ShoppingCart, "POS super cepat", "Cari produk, scan barcode, split bill, multi-payment, dan receipt digital."],
@@ -44,14 +45,7 @@ export default function Home() {
         </div>
         <div className="relative">
           <div className="absolute -inset-8 -z-10 rounded-full bg-emerald-500/10 blur-3xl" />
-          <Card className="overflow-hidden border-emerald-100 bg-card/90 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-emerald-950">
-            <div className="flex items-center gap-2 border-b px-5 py-3"><span className="size-2.5 rounded-full bg-red-400" /><span className="size-2.5 rounded-full bg-amber-400" /><span className="size-2.5 rounded-full bg-emerald-400" /><span className="ml-3 text-xs text-muted-foreground">app.kasir-ku.id/dashboard</span></div>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between"><div><p className="text-sm text-muted-foreground">Penjualan hari ini</p><p className="mt-1 text-3xl font-bold">Rp 0</p></div><span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">Belum ada data</span></div>
-              <div className="mt-7 flex h-40 items-center justify-center rounded-xl border border-dashed text-sm text-muted-foreground">Grafik terisi setelah management memasukkan data dan terjadi transaksi.</div>
-              <div className="mt-5 grid grid-cols-3 gap-3">{[["0", "Order"], ["0", "Customer"], ["Rp 0", "Profit"]].map(([value, label]) => <div key={label} className="rounded-xl bg-muted/70 p-3"><p className="font-bold">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>)}</div>
-            </CardContent>
-          </Card>
+          <DemoCard />
         </div>
       </section>
 

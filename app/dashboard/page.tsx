@@ -1,5 +1,5 @@
-import { DashboardOverview } from "@/components/kasir/dashboard-overview"
+import { DashboardRoleView } from "@/components/kasir/dashboard-role-view"
 
 export default function DashboardPage() {
-  return <DashboardOverview />
+  return <DashboardRoleView />
 }

@@ -1,6 +1,7 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   jsonb,
   pgTable,
@@ -11,13 +12,7 @@ import {
 import { user } from "./auth";
 import { idColumn, timestamps, type JsonValue } from "./helpers";
 
-export const tenantRoles = [
-  "owner",
-  "manager",
-  "cashier",
-  "warehouse",
-  "accountant",
-] as const;
+export const tenantRoles = ["owner", "cashier"] as const;
 export type TenantRole = (typeof tenantRoles)[number];
 
 export const organizations = pgTable(
@@ -101,7 +96,9 @@ export const tenantMembers = pgTable(
   },
   (table) => [
     uniqueIndex("tenant_members_org_user_uidx").on(table.organizationId, table.userId),
+    uniqueIndex("tenant_members_active_owner_uidx").on(table.organizationId).where(sql`${table.role} = 'owner' and ${table.isActive} = true`),
     index("tenant_members_user_idx").on(table.userId),
+    check("tenant_members_role_check", sql`${table.role} in ('owner', 'cashier')`),
   ],
 );
 

@@ -52,6 +52,9 @@ export interface FinanceReport {
     profit: string;
     profitMargin: string;
     cashBalance: string;
+    totalSales: string;
+    salesProfit: string;
+    totalOrders: number;
   };
   byAccount: Array<{ name: string; debit: string; credit: string; balance: string }>;
   incomeBreakdown: Array<{ category: string; amount: string; percentage: string }>;
@@ -355,90 +358,131 @@ export async function financeReport(
   startDate: Date,
   endDate: Date
 ): Promise<FinanceReport> {
-  const [summary, byAccount, incomeBreakdown, expenseBreakdown, dailyFlow] = await Promise.all([
+  const [sales, expenseSum, byAccount, incomeBreakdown, expenseBreakdown, dailyFlow, cashBalanceRow] = await Promise.all([
     db.execute(sql`
-      SELECT 
-COALESCE(SUM(CASE WHEN fa.type = 'income' AND ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as income,
-         COALESCE(SUM(CASE WHEN fa.type = 'expense' AND ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as expenses,
-         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as profit,
-         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END) * 100 / NULLIF(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0), 0)::text as profit_margin,
-         COALESCE(SUM(CASE WHEN fa.type = 'cash' AND ft.direction = 'credit' THEN ft.amount WHEN fa.type = 'cash' THEN -ft.amount ELSE 0 END), 0)::text as cash_balance
-       FROM financial_transactions ft
-       JOIN financial_accounts fa ON fa.id = ft.account_id
-       WHERE ft.organization_id = ${organizationId}
-         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-         AND ft.transaction_date >= ${startDate}
-         AND ft.transaction_date < ${endDate}
-     `),
-     db.execute(sql`
-       SELECT 
-         fa.name,
-         COALESCE(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as debit,
-         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as credit,
-         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as balance
+      SELECT
+        COALESCE(SUM(total_amount), 0)::text as total_sales,
+        COALESCE(SUM(total_amount - cost_amount), 0)::text as total_profit,
+        COUNT(*)::int as total_orders
+      FROM sales_orders
+      WHERE organization_id = ${organizationId}
+        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
+        AND status IN ('paid', 'partially_refunded', 'refunded')
+        AND occurred_at >= ${startDate}
+        AND occurred_at < ${endDate}
+    `),
+    db.execute(sql`
+      SELECT COALESCE(SUM(amount), 0)::text as expenses
+      FROM expenses
+      WHERE organization_id = ${organizationId}
+        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
+        AND status IN ('approved', 'paid')
+        AND expense_date >= ${startDate}::date
+        AND expense_date < ${endDate}::date
+    `),
+    db.execute(sql`
+      SELECT
+        fa.name,
+        COALESCE(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as debit,
+        COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as credit,
+        COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as balance
       FROM financial_transactions ft
       JOIN financial_accounts fa ON fa.id = ft.account_id
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.transaction_date >= ${startDate}
-        AND ft.transaction_date < ${endDate}
+        AND ft.transaction_date >= ${startDate}::date
+        AND ft.transaction_date < ${endDate}::date
       GROUP BY fa.id, fa.name
       ORDER BY SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END) DESC
     `),
     db.execute(sql`
-      SELECT 
+      SELECT
         fa.name as category,
         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as amount,
-        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'income' AND ft2.direction = 'credit' AND ft2.transaction_date >= ${startDate} AND ft2.transaction_date < ${endDate}), 0), 2), 0)::text as percentage
+        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'income' AND ft2.direction = 'credit' AND ft2.transaction_date >= ${startDate}::date AND ft2.transaction_date < ${endDate}::date), 0), 2), 0)::text as percentage
       FROM financial_transactions ft
       JOIN financial_accounts fa ON fa.id = ft.account_id AND fa.type = 'income'
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.transaction_date >= ${startDate}
-        AND ft.transaction_date < ${endDate}
+        AND ft.transaction_date >= ${startDate}::date
+        AND ft.transaction_date < ${endDate}::date
       GROUP BY fa.id, fa.name
       ORDER BY SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE 0 END) DESC
     `),
     db.execute(sql`
-      SELECT 
+      SELECT
         fa.name as category,
         COALESCE(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as amount,
-        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'expense' AND ft2.direction = 'debit' AND ft2.transaction_date >= ${startDate} AND ft2.transaction_date < ${endDate}), 0), 2), 0)::text as percentage
+        COALESCE(ROUND(SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END) * 100.0 / NULLIF((SELECT SUM(ft2.amount) FROM financial_transactions ft2 JOIN financial_accounts fa2 ON fa2.id = ft2.account_id WHERE ft2.organization_id = ${organizationId} AND fa2.type = 'expense' AND ft2.direction = 'debit' AND ft2.transaction_date >= ${startDate}::date AND ft2.transaction_date < ${endDate}::date), 0), 2), 0)::text as percentage
       FROM financial_transactions ft
       JOIN financial_accounts fa ON fa.id = ft.account_id AND fa.type = 'expense'
       WHERE ft.organization_id = ${organizationId}
         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-        AND ft.transaction_date >= ${startDate}
-        AND ft.transaction_date < ${endDate}
+        AND ft.transaction_date >= ${startDate}::date
+        AND ft.transaction_date < ${endDate}::date
       GROUP BY fa.id, fa.name
       ORDER BY SUM(CASE WHEN ft.direction = 'debit' THEN ft.amount ELSE 0 END) DESC
     `),
     db.execute(sql`
-      SELECT 
-        TO_CHAR(DATE_TRUNC('day', ft.transaction_date::timestamp), 'YYYY-MM-DD') as date,
-COALESCE(SUM(CASE WHEN fa.type = 'income' AND ft.direction = 'credit' THEN ft.amount ELSE 0 END), 0)::text as income,
-         COALESCE(SUM(CASE WHEN fa.type = 'expense' AND ft.direction = 'debit' THEN ft.amount ELSE 0 END), 0)::text as expenses,
-         COALESCE(SUM(CASE WHEN ft.direction = 'credit' THEN ft.amount ELSE -ft.amount END), 0)::text as balance
-       FROM financial_transactions ft
-       JOIN financial_accounts fa ON fa.id = ft.account_id
-       WHERE ft.organization_id = ${organizationId}
-         ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
-         AND ft.transaction_date >= ${startDate}
-         AND ft.transaction_date < ${endDate}
-       GROUP BY DATE_TRUNC('day', ft.transaction_date::timestamp)
-       ORDER BY DATE_TRUNC('day', ft.transaction_date::timestamp)
+      WITH daily_data AS (
+        SELECT DATE(occurred_at) as d, SUM(total_amount)::bigint as income, 0::bigint as expenses
+        FROM sales_orders
+        WHERE organization_id = ${organizationId}
+          ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
+          AND status IN ('paid', 'partially_refunded', 'refunded')
+          AND occurred_at >= ${startDate}
+          AND occurred_at < ${endDate}
+        GROUP BY DATE(occurred_at)
+        UNION ALL
+        SELECT expense_date::date as d, 0::bigint as income, SUM(amount)::bigint as expenses
+        FROM expenses
+        WHERE organization_id = ${organizationId}
+          ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
+          AND status IN ('approved', 'paid')
+          AND expense_date >= ${startDate}::date
+          AND expense_date < ${endDate}::date
+        GROUP BY expense_date
+      )
+      SELECT
+        TO_CHAR(d, 'YYYY-MM-DD') as date,
+        COALESCE(SUM(income), 0)::text as income,
+        COALESCE(SUM(expenses), 0)::text as expenses,
+        COALESCE(SUM(SUM(income - expenses)) OVER (ORDER BY d), 0)::text as balance
+      FROM daily_data
+      GROUP BY d
+      ORDER BY d
+    `),
+    db.execute(sql`
+      SELECT COALESCE(SUM(CASE WHEN fa.type = 'cash' AND ft.direction = 'debit' THEN ft.amount WHEN fa.type = 'cash' AND ft.direction = 'credit' THEN -ft.amount ELSE 0 END), 0)::text as cash_balance
+      FROM financial_transactions ft
+      JOIN financial_accounts fa ON fa.id = ft.account_id
+      WHERE ft.organization_id = ${organizationId}
+        ${branchId ? sql`AND ft.branch_id = ${branchId}` : sql``}
+        AND ft.transaction_date >= ${startDate}::date
+        AND ft.transaction_date < ${endDate}::date
     `),
   ]);
 
-  const summaryRow = summary.rows[0] as Record<string, unknown> | undefined;
+  const salesRow = sales.rows[0] as Record<string, unknown> | undefined;
+  const expenseRow = expenseSum.rows[0] as Record<string, unknown> | undefined;
+  const cashRow = cashBalanceRow.rows[0] as Record<string, unknown> | undefined;
+  const incomeStr = (salesRow?.total_sales as string) || "0";
+  const expensesStr = (expenseRow?.expenses as string) || "0";
+  const income = BigInt(incomeStr);
+  const expenses = BigInt(expensesStr);
+  const profit = income - expenses;
+  const profitMargin = income > 0n ? ((profit * 100n) / income).toString() : "0";
   return {
     period: { start: startDate.toISOString(), end: endDate.toISOString() },
     summary: {
-      income: (summaryRow?.income as string) || "0",
-      expenses: (summaryRow?.expenses as string) || "0",
-      profit: (summaryRow?.profit as string) || "0",
-      profitMargin: (summaryRow?.profit_margin as string) || "0",
-      cashBalance: (summaryRow?.cash_balance as string) || "0",
+      income: incomeStr,
+      expenses: expensesStr,
+      profit: profit.toString(),
+      profitMargin,
+      cashBalance: (cashRow?.cash_balance as string) || "0",
+      totalSales: incomeStr,
+      salesProfit: (salesRow?.total_profit as string) || "0",
+      totalOrders: (salesRow?.total_orders as number) || 0,
     },
     byAccount: byAccount.rows as Array<{ name: string; debit: string; credit: string; balance: string }>,
     incomeBreakdown: incomeBreakdown.rows as Array<{ category: string; amount: string; percentage: string }>,

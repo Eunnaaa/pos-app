@@ -8,8 +8,9 @@ export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
   const memberships = await db
     .select({
-      id: organizations.id,
-      name: organizations.name,
+       id: organizations.id,
+       memberId: tenantMembers.id,
+       name: organizations.name,
       slug: organizations.slug,
       role: tenantMembers.role,
     })

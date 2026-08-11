@@ -3,14 +3,15 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Loader2, LockKeyhole, Mail, UserRound } from "lucide-react"
+import { Chrome, Eye, EyeOff, Loader2, LockKeyhole, Mail, UserRound } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/kasir/auth-layout"
 import { signUp } from "@/lib/auth-client"
-import { resolveAuthenticatedDestination } from "@/lib/client"
+import { signIn } from "@/lib/auth-client"
+import { apiFetch, resolveAuthenticatedDestination } from "@/lib/client"
 
 export default function SignUpPage() {
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" })
@@ -25,9 +26,20 @@ export default function SignUpPage() {
     if (form.password !== form.confirm) return setError("Konfirmasi kata sandi tidak sama")
     setLoading(true)
     try {
+      const check = await apiFetch<{ registered: boolean }>("/api/v1/auth/check-email", { method: "POST", body: JSON.stringify({ email: form.email }) })
+      if (check.data.registered) { setError("Akun sudah terdaftar. Silakan masuk dengan akun tersebut."); return }
       const result = await signUp.email({ name: form.name, email: form.email, password: form.password })
       if (result.error) setError(result.error.message || "Pendaftaran gagal")
       else router.replace(await resolveAuthenticatedDestination())
+    } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
+    finally { setLoading(false) }
+  }
+
+  async function social() {
+    setError(""); setLoading(true)
+    try {
+      const result = await signIn.social({ provider: "google", callbackURL: await resolveAuthenticatedDestination() })
+      if (result.error) setError(result.error.message || "Gagal daftar dengan Google")
     } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
     finally { setLoading(false) }
   }
@@ -44,6 +56,8 @@ export default function SignUpPage() {
       <label className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><input type="checkbox" required className="mt-0.5 size-4 accent-emerald-600" />Saya menyetujui Syarat Layanan dan Kebijakan Privasi Kasir-Ku.</label>
       <Button type="submit" className="h-12 w-full bg-emerald-600 text-base hover:bg-emerald-700" disabled={loading}>{loading && <Loader2 className="animate-spin" />}{loading ? "Membuat akun..." : "Buat akun gratis"}</Button>
     </form>
+    <div className="mt-5 flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />atau<span className="h-px flex-1 bg-border" /></div>
+    <Button type="button" variant="outline" className="mt-5 h-12 w-full text-base" onClick={() => void social()} disabled={loading}><Chrome className="size-5" /> Daftar dengan Google</Button>
     <p className="mt-7 text-center text-sm text-muted-foreground">Sudah punya akun? <Link href="/sign-in" className="font-semibold text-emerald-600 hover:underline">Masuk</Link></p>
   </AuthLayout>
 }

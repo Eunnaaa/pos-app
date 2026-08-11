@@ -25,7 +25,7 @@ export const GET = apiHandler(async (request) => {
       }).returning();
       
       return dataResponse([newRegister]);
-    } catch (error) {
+    } catch {
       // Jika error (misalnya unique constraint), return registers yang ada
       return dataResponse(registers);
     }
