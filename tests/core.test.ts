@@ -7,6 +7,7 @@ import { hashIdempotentRequest } from "@/lib/server/idempotency-hash";
 import { decodeCursor, encodeCursor, paginated } from "@/lib/server/pagination";
 import { calculateSettlement } from "@/lib/services/cash-settlement";
 import { addClosingTotals } from "@/lib/services/closing-totals";
+import { parseRateToBps, exclusiveTax, inclusiveTax } from "@/lib/server/tax";
 import { can, requirePermission } from "@/lib/server/rbac";
 import { assertSafeWebhookUrl, signWebhook, verifyWebhookSignature } from "@/lib/server/webhook";
 import { toJsonValue } from "@/lib/api/response";
@@ -142,4 +143,31 @@ void test("API JSON serialization preserves bigint and dates", () => {
     amount: "10000",
     createdAt: "2026-07-28T00:00:00.000Z",
   });
+});
+
+void test("tax rate parsing converts percentage strings to basis points", () => {
+  assert.equal(parseRateToBps("11.0000"), 1100n); // 11% PPN
+  assert.equal(parseRateToBps("0"), 0n);
+  assert.equal(parseRateToBps("0.5000"), 50n); // 0.5%
+  assert.equal(parseRateToBps("100"), 10000n); // 100%
+  assert.equal(parseRateToBps("invalid"), 0n);
+  assert.equal(parseRateToBps("-5"), 0n);
+});
+
+void test("exclusive tax adds on top of the net amount", () => {
+  // 11% exclusive on Rp 100.000 => Rp 11.000 tax, total Rp 111.000
+  const net = 100000n;
+  const rateBps = parseRateToBps("11.0000");
+  const tax = exclusiveTax(net, rateBps);
+  assert.equal(tax, 11000n);
+  assert.equal(net + tax, 111000n);
+});
+
+void test("inclusive tax is embedded in the gross amount", () => {
+  // 11% inclusive on Rp 111.000 gross => Rp 11.000 tax, net Rp 100.000
+  const gross = 111000n;
+  const rateBps = parseRateToBps("11.0000");
+  const tax = inclusiveTax(gross, rateBps);
+  assert.equal(tax, 11000n);
+  assert.equal(gross - tax, 100000n);
 });

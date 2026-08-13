@@ -1,5 +1,7 @@
 # Backend Structure Document
 
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan boilerplate `codeguide-starter` asli (Prisma/TypeORM, bcrypt, Laravel Sanctum) dan **tidak lagi akurat** untuk project Kasir-Ku aktual. Backend sebenarnya: Next.js Route Handlers, REST API `/api/v1`, Drizzle ORM + PostgreSQL, Better Auth (cookie sessions, RBAC via tenant_members), 80 tabel domain, idempotency end-to-end, book-closing guards, double-entry ledger. Lihat `README.md` untuk arsitektur yang akurat.
+
 This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
 
 ## 1. Backend Architecture

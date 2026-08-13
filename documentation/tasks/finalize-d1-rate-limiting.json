@@ -1,0 +1,11 @@
+{
+  "id": "finalize-d1-rate-limiting",
+  "title": "API rate limiting middleware",
+  "description": "Add edge/middleware rate limiting for API routes to prevent abuse and DoS",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:36:14.212Z",
+  "startedAt": "2026-08-13T04:35:31.150Z",
+  "completion": "Created middleware.ts with edge-level rate limiting for /api/v1/* routes: 120 GET/min and 40 mutation/min per IP. In-memory sliding window with automatic bucket purging and memory exhaustion protection. Exempts /api/v1/health, webhooks, and /api/auth/* (Better Auth handles its own rate limits). Returns 429 with Retry-After and x-ratelimit-* headers. Uses existing RATE_LIMITED error code.",
+  "completedAt": "2026-08-13T04:36:14.211Z"
+}

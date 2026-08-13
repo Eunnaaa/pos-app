@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { branches, memberBranches, tenantMembers, user } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { auth } from "@/lib/auth";
-import { AppError, parseJson } from "@/lib/server";
+import { AppError, logger, parseJson } from "@/lib/server";
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(150),
@@ -55,7 +55,7 @@ export const POST = apiHandler(async (request) => {
       body: { name: input.name, email: input.email, password: input.password },
     })) as { user?: { id: string; name: string; email: string }; error?: { status?: number; message?: string } };
   } catch (error) {
-    console.error("cashiers signUpEmail threw", { email: input.email, error });
+    logger.error("cashiers signUpEmail threw", { email: input.email }, error);
     throw new AppError("INTERNAL_ERROR", "Gagal membuat akun kasir", { cause: error });
   }
   if (created.error) throw new AppError(created.error.status === 409 ? "CONFLICT" : "BAD_REQUEST", created.error.message || "Gagal membuat akun kasir");

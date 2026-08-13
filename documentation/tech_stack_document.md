@@ -1,5 +1,7 @@
 # Tech Stack Document
 
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan boilerplate `codeguide-starter` asli (React 18, vanilla CSS, bcrypt, Prisma) dan **tidak lagi akurat** untuk project Kasir-Ku aktual. Stack sebenarnya: Next.js 15 (App Router, Turbopack), React 19, TypeScript strict, Tailwind CSS 4, shadcn/ui + Radix, Recharts, TanStack Table, Drizzle ORM + PostgreSQL/Supabase, Better Auth (email/password, OAuth, 2FA), PWA service worker + IndexedDB. Lihat `README.md` untuk daftar lengkap dan akurat.
+
 This document explains the key technologies chosen for the **codeguide-starter** project. It’s written in everyday language so anyone—technical or not—can understand why each tool was picked and how it supports the application.
 
 ## 1. Frontend Technologies

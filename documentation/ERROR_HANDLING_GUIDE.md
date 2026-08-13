@@ -1,5 +1,14 @@
 # Error & Success Handling Guide - Kasir-Ku POS
 
+> ⚠️ **Update Penting**: Sistem error handling kanonik (canonical) adalah **`AppError`** di
+> `lib/server/errors.ts`, yang digunakan oleh `apiHandler` dan seluruh route handler aktif.
+> Modul lama `lib/server/error-handler.ts` (`ApiError`, `handleError`, `withErrorHandler`)
+> sudah **deprecated** dan tidak lagi di-export. Untuk kode baru, selalu gunakan `AppError`
+> dan helper dari `lib/server/errors.ts`.
+>
+> Bagian klien (client-side) dari guide ini — `gooey-toast` toast handler (`lib/toast-handler.ts`),
+> `handleApiError`, dan `ClientApiError` — tetap berlaku dan aktif.
+
 Panduan komprehensif untuk implementasi error dan success handling menggunakan **gooey-toast** di seluruh aplikasi Kasir-Ku.
 
 ---

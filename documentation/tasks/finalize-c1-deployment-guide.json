@@ -1,0 +1,11 @@
+{
+  "id": "finalize-c1-deployment-guide",
+  "title": "Deployment guide for Vercel and Docker",
+  "description": "Create comprehensive deployment guide covering both Vercel and Docker self-host options with production checklist",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:35:20.358Z",
+  "startedAt": "2026-08-13T04:34:49.055Z",
+  "completion": "Created documentation/DEPLOYMENT.md: comprehensive deployment guide covering Vercel (recommended) and Docker self-host options. Includes prerequisites (Supabase prod, secrets, email provider, payment gateway), step-by-step for each option, production checklist (14 items), post-deploy smoke test, and rollback procedures.",
+  "completedAt": "2026-08-13T04:35:20.357Z"
+}

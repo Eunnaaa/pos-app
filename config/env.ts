@@ -36,6 +36,7 @@ const serverEnvSchema = z.object({
   AI_BASE_URL: optionalUrl,
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default("claude-sonnet-5"),
+  SENTRY_DSN: optionalUrl,
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

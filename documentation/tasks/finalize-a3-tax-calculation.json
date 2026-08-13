@@ -1,0 +1,11 @@
+{
+  "id": "finalize-a3-tax-calculation",
+  "title": "Implement tax calculation from taxRateId",
+  "description": "Compute taxAmount per item using tax_rates inclusive/exclusive rate instead of hardcoded 0n",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:03:55.564Z",
+  "startedAt": "2026-08-13T04:01:10.508Z",
+  "completion": "Implemented tax calculation from taxRateId: created lib/server/tax.ts with parseRateToBps, exclusiveTax, inclusiveTax helpers. Checkout now loads tax rates, computes per-item tax (inclusive/exclusive), stores item-level taxAmount, and correctly calculates order total (subtotal - item discounts - order discount + service charge + exclusive tax). Fixed pre-existing bug where item discounts were not subtracted from order total. Added 3 unit tests for tax math.",
+  "completedAt": "2026-08-13T04:03:55.564Z"
+}

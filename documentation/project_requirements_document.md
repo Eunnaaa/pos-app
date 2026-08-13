@@ -1,5 +1,7 @@
 # Project Requirements Document: codeguide-starter
 
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan boilerplate `codeguide-starter` asli dan **tidak lagi akurat** untuk project Kasir-Ku aktual. Stack sebenarnya: Next.js 15 + React 19 + TypeScript strict + Tailwind CSS 4 + shadcn/ui + Drizzle ORM + PostgreSQL/Supabase + Better Auth. Lihat `README.md` dan `summary_app.md` (PRD Kasir-Ku) untuk dokumentasi yang akurat.
+
 ---
 
 ## 1. Project Overview

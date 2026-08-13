@@ -1,0 +1,11 @@
+{
+  "id": "finalize-a4-email-verification",
+  "title": "Enable email verification and email provider",
+  "description": "Activate Better Auth emailVerification, integrate SMTP provider, gate login on verified email",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:07:10.583Z",
+  "startedAt": "2026-08-13T04:04:09.616Z",
+  "completion": "Activated Better Auth emailVerification (conditional on EMAIL_API_URL/EMAIL_API_KEY being configured): requireEmailVerification, sendVerificationEmail, sendResetPassword callbacks using existing sendEmail integration. Added rate limits for verification endpoints. Updated sign-up page with email verification pending state and resend button. Exported sendVerificationEmail from auth-client. Added ToS/Privacy links in sign-up consent.",
+  "completedAt": "2026-08-13T04:07:10.582Z"
+}

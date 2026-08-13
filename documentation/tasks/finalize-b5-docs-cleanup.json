@@ -1,0 +1,11 @@
+{
+  "id": "finalize-b5-docs-cleanup",
+  "title": "Update stale documentation and Node version",
+  "description": "Rewrite boilerplate docs to match actual stack, align Dockerfile to Node 20, fix env example",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:31:26.704Z",
+  "startedAt": "2026-08-13T04:29:14.825Z",
+  "completion": "Fixed Dockerfile Node 18 -> 20 (aligned with CI and @types/node). Fixed Dockerfile comment (Prisma -> Drizzle). Added deprecation notices to 7 stale boilerplate docs (project_requirements, tech_stack, backend_structure, frontend_guidelines, app_flow, app_flowchart, security_guideline) pointing to actual stack (Next.js 15, React 19, Drizzle, Better Auth, Tailwind 4, shadcn/ui). Added missing WHATSAPP_PHONE_NUMBER_ID to .env.example.",
+  "completedAt": "2026-08-13T04:31:26.704Z"
+}

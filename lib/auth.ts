@@ -5,11 +5,13 @@ import { admin, twoFactor } from "better-auth/plugins";
 import { getServerEnv, getTrustedOrigins } from "@/config/env";
 import { db } from "@/db";
 import { account, session, twoFactor as twoFactorTable, user, verification } from "@/db/schema";
+import { sendEmail } from "@/lib/integrations/notifications";
 
 const env = getServerEnv();
 const isProduction = env.NODE_ENV === "production";
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 const appleEnabled = Boolean(env.APPLE_CLIENT_ID && env.APPLE_CLIENT_SECRET);
+const emailEnabled = Boolean(env.EMAIL_API_URL && env.EMAIL_API_KEY);
 
 export const auth = betterAuth({
   appName: "Kasir-Ku",
@@ -31,6 +33,27 @@ export const auth = betterAuth({
     minPasswordLength: 12,
     maxPasswordLength: 128,
     revokeSessionsOnPasswordReset: true,
+    // Require email verification only when an email provider is configured.
+    // In dev without email config, sign-up is immediately usable.
+    ...(emailEnabled
+      ? {
+          requireEmailVerification: true,
+          sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
+            await sendEmail(
+              user.email,
+              "Verifikasi Email — Kasir-Ku",
+              `<p>Terima kasih telah mendaftar di Kasir-Ku.</p><p>Klik tautan berikut untuk memverifikasi alamat email Anda:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Verifikasi Email</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak mendaftar di Kasir-Ku, abaikan email ini.</p>`,
+            );
+          },
+          sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+            await sendEmail(
+              user.email,
+              "Reset Password — Kasir-Ku",
+              `<p>Kami menerima permintaan untuk mereset password akun Kasir-Ku Anda.</p><p>Klik tautan berikut untuk mengatur password baru:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Reset Password</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta reset password, abaikan email ini.</p>`,
+            );
+          },
+        }
+      : {}),
   },
   socialProviders: {
     ...(googleEnabled
@@ -80,6 +103,8 @@ export const auth = betterAuth({
       "/sign-in/email": { window: 60, max: 10 },
       "/sign-up/email": { window: 60, max: 5 },
       "/forget-password": { window: 300, max: 3 },
+      "/send-verification-email": { window: 300, max: 3 },
+      "/verify-email": { window: 60, max: 10 },
     },
   },
   advanced: {

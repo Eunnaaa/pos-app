@@ -1,0 +1,11 @@
+{
+  "id": "finalize-b3-monitoring-logging",
+  "title": "Error monitoring and structured logging",
+  "description": "Integrate Sentry error tracking and structured JSON logger with PII redaction",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:27:24.245Z",
+  "startedAt": "2026-08-13T04:22:58.026Z",
+  "completion": "Created lib/server/logger.ts: structured JSON logger with levels (debug/info/warn/error/fatal), PII redaction (passwords, tokens, secrets, cookies), bigint serialization, configurable LOG_LEVEL. Created instrumentation.ts for conditional Sentry init (requires @sentry/nextjs + SENTRY_DSN). Added SENTRY_DSN and LOG_LEVEL to env config and .env.example. Wired logger into apiHandler (request/response/error logging) and replaced server-side console.error calls in ai-insights, finance report, and cashiers routes.",
+  "completedAt": "2026-08-13T04:27:24.244Z"
+}

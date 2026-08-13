@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { AppError } from "@/lib/server";
+import { AppError, logger } from "@/lib/server";
 import { financeReport } from "@/lib/services/reporting";
 
 const querySchema = z.object({
@@ -29,7 +29,7 @@ export const GET = apiHandler(async (request) => {
       else details.push(current);
       current = current instanceof Error ? current.cause : undefined;
     }
-    console.error("finance report query failed", details);
+    logger.error("finance report query failed", { details }, error);
     throw error;
   }
 });

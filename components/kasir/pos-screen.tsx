@@ -81,7 +81,8 @@ export function PosScreen() {
   const [shiftOpen, setShiftOpen] = useState(false)
   const [shiftMode, setShiftMode] = useState<"movement" | "close">("movement")
   const [movement, setMovement] = useState<{ direction: "in" | "out"; amount: string; category: string; reason: string }>({ direction: "in", amount: "", category: "", reason: "" })
-  const [tenderActuals, setTenderActuals] = useState({ cash: "0", qris: "0", debit: "0", e_wallet: "0" })
+  const [tenderActuals, setTenderActuals] = useState<Record<string, string>>({})
+  const [settlementPreview, setSettlementPreview] = useState<{ expectedCash: string; breakdown: Record<string, { expected: string; paid: string; refunded: string }> } | null>(null)
   const [settlementNotes, setSettlementNotes] = useState("")
   const [closedSession, setClosedSession] = useState<ClosedCashSession>()
   const [orderKey, setOrderKey] = useState(() => crypto.randomUUID())
@@ -168,7 +169,8 @@ export function PosScreen() {
       setClosedSession(response.data)
       setSession(null)
       setShiftOpen(false)
-      setTenderActuals({ cash: "0", qris: "0", debit: "0", e_wallet: "0" })
+      setTenderActuals({})
+      setSettlementPreview(null)
       setSettlementNotes("")
       showSuccess("Shift kasir ditutup")
     } catch (caught) {
@@ -178,9 +180,26 @@ export function PosScreen() {
     }
   }
 
-  function showShift(mode: "movement" | "close") {
+  async function showShift(mode: "movement" | "close") {
     setShiftMode(mode)
     setShiftOpen(true)
+    if (mode === "close" && session) {
+      // Fetch expected settlement so the cashier can see what to count
+      try {
+        const response = await apiFetch<{ expectedCash: string; breakdown: Record<string, { expected: string; paid: string; refunded: string }> }>(`/api/v1/finance/cash-sessions/${session.id}/preview`)
+        const preview = response.data
+        setSettlementPreview(preview)
+        // Pre-fill actuals with expected amounts — cashier adjusts if physical count differs
+        const prefilled: Record<string, string> = {}
+        for (const [method, info] of Object.entries(preview.breakdown)) {
+          prefilled[method] = info.expected
+        }
+        setTenderActuals(prefilled)
+      } catch {
+        // If preview fails, start with empty actuals (server will use expected as default)
+        setSettlementPreview(null)
+      }
+    }
   }
 
   const products = useMemo(() => {
@@ -287,7 +306,7 @@ export function PosScreen() {
 
   function newOrder() { setReceipt(undefined); setPaymentOpen(false); setCart([]); setCashAmount(""); setOrderNote(""); setDiscount("0"); setCustomerId(undefined) }
 
-  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung saldo aktual tiap metode. Sistem menghitung ekspektasi dan selisih saat shift ditutup.</p><div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method]} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div>)}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <p className="text-sm text-destructive">Keranjang harus kosong sebelum shift ditutup.</p>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
+  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => { const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <p className="text-sm text-destructive">Keranjang harus kosong sebelum shift ditutup.</p>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
 
   if (sessionLoading) {
     return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-muted/30"><Loader2 className="size-8 animate-spin text-emerald-600" /></div>

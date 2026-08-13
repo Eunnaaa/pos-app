@@ -1,5 +1,7 @@
 # Security Guidelines for codeguide-starter
 
+> ⚠️ **PARTIALLY DEPRECATED**: Dokumen ini ditulis untuk boilerplate `codeguide-starter` dan beberapa referensi path/teknologi sudah tidak akurat (bcrypt → Better Auth, Prisma → Drizzle). Namun prinsip keamanan inti (Security-by-Design, Least Privilege, Defense-in-Depth) tetap berlaku. Implementasi keamanan aktual Kasir-Ku: CSP strict + HSTS + COOP/CORP di `next.config.ts`, Better Auth (2FA TOTP, rate limiting, secure cookies), RBAC via `tenant_members`, idempotency, SSRF guard di webhook, book-closing guards, audit logs. Lihat `README.md` bagian "Data and security conventions" untuk detail akurat.
+
 This document defines mandatory security principles and implementation best practices tailored to the **codeguide-starter** repository. It aligns with Security-by-Design, Least Privilege, Defense-in-Depth, and other core security tenets. All sections reference specific areas of the codebase (e.g., `/app/api/auth/route.ts`, CSS files, environment configuration) to ensure practical guidance.
 
 ---

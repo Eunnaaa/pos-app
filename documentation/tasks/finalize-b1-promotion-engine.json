@@ -1,0 +1,11 @@
+{
+  "id": "finalize-b1-promotion-engine",
+  "title": "Wire promotion engine to checkout",
+  "description": "Apply promotions and redeem vouchers during checkout, insert order_promotions rows",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:14:26.229Z",
+  "startedAt": "2026-08-13T04:09:24.386Z",
+  "completion": "Created lib/services/promotions.ts with resolvePromotionDiscount (read-only: query+validate+evaluate percentage/fixed/voucher discounts) and recordPromotions (write: insert order_promotions, increment promotion usageCount, decrement voucher remainingAmount, mark redeemed when exhausted). Wired into checkout: added promotionCode/voucherCode to schema, resolve before total computation, record after order insert. Order discountAmount now includes promo discounts. Validation: active, date range, usage limits, voucher ownership.",
+  "completedAt": "2026-08-13T04:14:26.229Z"
+}

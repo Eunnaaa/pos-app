@@ -1,4 +1,10 @@
 /**
+ * @deprecated This module is superseded by lib/server/errors.ts (AppError, normalizeError,
+ * errorResponse) which is the canonical error handling system used by apiHandler and all
+ * active route handlers. This file is retained for reference only and is NOT exported
+ * from lib/server/index.ts. Do not use ApiError/handleError/withErrorHandler in new code —
+ * use AppError and the helpers from lib/server/errors.ts instead.
+ *
  * Server-side Error Handler untuk API Routes
  * Menangani berbagai jenis error dan return consistent response
  */

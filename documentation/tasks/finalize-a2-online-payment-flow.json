@@ -1,0 +1,11 @@
+{
+  "id": "finalize-a2-online-payment-flow",
+  "title": "Redesign online payment flow",
+  "description": "Checkout marks online provider payments as authorized; webhook settles them correctly and posts balanced ledger",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:00:20.777Z",
+  "startedAt": "2026-08-13T03:56:10.112Z",
+  "completion": "Redesigned online payment flow: checkout now marks payments with a provider as 'authorized' and sets order to 'pending' (deferring stock/kitchen/loyalty/ledger/receipt). Created confirmOrderPayment service that runs full confirmation (stock decrement, kitchen ticket, loyalty, ledger, receipt, mark paid). Webhook now calls confirmOrderPayment on settlement instead of only posting ledger.",
+  "completedAt": "2026-08-13T04:00:20.777Z"
+}

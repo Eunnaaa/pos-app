@@ -3,6 +3,7 @@ export * from "./auth";
 export * from "./book-closing-guard";
 export * from "./errors";
 export * from "./idempotency";
+export * from "./logger";
 export * from "./money";
 export * from "./pagination";
 export * from "./rbac";

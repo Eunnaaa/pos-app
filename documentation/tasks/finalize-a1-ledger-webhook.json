@@ -1,0 +1,11 @@
+{
+  "id": "finalize-a1-ledger-webhook",
+  "title": "Fix ledger bug in payment webhook",
+  "description": "Fix unbalanced ledger entry where settlePayment passes totalAmount: 0n instead of order.totalAmount",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T03:55:46.217Z",
+  "startedAt": "2026-08-13T03:53:04.072Z",
+  "completion": "Fixed unbalanced ledger in payment webhook: removed per-payment settlePayment calls that passed totalAmount:0n; now calls postSaleToLedger once with order.totalAmount and all settled payments. Made actorUserId nullable in ledger functions to support webhook (no authenticated user) context.",
+  "completedAt": "2026-08-13T03:55:46.216Z"
+}

@@ -1,3 +1,5 @@
+> ⚠️ **DEPRECATED**: Flowchart ini mendeskripsikan boilerplate `codeguide-starter` asli dan **tidak lengkap** untuk Kasir-Ku. Lihat `README.md` untuk arsitektur lengkap.
+
 flowchart TD
   Start[Landing Page]
   SignUpPage[Sign Up Page]

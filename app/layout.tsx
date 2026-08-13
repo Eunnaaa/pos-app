@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { PwaRegister } from "@/components/pwa-register"
 import { GooeyToaster } from "@/components/gooey-toaster"
 import { ThemeProvider } from "@/components/theme-provider"
+import { CookieConsent } from "@/components/cookie-consent"
 import "./globals.css"
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] })
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {children}
           <PwaRegister />
           <GooeyToaster />
+          <CookieConsent />
         </ThemeProvider>
       </body>
     </html>

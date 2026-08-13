@@ -1,0 +1,11 @@
+{
+  "id": "finalize-a5-legal-pages",
+  "title": "Legal pages and UU PDP compliance",
+  "description": "Add Terms of Service, Privacy Policy, cookie consent banner with links from landing and signup",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:09:04.989Z",
+  "startedAt": "2026-08-13T04:07:27.512Z",
+  "completion": "Created /terms (Syarat Layanan) and /privacy (Kebijakan Privasi UU PDP compliant) pages in Bahasa Indonesia. Added cookie consent banner component (CookieConsent) with localStorage persistence, mounted in root layout. Updated landing page footer and sign-up consent with legal links. Privacy policy references UU No. 27/2022 (UU PDP): data collected, legal basis, purposes, third-party sharing, security, data subject rights, cross-border transfer, DPO contact.",
+  "completedAt": "2026-08-13T04:09:04.989Z"
+}

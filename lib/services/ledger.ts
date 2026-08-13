@@ -51,7 +51,7 @@ async function postEntry(database: LedgerDB, input: {
   organizationId: string; branchId: string | null; accountId: string; accountType: string;
   transactionNumber: string; type: "income" | "expense" | "transfer" | "adjustment";
   direction: "debit" | "credit"; amount: bigint; description: string;
-  referenceType: string; referenceId: string; actorUserId: string;
+  referenceType: string; referenceId: string; actorUserId: string | null;
 }): Promise<void> {
   await database.insert(financialTransactions).values({
     organizationId: input.organizationId, branchId: input.branchId,
@@ -79,7 +79,7 @@ export async function postSaleToLedger(database: LedgerDB, input: {
   totalAmount: bigint;
   changeAmount: bigint;
   payments: Array<{ method: string; amount: bigint }>;
-  actorUserId: string;
+  actorUserId: string | null;
 }): Promise<void> {
   const accounts = await ensureDefaultAccounts(input.organizationId, database);
   const income = accounts["SALES-INCOME"];
@@ -119,7 +119,7 @@ export async function postReturnToLedger(database: LedgerDB, input: {
   returnNumber: string;
   refundAmount: bigint;
   paymentMethod?: string;
-  actorUserId: string;
+  actorUserId: string | null;
 }): Promise<void> {
   const accounts = await ensureDefaultAccounts(input.organizationId, database);
   const income = accounts["SALES-INCOME"];
@@ -147,7 +147,7 @@ export async function postExpenseToLedger(database: LedgerDB, input: {
   expenseNumber: string;
   amount: bigint;
   category: string;
-  actorUserId: string;
+  actorUserId: string | null;
 }): Promise<void> {
   const accounts = await ensureDefaultAccounts(input.organizationId, database);
   const expense = accounts["OPERATING-EXPENSE"];

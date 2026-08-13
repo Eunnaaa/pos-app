@@ -12,6 +12,7 @@ import {
   productVariants,
   products,
   receipts,
+  taxRates,
   warehouses,
   salesOrderItems,
   salesOrders,
@@ -21,6 +22,9 @@ import type { ApiContext } from "@/lib/api";
 import { assertPeriodOpen, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 import { postSaleToLedger } from "./ledger";
+import { exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
+import { resolvePromotionDiscount, recordPromotions } from "./promotions";
+import { accrueCommission } from "./commissions";
 
 const bigintInput = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveBigint = bigintInput.refine((value) => value > 0n, "Must be greater than zero");
@@ -36,6 +40,8 @@ export const checkoutSchema = z.object({
   offlineReference: z.string().max(200).optional(),
   discountAmount: bigintInput.default(0n),
   serviceChargeAmount: bigintInput.default(0n),
+  promotionCode: z.string().max(100).optional(),
+  voucherCode: z.string().max(100).optional(),
   items: z.array(z.object({
     variantId: z.string().uuid(),
     quantity: positiveBigint,
@@ -102,29 +108,71 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     const byId = new Map(variants.map((variant) => [variant.id, variant]));
     if (byId.size !== new Set(input.items.map((item) => item.variantId)).size) throw new AppError("NOT_FOUND", "One or more variants are unavailable");
 
+    // Load tax rates referenced by the variants' products
+    const taxRateIds = [...new Set(variants.map((variant) => variant.taxRateId).filter((id): id is string => Boolean(id)))];
+    const taxRateRows = taxRateIds.length ? await tx.select({ id: taxRates.id, rate: taxRates.rate, isInclusive: taxRates.isInclusive }).from(taxRates).where(and(eq(taxRates.organizationId, context.organizationId), inArray(taxRates.id, taxRateIds))) : [];
+    const taxRateMap = new Map(taxRateRows.map((row) => [row.id, row]));
+
     let subtotalAmount = 0n;
     let costAmount = 0n;
+    let taxAmount = 0n; // total tax (inclusive + exclusive) for reporting
+    let exclusiveTaxAmount = 0n; // only exclusive tax, added on top of subtotal
+    let itemDiscountTotal = 0n;
     const calculated = input.items.map((item) => {
       const variant = byId.get(item.variantId)!;
       const unitPriceAmount = variant.priceAmount;
       const gross = unitPriceAmount * item.quantity;
       if (item.discountAmount > gross) throw new AppError("VALIDATION_ERROR", "Item discount cannot exceed item gross amount");
-      const totalAmount = gross - item.discountAmount;
+      const itemTotal = gross - item.discountAmount;
       subtotalAmount += gross;
       costAmount += variant.costAmount * item.quantity;
-      return { item, variant, unitPriceAmount, totalAmount };
+      itemDiscountTotal += item.discountAmount;
+
+      // Compute tax on the discounted amount
+      let itemTaxAmount = 0n;
+      const taxRate = variant.taxRateId ? taxRateMap.get(variant.taxRateId) : undefined;
+      if (taxRate) {
+        const rateBps = parseRateToBps(taxRate.rate);
+        if (rateBps > 0n) {
+          if (taxRate.isInclusive) {
+            itemTaxAmount = inclusiveTax(itemTotal, rateBps);
+          } else {
+            itemTaxAmount = exclusiveTax(itemTotal, rateBps);
+            exclusiveTaxAmount += itemTaxAmount;
+          }
+          taxAmount += itemTaxAmount;
+        }
+      }
+      return { item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTaxAmount };
     });
 
     if (input.discountAmount > subtotalAmount) throw new AppError("VALIDATION_ERROR", "Order discount cannot exceed subtotal");
-    const taxAmount = 0n;
-    const totalAmount = subtotalAmount - input.discountAmount + input.serviceChargeAmount + taxAmount;
+
+    // Resolve promotion/voucher discounts on the taxable amount (subtotal - item discounts - order discount).
+    const taxableForPromo = subtotalAmount - itemDiscountTotal - input.discountAmount;
+    const { totalDiscount: promoDiscount, records: promoRecords } = await resolvePromotionDiscount(tx as unknown as Database, {
+      organizationId: context.organizationId,
+      taxableAmount: taxableForPromo > 0n ? taxableForPromo : 0n,
+      promotionCode: input.promotionCode,
+      voucherCode: input.voucherCode,
+      customerId: input.customerId,
+    });
+    const totalDiscountAmount = input.discountAmount + promoDiscount;
+
+    // Total = subtotal - item discounts - order/promo discount + service charge + exclusive tax.
+    // Inclusive tax is already embedded in the subtotal; exclusive tax is added on top.
+    const totalAmount = subtotalAmount - itemDiscountTotal - totalDiscountAmount + input.serviceChargeAmount + exclusiveTaxAmount;
     const paymentAmount = input.payments.reduce((sum, payment) => sum + payment.amount, 0n);
     const isDeferred = input.payments.some((payment) => payment.method === "pay_later");
     const hasCash = input.payments.some((payment) => payment.method === "cash");
-    if (input.status === "paid" && paymentAmount < totalAmount && !isDeferred) throw new AppError("VALIDATION_ERROR", "Payment total is less than order total");
-    if (input.status === "paid" && paymentAmount > totalAmount && !hasCash) throw new AppError("VALIDATION_ERROR", "Non-cash payment cannot exceed order total");
-    const paidAmount = paymentAmount > totalAmount ? totalAmount : paymentAmount;
-    const changeAmount = paymentAmount > totalAmount ? paymentAmount - totalAmount : 0n;
+    const hasOnlinePayment = input.payments.some((payment) => Boolean(payment.provider && payment.provider.trim()));
+    // Online provider payments are not settled at checkout; the order stays pending
+    // until the payment gateway webhook confirms settlement.
+    const effectiveStatus = hasOnlinePayment && input.status === "paid" ? "pending" : input.status;
+    if (effectiveStatus === "paid" && paymentAmount < totalAmount && !isDeferred) throw new AppError("VALIDATION_ERROR", "Payment total is less than order total");
+    if (effectiveStatus === "paid" && paymentAmount > totalAmount && !hasCash) throw new AppError("VALIDATION_ERROR", "Non-cash payment cannot exceed order total");
+    const paidAmount = effectiveStatus === "paid" ? (paymentAmount > totalAmount ? totalAmount : paymentAmount) : 0n;
+    const changeAmount = effectiveStatus === "paid" && paymentAmount > totalAmount ? paymentAmount - totalAmount : 0n;
 
     const orderId = crypto.randomUUID();
     const orderNumber = `POS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${orderId.slice(0, 8).toUpperCase()}`;
@@ -138,9 +186,9 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       cashSessionId: cashSession.id,
       orderNumber,
       type: input.type,
-      status: input.status,
+      status: effectiveStatus,
       subtotalAmount,
-      discountAmount: input.discountAmount,
+      discountAmount: totalDiscountAmount,
       taxAmount,
       serviceChargeAmount: input.serviceChargeAmount,
       totalAmount,
@@ -149,10 +197,15 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       costAmount,
       notes: input.notes,
       offlineReference: input.offlineReference,
-      completedAt: input.status === "paid" ? new Date() : undefined,
+      completedAt: effectiveStatus === "paid" ? new Date() : undefined,
     }).returning();
 
-    const orderItems = await tx.insert(salesOrderItems).values(calculated.map(({ item, variant, unitPriceAmount, totalAmount: itemTotal }) => ({
+    // Record applied promotions/vouchers (insert order_promotions + update usage counters)
+    if (promoRecords.length) {
+      await recordPromotions(tx as unknown as Database, { organizationId: context.organizationId, orderId, records: promoRecords });
+    }
+
+    const orderItems = await tx.insert(salesOrderItems).values(calculated.map(({ item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTax }) => ({
       organizationId: context.organizationId,
       orderId,
       variantId: variant.id,
@@ -163,11 +216,12 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       unitPriceAmount,
       unitCostAmount: variant.costAmount,
       discountAmount: item.discountAmount,
+      taxAmount: itemTax,
       totalAmount: itemTotal,
       notes: item.notes,
     }))).returning();
 
-    if (input.status === "paid" || input.status === "confirmed") {
+    if (effectiveStatus === "paid" || effectiveStatus === "confirmed") {
       for (const { item, variant } of calculated) {
         if (!variant.trackStock) continue;
         await postStockMovement(tx, {
@@ -205,19 +259,23 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       })));
     }
 
-    const payments = input.payments.length ? await tx.insert(salesPayments).values(input.payments.map((payment) => ({
-      organizationId: context.organizationId,
-      orderId,
-      method: payment.method,
-      amount: payment.amount,
-      provider: payment.provider,
-      externalReference: payment.externalReference,
-      status: payment.method === "pay_later" ? "authorized" as const : "settled" as const,
-      paidAt: payment.method === "pay_later" ? undefined : new Date(),
-    }))).returning() : [];
+    const payments = input.payments.length ? await tx.insert(salesPayments).values(input.payments.map((payment) => {
+      const isOnline = Boolean(payment.provider && payment.provider.trim());
+      const isAuthorized = payment.method === "pay_later" || isOnline;
+      return {
+        organizationId: context.organizationId,
+        orderId,
+        method: payment.method,
+        amount: payment.amount,
+        provider: payment.provider,
+        externalReference: payment.externalReference,
+        status: isAuthorized ? "authorized" as const : "settled" as const,
+        paidAt: isAuthorized ? undefined : new Date(),
+      };
+    })).returning() : [];
 
     let pointsEarned = 0n;
-    if (input.customerId && input.status === "paid") {
+    if (input.customerId && effectiveStatus === "paid") {
       const [customer] = await tx.select({ id: customers.id }).from(customers).where(and(eq(customers.id, input.customerId), eq(customers.organizationId, context.organizationId))).limit(1);
       if (!customer) throw new AppError("NOT_FOUND", "Customer not found");
       await tx.update(customers).set({ totalSpendAmount: sql`${customers.totalSpendAmount} + ${totalAmount}`, updatedAt: new Date() }).where(eq(customers.id, customer.id));
@@ -228,8 +286,18 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       }
     }
 
+    // Accrue sales commission for the cashier (if registered as an employee with a rate)
+    if (effectiveStatus === "paid") {
+      await accrueCommission(tx as unknown as Database, {
+        organizationId: context.organizationId,
+        cashierUserId: context.session.user.id,
+        orderId,
+        totalAmount,
+      });
+    }
+
     // Post to financial ledger (double-entry)
-    if (input.status === "paid") {
+    if (effectiveStatus === "paid") {
       await postSaleToLedger(tx as unknown as Database, {
         organizationId: context.organizationId,
         branchId: input.branchId,
@@ -242,8 +310,14 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
       });
     }
 
-    const verificationToken = crypto.randomUUID().replaceAll("-", "");
-    const [receipt] = await tx.insert(receipts).values({ organizationId: context.organizationId, orderId, verificationToken }).returning();
+    // Receipt is created immediately for paid/confirmed orders. For pending orders
+    // (awaiting online payment settlement) the receipt is created by confirmOrderPayment
+    // when the payment gateway webhook confirms settlement.
+    let receipt: { verificationToken: string } | null = null;
+    if (effectiveStatus === "paid" || effectiveStatus === "confirmed") {
+      const verificationToken = crypto.randomUUID().replaceAll("-", "");
+      [receipt] = await tx.insert(receipts).values({ organizationId: context.organizationId, orderId, verificationToken }).returning();
+    }
     return { order, items: orderItems, payments, receipt, pointsEarned };
   });
 }

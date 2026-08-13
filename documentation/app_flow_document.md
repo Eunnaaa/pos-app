@@ -1,5 +1,7 @@
 # App Flow Document
 
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan flow boilerplate `codeguide-starter` asli dan **tidak lengkap** untuk project Kasir-Ku aktual. Flow sebenarnya: Landing → Sign-up (dengan email verification) → Onboarding (org/branch/warehouse) → Dashboard (role-based: owner/cashier) → POS checkout → Receipt → Sales/Returns/Inventory/Purchases/Finance/Kitchen/Loyalty/AI. Lihat `README.md` dan `summary_app.md` untuk flow yang lengkap.
+
 ## Onboarding and Sign-In/Sign-Up
 
 When a new visitor arrives at the application’s root URL, they land on a welcome page that offers clear buttons or links to either create an account or sign in. Clicking on the “Sign Up” link takes the visitor to a registration page where they enter their email address and choose a password. Once they submit the form, the application sends a POST request to the authentication API endpoint, which handles password hashing and user creation. If registration succeeds, the new user is automatically signed in and redirected to the dashboard. If there are validation errors, such as a password that is too short or an email already in use, the form reappears with inline messages explaining what must be corrected.

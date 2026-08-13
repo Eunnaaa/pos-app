@@ -1,5 +1,5 @@
-# Use the official Node.js 18 image
-FROM node:18-alpine AS base
+# Use the official Node.js 20 image (aligned with CI workflow and @types/node)
+FROM node:20-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
@@ -17,7 +17,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma/Drizzle client
+# Generate Drizzle migration artifacts
 RUN npm run db:generate
 
 # Build the application

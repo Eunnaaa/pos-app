@@ -117,6 +117,53 @@ export async function closeCashSession(sessionId: string, input: z.infer<typeof 
   });
 }
 
+/**
+ * Preview the expected settlement for an open cash session WITHOUT closing it.
+ * Returns the expected breakdown per payment method so the cashier can see
+ * what the system expects before entering actuals.
+ */
+export async function previewSettlement(sessionId: string, context: ApiContext) {
+  const [session] = await db.select({
+    id: cashRegisterSessions.id, status: cashRegisterSessions.status,
+    openingAmount: cashRegisterSessions.openingAmount, openedAt: cashRegisterSessions.openedAt,
+    branchId: cashRegisters.branchId,
+  }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(
+    eq(cashRegisterSessions.id, sessionId),
+    eq(cashRegisterSessions.organizationId, context.organizationId),
+    ...(context.branchId ? [eq(cashRegisters.branchId, context.branchId)] : []),
+  )).limit(1);
+  if (!session) throw new AppError("NOT_FOUND", "Shift kasir tidak ditemukan");
+  if (session.status !== "open") throw new AppError("CONFLICT", "Shift kasir sudah ditutup");
+
+  const paymentRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), inArray(salesPayments.status, ["settled", "authorized"]))).groupBy(salesPayments.method);
+  const refundRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).innerJoin(salesOrders, eq(salesOrders.id, salesReturns.orderId)).leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(refunds.status, "processed"))).groupBy(salesPayments.method);
+  const [changeRow] = await db.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
+  const movementRows = await db.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
+
+  const payments = Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)]));
+  const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "unassigned_refund", BigInt(row.amount)]));
+  const cashIn = BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0");
+  const cashOut = BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0");
+
+  // Build expected breakdown (actual = expected for preview, variance = 0)
+  const methods = new Set(["cash", ...Object.keys(payments), ...Object.keys(refundByMethod)]);
+  const breakdown: Record<string, { expected: string; paid: string; refunded: string }> = {};
+  for (const method of methods) {
+    let expected = (payments[method] ?? 0n) - (refundByMethod[method] ?? 0n);
+    if (method === "cash") expected += session.openingAmount - BigInt(changeRow?.amount ?? "0") + cashIn - cashOut;
+    breakdown[method] = { expected: expected.toString(), paid: (payments[method] ?? 0n).toString(), refunded: (refundByMethod[method] ?? 0n).toString() };
+  }
+
+  return {
+    openingAmount: session.openingAmount.toString(),
+    cashChange: BigInt(changeRow?.amount ?? "0").toString(),
+    cashIn: cashIn.toString(),
+    cashOut: cashOut.toString(),
+    expectedCash: breakdown.cash?.expected ?? session.openingAmount.toString(),
+    breakdown,
+  };
+}
+
 export async function listCashSessions(context: ApiContext) {
   return db.select({
     id: cashRegisterSessions.id, status: cashRegisterSessions.status, openingAmount: cashRegisterSessions.openingAmount,

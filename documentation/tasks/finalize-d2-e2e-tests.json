@@ -1,0 +1,11 @@
+{
+  "id": "finalize-d2-e2e-tests",
+  "title": "Playwright E2E test setup",
+  "description": "Set up Playwright with a critical-path E2E test: signup to checkout flow",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:41:28.547Z",
+  "startedAt": "2026-08-13T04:40:09.086Z",
+  "completion": "Installed @playwright/test. Created playwright.config.ts (chromium, auto-starts dev server, id-ID locale). Created tests/e2e/smoke.spec.ts with 10 smoke tests: landing page hero/CTA/footer links, sign-in form, sign-up password validation, terms page, privacy page (UU PDP reference), help page FAQ accordion, health check endpoint, unauthenticated dashboard redirect, rate limit headers. Added e2e/e2e:ui scripts to package.json. Updated .gitignore with playwright artifacts.",
+  "completedAt": "2026-08-13T04:41:28.547Z"
+}

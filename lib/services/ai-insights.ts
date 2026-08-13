@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { analyticsInsights, type JsonValue } from "@/db/schema";
 import type { Database } from "@/db";
+import { logger } from "@/lib/server/logger";
 
 const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`;
 
@@ -246,7 +247,7 @@ export async function generateAndStoreInsights(ctx: InsightContext) {
       const result = await fn(ctx);
       results.push({ type, payload: result.payload, confidence: result.confidence });
     } catch (error) {
-      console.error(`AI insight ${type} failed`, error);
+      logger.error(`AI insight ${type} failed`, { type }, error);
       results.push({ type, payload: { error: "Failed to generate" } as unknown as JsonValue, confidence: 0 });
     }
   }

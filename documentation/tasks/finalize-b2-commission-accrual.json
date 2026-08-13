@@ -1,0 +1,11 @@
+{
+  "id": "finalize-b2-commission-accrual",
+  "title": "Wire commission accrual in checkout",
+  "description": "Create employee_commissions entries during paid checkout based on commissionRateBps",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:22:41.183Z",
+  "startedAt": "2026-08-13T04:14:53.129Z",
+  "completion": "Created lib/services/commissions.ts with accrueCommission: queries employee by cashierUserId, computes commission = totalAmount * commissionRateBps / 10000, inserts pending employee_commissions with current-month period. Wired into checkout (paid orders) and confirmOrderPayment (webhook-settled online payments). Silently skips if no matching employee, inactive, or zero rate.",
+  "completedAt": "2026-08-13T04:22:41.183Z"
+}

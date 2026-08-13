@@ -1,0 +1,11 @@
+{
+  "id": "finalize-b4-error-handling",
+  "title": "Reconcile dual error handling",
+  "description": "Make AppError/errors.ts canonical, remove deprecated ApiError/error-handler.ts, update docs",
+  "status": "completed",
+  "createdAt": "2025-01-01T00:00:00.000Z",
+  "updatedAt": "2026-08-13T04:28:56.466Z",
+  "startedAt": "2026-08-13T04:27:36.385Z",
+  "completion": "Reconciled dual error handling: confirmed error-handler.ts (ApiError/handleError/withErrorHandler) is dead code (only self-referential, no active imports). Removed its export from lib/index.ts. Added @deprecated header to error-handler.ts pointing to canonical AppError/errors.ts. Updated ERROR_HANDLING_GUIDE.md with prominent notice that AppError is canonical and error-handler.ts is deprecated; clarified client-side toast/ClientApiError remains active.",
+  "completedAt": "2026-08-13T04:28:56.465Z"
+}
