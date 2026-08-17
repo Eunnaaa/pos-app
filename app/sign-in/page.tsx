@@ -25,15 +25,21 @@ export default function SignInPage() {
     try {
       const result = await signIn.social({
         provider,
-        // Jangan resolve destination sebelum login: saat belum ada session, /me/organizations
-        // selalu 401 -> callbackURL jatuh ke /onboarding meski user sudah punya bisnis.
-        // Dashboard layout + OrganizationProvider yang menentukan tujuan setelah login
-        // (ada organisasi = dashboard, kosong = onboarding).
         callbackURL: "/dashboard",
       })
-      if (result.error) setError(result.error.message || "Gagal masuk dengan Google")
-    } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
-    finally { setLoading(false) }
+      if (result && "error" in result && result.error) {
+        setError(result.error.message || "Gagal masuk dengan Google")
+        setLoading(false)
+      }
+    } catch (caught) {
+
+      if (caught instanceof TypeError && caught.message.includes("Load failed")) {
+        setLoading(false)
+        return
+      }
+      console.error("Social sign-in error:", caught)
+      setLoading(false)
+    }
   }
 
   async function submit(event: React.FormEvent) {

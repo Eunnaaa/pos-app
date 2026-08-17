@@ -32,8 +32,7 @@ export default function SignUpPage() {
       if (check.data.registered) { setError("Akun sudah terdaftar. Silakan masuk dengan akun tersebut."); return }
       const result = await signUp.email({ name: form.name, email: form.email, password: form.password })
       if (result.error) { setError(result.error.message || "Pendaftaran gagal"); return }
-      // If email verification is required, no session token is returned — show pending state.
-      // Otherwise, redirect to the authenticated destination.
+
       if (result.data && !result.data.token) {
         setPendingVerification(true)
       } else {
@@ -58,13 +57,20 @@ export default function SignUpPage() {
     try {
       const result = await signIn.social({
         provider: "google",
-        // Sama seperti sign-in: resolve sebelum login selalu 401 -> onboarding.
-        // Dashboard layout yang menentukan tujuan akhir.
         callbackURL: "/dashboard",
       })
-      if (result.error) setError(result.error.message || "Gagal daftar dengan Google")
-    } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
-    finally { setLoading(false) }
+      if (result && "error" in result && result.error) {
+        setError(result.error.message || "Gagal daftar dengan Google")
+        setLoading(false)
+      }
+    } catch (caught) {
+      if (caught instanceof TypeError && caught.message.includes("Load failed")) {
+        setLoading(false)
+        return
+      }
+      console.error("Social sign-up error:", caught)
+      setLoading(false)
+    }
   }
 
   const update = (field: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => setForm((current) => ({ ...current, [field]: event.target.value }))
