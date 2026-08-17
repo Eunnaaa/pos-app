@@ -5,23 +5,19 @@
  * for automatic error capture and performance monitoring.
  *
  * To activate: `npm install @sentry/nextjs` and set `SENTRY_DSN` in .env
- *
- * NOTE: The dynamic import uses `new Function` so that the bundler (Turbopack/
- * webpack) cannot statically resolve `@sentry/nextjs` at build time. This lets
- * the package remain an optional dependency — the build succeeds without it.
  */
-
-// A runtime-only import that bundlers cannot statically analyze.
-const optionalImport = new Function(
-  "specifier",
-  "return import(specifier)",
-) as (specifier: string) => Promise<Record<string, unknown>>;
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return;
+
+  // Dynamic import to keep @sentry/nextjs optional; only runs in Node.js runtime
+  const optionalImport = new Function(
+    "specifier",
+    "return import(specifier)",
+  ) as (specifier: string) => Promise<Record<string, unknown>>;
 
   try {
     const Sentry = (await optionalImport("@sentry/nextjs")) as {
