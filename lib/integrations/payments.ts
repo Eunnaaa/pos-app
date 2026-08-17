@@ -8,6 +8,10 @@ export type PaymentRequest = {
   customerName: string;
   customerEmail?: string;
   description: string;
+  /** Metode pembayaran Xendit opsional (QRIS/e-wallet). Undefined = biarkan Xendit pilih default. */
+  paymentMethods?: readonly XenditPaymentMethod[];
+  /** Slug organisasi untuk fallback payer_email bila customerEmail tidak diberikan. */
+  organizationSlug?: string;
 };
 
 export type PaymentResult = {
@@ -17,6 +21,8 @@ export type PaymentResult = {
   token?: string;
   raw: unknown;
 };
+
+export type XenditPaymentMethod = "QRIS" | "OVO" | "DANA" | "SHOPEEPAY" | "PAY_LATER";
 
 export async function createMidtransPayment(input: PaymentRequest): Promise<PaymentResult> {
   const env = getServerEnv();
@@ -37,10 +43,22 @@ export async function createMidtransPayment(input: PaymentRequest): Promise<Paym
 export async function createXenditPayment(input: PaymentRequest): Promise<PaymentResult> {
   const env = getServerEnv();
   const config = requireProviderConfig("Xendit", { secretKey: env.XENDIT_SECRET_KEY });
+  const payerEmail = input.customerEmail || (input.organizationSlug ? `guest@${input.organizationSlug}.local` : "guest@self-order.local");
+  const body: Record<string, unknown> = {
+    external_id: input.reference,
+    amount: input.amount,
+    payer_email: payerEmail,
+    description: input.description,
+    success_redirect_url: input.organizationSlug ? `https://${input.organizationSlug}.local/order/return?ref=${input.reference}` : undefined,
+    failure_redirect_url: input.organizationSlug ? `https://${input.organizationSlug}.local/order/return?ref=${input.reference}&status=failed` : undefined,
+  };
+  if (input.paymentMethods && input.paymentMethods.length > 0) {
+    body.payment_methods = Array.from(input.paymentMethods);
+  }
   const result = await providerRequest<{ id: string; invoice_url: string }>("Xendit", "https://api.xendit.co/v2/invoices", {
     method: "POST",
     headers: { "content-type": "application/json", authorization: `Basic ${Buffer.from(`${config.secretKey}:`).toString("base64")}` },
-    body: JSON.stringify({ external_id: input.reference, amount: input.amount, payer_email: input.customerEmail, description: input.description }),
+    body: JSON.stringify(body),
   });
   return { provider: "xendit", externalId: result.id, paymentUrl: result.invoice_url, raw: result };
 }

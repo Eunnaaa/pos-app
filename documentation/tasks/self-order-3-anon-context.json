@@ -1,0 +1,11 @@
+{
+  "id": "self-order-3-anon-context",
+  "title": "Anonymous self-order context",
+  "description": "requireSelfOrderContext resolve tenancy dari token tanpa auth.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "requireSelfOrderContext resolve tenancy dari token tanpa auth.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

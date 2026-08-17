@@ -1,0 +1,11 @@
+{
+  "id": "self-order-6-webhook-security",
+  "title": "Xendit webhook signature fix",
+  "description": "Wajib XENDIT_SECRET_KEY, hapus short-circuit",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "Wajib XENDIT_SECRET_KEY, hapus short-circuit",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

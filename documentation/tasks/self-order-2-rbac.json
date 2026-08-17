@@ -1,0 +1,11 @@
+{
+  "id": "self-order-2-rbac",
+  "title": "RBAC selfOrder permissions",
+  "description": "selfOrder:read + selfOrder:manage di rbac.ts.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "selfOrder:read + selfOrder:manage di rbac.ts.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

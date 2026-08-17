@@ -1,0 +1,11 @@
+{
+  "id": "self-order-13-middleware-cron",
+  "title": "Rate limit self-order + cron expiry",
+  "description": "Bucket self-order + pg_cron expire pending 15 menit.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "Bucket self-order + pg_cron expire pending 15 menit.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

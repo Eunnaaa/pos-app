@@ -23,6 +23,8 @@ export const permissions = [
   "branches:manage",
   "settings:manage",
   "users:manage",
+  "selfOrder:read",
+  "selfOrder:manage",
 ] as const;
 export type Permission = (typeof permissions)[number];
 

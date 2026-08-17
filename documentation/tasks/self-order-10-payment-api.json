@@ -1,0 +1,11 @@
+{
+  "id": "self-order-10-payment-api",
+  "title": "POST payment charge endpoint",
+  "description": "/api/v1/self-order/payments anon idempotent.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "/api/v1/self-order/payments anon idempotent.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

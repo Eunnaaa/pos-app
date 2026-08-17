@@ -16,6 +16,7 @@ import {
 import { postStockMovement, type DbTransaction } from "./stock-ledger";
 import { postSaleToLedger } from "./ledger";
 import { accrueCommission } from "./commissions";
+import { writeAuditLog } from "@/lib/server/audit";
 
 type Tx = DbTransaction;
 
@@ -41,6 +42,7 @@ export async function confirmOrderPayment(tx: Tx, params: {
       customerId: salesOrders.customerId,
       cashierUserId: salesOrders.cashierUserId,
       status: salesOrders.status,
+      channel: salesOrders.channel,
     })
     .from(salesOrders)
     .where(and(eq(salesOrders.id, params.orderId), eq(salesOrders.organizationId, params.organizationId)))
@@ -148,7 +150,18 @@ export async function confirmOrderPayment(tx: Tx, params: {
   // 6. Mark order as paid + completed
   await tx.update(salesOrders).set({ status: "paid", paidAmount: order.totalAmount, completedAt: new Date(), updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
 
-  // 7. Accrue sales commission for the cashier (if registered as an employee with a rate)
+  // 7. Audit trail. actorUserId null untuk self-order anonymous.
+  await writeAuditLog({
+    organizationId: order.organizationId,
+    branchId: order.branchId,
+    actorUserId: params.actorUserId ?? undefined,
+    action: "order.payment.confirmed",
+    resourceType: "sales_order",
+    resourceId: order.id,
+    metadata: { orderNumber: order.orderNumber, totalAmount: order.totalAmount?.toString() ?? "0", channel: order.channel },
+  }, tx as unknown as Database);
+
+  // 8. Accrue sales commission for the cashier (if registered as an employee with a rate)
   if (order.cashierUserId) {
     await accrueCommission(tx as unknown as Database, {
       organizationId: order.organizationId,

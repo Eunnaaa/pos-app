@@ -8,7 +8,6 @@ import { getServerEnv } from "@/config/env";
 import { AppError } from "@/lib/server";
 import { confirmOrderPayment } from "@/lib/services/order-confirmation";
 
-// Midtrans notification body
 const midtransSchema = z.object({
   order_id: z.string(),
   transaction_status: z.string(),
@@ -18,7 +17,7 @@ const midtransSchema = z.object({
   transaction_id: z.string().optional(),
 });
 
-// Xendit notification body (simplified)
+
 const xenditSchema = z.object({
   external_id: z.string(),
   status: z.string(),
@@ -45,7 +44,7 @@ function mapXenditStatus(status: string): "settled" | "failed" | null {
 
 async function processPaymentUpdate(orderRef: string, newStatus: "settled" | "failed", externalRef: string, provider: string) {
   return db.transaction(async (tx) => {
-    // Find order by order_number
+
     const [order] = await tx.select({
       id: salesOrders.id, organizationId: salesOrders.organizationId, branchId: salesOrders.branchId,
       orderNumber: salesOrders.orderNumber, totalAmount: salesOrders.totalAmount,
@@ -55,7 +54,7 @@ async function processPaymentUpdate(orderRef: string, newStatus: "settled" | "fa
 
     if (!order) return dataResponse({ status: "ignored", reason: "order_not_found" }, { status: 200 });
 
-    // Find authorized payments for this order
+   
     const payments = await tx.select({
       id: salesPayments.id, method: salesPayments.method, amount: salesPayments.amount, status: salesPayments.status,
     }).from(salesPayments).where(and(
@@ -64,7 +63,7 @@ async function processPaymentUpdate(orderRef: string, newStatus: "settled" | "fa
     ));
 
     if (payments.length === 0) {
-      // No authorized payments to update — maybe already settled
+   
       return dataResponse({ status: "no_change", order: orderRef, reason: "no_authorized_payments" }, { status: 200 });
     }
 
@@ -77,10 +76,7 @@ async function processPaymentUpdate(orderRef: string, newStatus: "settled" | "fa
       }).where(and(eq(salesPayments.id, payment.id), eq(salesPayments.status, "authorized")));
     }
 
-    // If settling, run the full order confirmation: stock decrement, kitchen ticket,
-    // loyalty points, ledger posting, receipt, and mark order as paid.
-    // Previously this only posted to the ledger (with a totalAmount:0n bug) and skipped
-    // stock, kitchen, loyalty, and receipt — leaving online-paid orders incomplete.
+    
     if (newStatus === "settled" && order.status !== "paid") {
       await confirmOrderPayment(tx, {
         organizationId: order.organizationId,
@@ -97,7 +93,7 @@ export const POST = apiHandler(async (request) => {
   const env = getServerEnv();
   const body = await request.json() as Record<string, unknown>;
 
-  // Detect provider from body structure
+ 
   const isMidtrans = "signature_key" in body && "transaction_status" in body;
   const isXendit = "external_id" in body && "status" in body && !isMidtrans;
 
@@ -118,10 +114,11 @@ export const POST = apiHandler(async (request) => {
     return await processPaymentUpdate(orderRef, newStatus, input.transaction_id ?? input.order_id, "midtrans");
   }
 
-  // Xendit
+
   const input = xenditSchema.parse(body);
   const callbackToken = request.headers.get("x-callback-token");
-  if (env.XENDIT_SECRET_KEY && callbackToken !== env.XENDIT_SECRET_KEY) {
+  if (!env.XENDIT_SECRET_KEY) throw new AppError("BAD_REQUEST", "Xendit not configured");
+  if (!callbackToken || callbackToken !== env.XENDIT_SECRET_KEY) {
     throw new AppError("UNAUTHENTICATED", "Invalid Xendit callback token");
   }
   const newStatus = mapXenditStatus(input.status);

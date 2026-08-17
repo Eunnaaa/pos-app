@@ -1,0 +1,11 @@
+{
+  "id": "self-order-1-schema-token",
+  "title": "Schema QR token + salesOrders.tableId",
+  "description": "Tabel qr_order_tokens, kolom sales_orders.table_id, channel union pos/self_order/kiosk, migration 0007.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "Tabel qr_order_tokens, kolom sales_orders.table_id, channel union pos/self_order/kiosk, migration 0007.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

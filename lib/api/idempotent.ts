@@ -8,9 +8,11 @@ import {
   idempotencyKeySchema,
 } from "@/lib/server";
 
+type IdempotentContext = Pick<ApiContext, "organizationId">;
+
 export async function withIdempotency(
   request: Request,
-  context: ApiContext,
+  context: IdempotentContext,
   scope: string,
   body: unknown,
   execute: () => Promise<Response>,

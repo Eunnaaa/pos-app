@@ -9,4 +9,5 @@ export * from "./parties";
 export * from "./platform";
 export * from "./purchases";
 export * from "./sales";
+export * from "./self-order";
 export * from "./tenancy";

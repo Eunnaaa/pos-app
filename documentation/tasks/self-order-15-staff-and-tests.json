@@ -1,0 +1,11 @@
+{
+  "id": "self-order-15-staff-and-tests",
+  "title": "Call staff + audit + reorder + e2e",
+  "description": "staff_calls table, audit log, reorder endpoint, e2e spec.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "staff_calls table, audit log, reorder endpoint, e2e spec.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

@@ -32,10 +32,12 @@ const positiveBigint = bigintInput.refine((value) => value > 0n, "Must be greate
 export const checkoutSchema = z.object({
   branchId: z.string().uuid(),
   warehouseId: z.string().uuid(),
-  cashSessionId: z.string().uuid(),
+  cashSessionId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
   type: z.enum(["sale", "quotation", "invoice"]).default("sale"),
   status: z.enum(["draft", "held", "pending", "confirmed", "paid"]).default("paid"),
+  channel: z.enum(["pos", "self_order", "kiosk"]).default("pos"),
+  tableId: z.string().uuid().optional(),
   notes: z.string().max(2_000).optional(),
   offlineReference: z.string().max(200).optional(),
   discountAmount: bigintInput.default(0n),
@@ -59,9 +61,33 @@ export const checkoutSchema = z.object({
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
-export async function checkout(input: CheckoutInput, context: ApiContext) {
+/**
+ * Context yang dipakai checkout. Untuk anonymous self-order/kiosk,
+ * actorUserId dan IP/UA datang dari self-order context (tanpa auth session).
+ */
+export type CheckoutContext = {
+  organizationId: string;
+  requestId: string;
+  ipAddress?: string;
+  userAgent?: string;
+  actorUserId: string | null;
+};
+
+export function checkoutContextFromApi(context: ApiContext): CheckoutContext {
+  return {
+    organizationId: context.organizationId,
+    requestId: context.requestId,
+    ...(context.ipAddress ? { ipAddress: context.ipAddress } : {}),
+    ...(context.userAgent ? { userAgent: context.userAgent } : {}),
+    actorUserId: context.session.user.id,
+  };
+}
+
+export async function checkout(input: CheckoutInput, context: CheckoutContext) {
   return db.transaction(async (tx) => {
-    await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });
+    if (input.channel === "pos") {
+      await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });
+    }
     const [warehouse] = await tx
       .select({ id: warehouses.id, branchId: warehouses.branchId })
       .from(warehouses)
@@ -70,19 +96,24 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     if (!warehouse || (warehouse.branchId && warehouse.branchId !== input.branchId)) {
       throw new AppError("FORBIDDEN", "Gudang tidak tersedia untuk cabang ini");
     }
-    const [cashSession] = await tx
-      .select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId })
-      .from(cashRegisterSessions)
-      .innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId))
-      .where(and(
-        eq(cashRegisterSessions.id, input.cashSessionId),
-        eq(cashRegisterSessions.organizationId, context.organizationId),
-        eq(cashRegisterSessions.status, "open"),
-        eq(cashRegisterSessions.userId, context.session.user.id),
-        eq(cashRegisters.branchId, input.branchId),
-      ))
-      .limit(1);
-    if (!cashSession) throw new AppError("CONFLICT", "Buka shift kasir sebelum melakukan checkout");
+
+    let cashSession: { id: string } | null = null;
+    if (input.channel === "pos" && input.cashSessionId && context.actorUserId) {
+      const [session] = await tx
+        .select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId })
+        .from(cashRegisterSessions)
+        .innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId))
+        .where(and(
+          eq(cashRegisterSessions.id, input.cashSessionId),
+          eq(cashRegisterSessions.organizationId, context.organizationId),
+          eq(cashRegisterSessions.status, "open"),
+          eq(cashRegisterSessions.userId, context.actorUserId),
+          eq(cashRegisters.branchId, input.branchId),
+        ))
+        .limit(1);
+      if (!session) throw new AppError("CONFLICT", "Buka shift kasir sebelum melakukan checkout");
+      cashSession = session;
+    }
 
     const variants = await tx
       .select({
@@ -175,17 +206,20 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     const changeAmount = effectiveStatus === "paid" && paymentAmount > totalAmount ? paymentAmount - totalAmount : 0n;
 
     const orderId = crypto.randomUUID();
-    const orderNumber = `POS-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${orderId.slice(0, 8).toUpperCase()}`;
+    const prefix = input.channel === "self_order" ? "SO" : input.channel === "kiosk" ? "KS" : "POS";
+    const orderNumber = `${prefix}-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${orderId.slice(0, 8).toUpperCase()}`;
     const [order] = await tx.insert(salesOrders).values({
       id: orderId,
       organizationId: context.organizationId,
       branchId: input.branchId,
       warehouseId: input.warehouseId,
       customerId: input.customerId,
-      cashierUserId: context.session.user.id,
-      cashSessionId: cashSession.id,
+      cashierUserId: context.actorUserId,
+      cashSessionId: cashSession?.id,
+      tableId: input.tableId,
       orderNumber,
       type: input.type,
+      channel: input.channel,
       status: effectiveStatus,
       subtotalAmount,
       discountAmount: totalDiscountAmount,
@@ -234,7 +268,7 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
           referenceType: "sales_order",
           referenceId: orderId,
           unitCostAmount: variant.costAmount,
-          actorUserId: context.session.user.id,
+          actorUserId: context.actorUserId ?? undefined,
           allowNegative: variant.allowNegativeStock,
         });
       }
@@ -287,10 +321,10 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
     }
 
     // Accrue sales commission for the cashier (if registered as an employee with a rate)
-    if (effectiveStatus === "paid") {
+    if (effectiveStatus === "paid" && context.actorUserId) {
       await accrueCommission(tx as unknown as Database, {
         organizationId: context.organizationId,
-        cashierUserId: context.session.user.id,
+        cashierUserId: context.actorUserId,
         orderId,
         totalAmount,
       });
@@ -306,7 +340,7 @@ export async function checkout(input: CheckoutInput, context: ApiContext) {
         totalAmount,
         changeAmount,
         payments: input.payments.filter((p) => p.method !== "pay_later").map((p) => ({ method: p.method, amount: p.amount })),
-        actorUserId: context.session.user.id,
+        actorUserId: context.actorUserId,
       });
     }
 

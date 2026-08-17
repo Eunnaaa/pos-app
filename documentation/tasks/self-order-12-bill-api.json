@@ -1,0 +1,11 @@
+{
+  "id": "self-order-12-bill-api",
+  "title": "GET split bill endpoint",
+  "description": "/api/v1/self-order/bill/[orderId] anon.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "/api/v1/self-order/bill/[orderId] anon.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

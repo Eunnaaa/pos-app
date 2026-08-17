@@ -19,7 +19,7 @@ export const POST = apiHandler(async (request) => {
         const sent = await sendShiftReportWhatsApp(id);
         if (sent) await db.update(cashRegisterSessions).set({ notifiedAt: new Date(), updatedAt: new Date() }).where(eq(cashRegisterSessions.id, id));
       }
-    } catch { /* best-effort: notifikasi tidak menggagalkan tutup shift */ }
+    } catch {  }
     return dataResponse(closed);
   });
 });

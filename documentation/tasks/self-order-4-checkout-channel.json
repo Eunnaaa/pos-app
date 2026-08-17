@@ -1,0 +1,11 @@
+{
+  "id": "self-order-4-checkout-channel",
+  "title": "Checkout support channel self_order/kiosk",
+  "description": "CheckoutContext, optional cash session, prefix SO/KS, actorUserId nullable.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "CheckoutContext, optional cash session, prefix SO/KS, actorUserId nullable.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

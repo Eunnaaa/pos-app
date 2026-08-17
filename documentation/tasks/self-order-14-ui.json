@@ -1,0 +1,11 @@
+{
+  "id": "self-order-14-ui",
+  "title": "UI self-order /order /kiosk",
+  "description": "SelfOrderFlow, hooks cart & polling, QR dashboard, sidebar, offline SW.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "SelfOrderFlow, hooks cart & polling, QR dashboard, sidebar, offline SW.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

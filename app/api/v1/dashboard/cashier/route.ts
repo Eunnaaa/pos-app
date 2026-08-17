@@ -9,9 +9,7 @@ export const GET = apiHandler(async (request) => {
     ? sql`and exists (select 1 from warehouses w where w.id = sb.warehouse_id and w.branch_id = ${context.branchId})`
     : sql``;
 
-  // Phase 1: independent queries (all run in parallel)
   const [summary, recentSales, activeSession, heldOrders, pendingOrders, topProducts, lowStock] = await Promise.all([
-    // Today's summary for this cashier (extended with items sold + avg transaction)
     db.execute(sql`
       select
         coalesce(sum(total_amount), 0)::text as sales,
@@ -25,7 +23,6 @@ export const GET = apiHandler(async (request) => {
         and status in ('paid', 'partially_refunded', 'refunded')
         and occurred_at >= date_trunc('day', now())
     `),
-    // Recent 10 transactions
     db.execute(sql`
       select so.id, so.order_number, so.total_amount::text as total_amount, so.status,
              coalesce(c.name, 'Pelanggan umum') as customer_name,
@@ -41,7 +38,7 @@ export const GET = apiHandler(async (request) => {
       order by so.occurred_at desc
       limit 10
     `),
-    // Active cash session for this cashier
+
     db.execute(sql`
       select crs.id, crs.opening_amount::text as opening_amount, crs.opened_at,
              crs.shift_hours, cr.name as register_name, cr.code as register_code,
@@ -56,7 +53,7 @@ export const GET = apiHandler(async (request) => {
       order by crs.opened_at desc
       limit 1
     `),
-    // Held orders count for this cashier/branch
+
     db.execute(sql`
       select count(*)::int as count
       from held_orders
@@ -65,7 +62,7 @@ export const GET = apiHandler(async (request) => {
         and status = 'held'
         and expires_at > now()
     `),
-    // Pending online payment orders (status 'pending', payments 'authorized')
+
     db.execute(sql`
       select count(*)::int as count
       from sales_orders so
@@ -75,7 +72,7 @@ export const GET = apiHandler(async (request) => {
         and so.status = 'pending'
         and sp.status = 'authorized'
     `),
-    // Top 5 products today for this cashier
+
     db.execute(sql`
       select soi.item_name as name, sum(soi.quantity)::text as quantity, sum(soi.total_amount)::text as sales
       from sales_order_items soi
@@ -88,7 +85,7 @@ export const GET = apiHandler(async (request) => {
       order by sum(soi.quantity) desc
       limit 5
     `),
-    // Low stock alerts for this branch
+
     db.execute(sql`
       select p.name, pv.name as variant, sb.available::text as available, sb.reorder_point::text as reorder_point
       from stock_balances sb
@@ -101,14 +98,14 @@ export const GET = apiHandler(async (request) => {
     `),
   ]);
 
-  // Phase 2: if there's an active session, compute live expected cash + payment breakdown
+
   let shift: Record<string, unknown> | null = null;
   const sessionRow = activeSession.rows[0] as Record<string, unknown> | undefined;
 
   if (sessionRow) {
     const sessionId = sessionRow.id as string;
     const [paymentBreakdown, changeTotal, movementTotals, itemsSold] = await Promise.all([
-      // Payments by method for this session
+  
       db.execute(sql`
         select sp.method, coalesce(sum(sp.amount), 0)::text as amount
         from sales_payments sp
@@ -117,20 +114,20 @@ export const GET = apiHandler(async (request) => {
           and sp.status in ('settled', 'authorized')
         group by sp.method
       `),
-      // Total change given
+
       db.execute(sql`
         select coalesce(sum(change_amount), 0)::text as amount
         from sales_orders
         where cash_session_id = ${sessionId}
       `),
-      // Cash movements in/out
+
       db.execute(sql`
         select direction, coalesce(sum(amount), 0)::text as amount
         from cash_movements
         where session_id = ${sessionId}
         group by direction
       `),
-      // Items sold in this session
+  
       db.execute(sql`
         select coalesce(sum(soi.quantity), 0)::text as items
         from sales_order_items soi

@@ -16,6 +16,8 @@ type Bucket = { count: number; resetAt: number };
 const WINDOW_MS = 60_000; // 1 minute
 const READ_LIMIT = 120; // GET requests per window
 const WRITE_LIMIT = 40; // POST/PATCH/DELETE/PUT requests per window
+const READ_LIMIT_SELF = 300; // Self-order GET (menu, tracking) lebih longgar
+const WRITE_LIMIT_SELF = 60; // Self-order POST (create order, charge) moderat
 const MAX_BUCKETS = 10_000; // prevent memory exhaustion
 
 const buckets = new Map<string, Bucket>();
@@ -31,9 +33,9 @@ function getClientIp(request: NextRequest): string {
   return "unknown";
 }
 
-function getRateLimit(ip: string, isWrite: boolean): { allowed: boolean; remaining: number; resetAt: number } {
+function getRateLimit(ip: string, isWrite: boolean, isSelfOrder: boolean): { allowed: boolean; remaining: number; resetAt: number } {
   const now = Date.now();
-  const limit = isWrite ? WRITE_LIMIT : READ_LIMIT;
+  const limit = isSelfOrder ? (isWrite ? WRITE_LIMIT_SELF : READ_LIMIT_SELF) : (isWrite ? WRITE_LIMIT : READ_LIMIT);
 
   // Purge expired buckets every 5 minutes
   if (now - lastPurge > 300_000) {
@@ -52,7 +54,7 @@ function getRateLimit(ip: string, isWrite: boolean): { allowed: boolean; remaini
     }
   }
 
-  const key = `${ip}:${isWrite ? "w" : "r"}`;
+  const key = `${ip}:${isWrite ? "w" : "r"}${isSelfOrder ? "-self" : ""}`;
   let bucket = buckets.get(key);
 
   if (!bucket || bucket.resetAt < now) {
@@ -87,10 +89,11 @@ export function middleware(request: NextRequest) {
 
   const ip = getClientIp(request);
   const isWrite = !["GET", "HEAD", "OPTIONS"].includes(request.method);
-  const { allowed, remaining, resetAt } = getRateLimit(ip, isWrite);
+  const isSelfOrder = pathname.startsWith("/api/v1/self-order/");
+  const { allowed, remaining, resetAt } = getRateLimit(ip, isWrite, isSelfOrder);
 
   const headers = new Headers({
-    "x-ratelimit-limit": String(isWrite ? WRITE_LIMIT : READ_LIMIT),
+    "x-ratelimit-limit": String(isSelfOrder ? (isWrite ? WRITE_LIMIT_SELF : READ_LIMIT_SELF) : (isWrite ? WRITE_LIMIT : READ_LIMIT)),
     "x-ratelimit-remaining": String(remaining),
     "x-ratelimit-reset": String(Math.ceil(resetAt / 1000)),
   });

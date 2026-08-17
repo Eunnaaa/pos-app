@@ -1,0 +1,11 @@
+{
+  "id": "self-order-7-service",
+  "title": "Service self-order",
+  "description": "resolveQrToken, getMenu, createSelfOrder, createXenditCharge, getOrderStatus, getTableBillSplit.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "resolveQrToken, getMenu, createSelfOrder, createXenditCharge, getOrderStatus, getTableBillSplit.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

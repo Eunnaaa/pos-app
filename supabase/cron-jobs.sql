@@ -28,3 +28,21 @@ select cron.schedule(
 --        headers := jsonb_build_object('content-type','application/json','authorization','Bearer <WEBHOOK_SECRET>')
 --      ) $$
 -- );
+
+-- 3) Batalkan self-order/kiosk yang belum dibayar dalam 15 menit.
+--    Strategi pay-first: order 'pending' setelah customer buat keranjang tetap menunggu
+--    konfirmasi webhook Xendit. Jika tidak ada konfirmasi dalam 15 menit, batalkan.
+--    Tidak perlu release stock reserve karena belum ada stock movement yang diposting
+--    untuk self-order sampai status 'paid' (confirmOrderPayment yang posting).
+select cron.unschedule('expire-self-order-pending') where exists (select 1 from cron.job where jobname = 'expire-self-order-pending');
+
+select cron.schedule(
+  'expire-self-order-pending',
+  '*/5 * * * *',
+  $$ update public.sales_orders
+        set status = 'cancelled', updated_at = now()
+        where channel in ('self_order', 'kiosk')
+          and status = 'pending'
+          and created_at < now() - interval '15 minutes' $$
+);
+

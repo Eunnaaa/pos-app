@@ -1,0 +1,11 @@
+{
+  "id": "self-order-8-menu-api",
+  "title": "GET menu endpoint",
+  "description": "/api/v1/self-order/menu anon.",
+  "status": "completed",
+  "createdAt": "2026-08-17T17:17:28.814Z",
+  "updatedAt": "2026-08-17T17:17:28.814Z",
+  "startedAt": "2026-08-17T17:17:28.814Z",
+  "completion": "/api/v1/self-order/menu anon.",
+  "completedAt": "2026-08-17T17:17:28.814Z"
+}

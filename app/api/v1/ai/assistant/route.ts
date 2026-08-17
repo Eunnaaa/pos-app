@@ -16,7 +16,6 @@ function periodFor(question: string): Period {
   const normalized = question.toLowerCase();
   const end = new Date();
 
-  // Yesterday / kemarin
   if (/kemarin|yesterday/.test(normalized)) {
     const start = new Date(end);
     start.setDate(start.getDate() - 1);
@@ -24,7 +23,6 @@ function periodFor(question: string): Period {
     return { label: "kemarin", start, end: new Date(start.getTime() + 86_400_000) };
   }
 
-  // Last N days / N hari terakhir
   const daysMatch = normalized.match(/(\d+)\s*(hari|days?)/);
   if (daysMatch && !/ini|berjalan|this/.test(normalized)) {
     const n = parseInt(daysMatch[1], 10);
@@ -34,14 +32,12 @@ function periodFor(question: string): Period {
     return { label: `${n} hari terakhir`, start, end };
   }
 
-  // Today
   if (/hari ini|hari berjalan|today/.test(normalized)) {
     const start = new Date(end);
     start.setHours(0, 0, 0, 0);
     return { label: "hari ini", start, end };
   }
 
-  // This week
   if (/minggu ini|this week/.test(normalized)) {
     const start = new Date(end);
     start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
@@ -49,7 +45,6 @@ function periodFor(question: string): Period {
     return { label: "minggu ini", start, end };
   }
 
-  // Last week / minggu lalu
   if (/minggu lalu|last week/.test(normalized)) {
     const start = new Date(end);
     start.setDate(start.getDate() - 7 - ((start.getDay() + 6) % 7));
@@ -57,7 +52,6 @@ function periodFor(question: string): Period {
     return { label: "minggu lalu", start, end: new Date(start.getTime() + 7 * 86_400_000) };
   }
 
-  // This month
   if (/bulan ini|this month/.test(normalized)) {
     const start = new Date(end);
     start.setDate(1);
@@ -65,7 +59,6 @@ function periodFor(question: string): Period {
     return { label: "bulan ini", start, end };
   }
 
-  // Last month / bulan lalu
   if (/bulan lalu|last month/.test(normalized)) {
     const start = new Date(end);
     start.setMonth(start.getMonth() - 1);
@@ -74,7 +67,6 @@ function periodFor(question: string): Period {
     return { label: "bulan lalu", start, end: new Date(start.getFullYear(), start.getMonth() + 1, 1) };
   }
 
-  // This year
   if (/tahun ini|this year/.test(normalized)) {
     const start = new Date(end);
     start.setMonth(0, 1);
@@ -82,7 +74,6 @@ function periodFor(question: string): Period {
     return { label: "tahun ini", start, end };
   }
 
-  // Default: last 7 days
   const start = new Date(end);
   start.setDate(start.getDate() - 7);
   start.setHours(0, 0, 0, 0);

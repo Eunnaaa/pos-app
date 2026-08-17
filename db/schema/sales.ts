@@ -14,6 +14,7 @@ import {
 import { user } from "./auth";
 import { productVariants, taxRates } from "./catalog";
 import { cashRegisterSessions } from "./finance";
+import { diningTables } from "./hospitality";
 import { idColumn, moneyColumn, quantityColumn, timestamps, type JsonValue } from "./helpers";
 import { customers, promotions } from "./parties";
 import { branches, organizations, warehouses } from "./tenancy";
@@ -29,10 +30,11 @@ export const salesOrders = pgTable(
     cashierUserId: text("cashier_user_id").references(() => user.id, { onDelete: "set null" }),
     cashSessionId: uuid("cash_session_id").references(() => cashRegisterSessions.id, { onDelete: "restrict" }),
     parentOrderId: uuid("parent_order_id"),
+    tableId: uuid("table_id").references(() => diningTables.id, { onDelete: "set null" }),
     orderNumber: text("order_number").notNull(),
     type: text("type").$type<"sale" | "quotation" | "invoice">().default("sale").notNull(),
     status: text("status").$type<"draft" | "held" | "pending" | "confirmed" | "paid" | "partially_refunded" | "refunded" | "cancelled">().default("draft").notNull(),
-    channel: text("channel").default("pos").notNull(),
+    channel: text("channel").$type<"pos" | "self_order" | "kiosk">().default("pos").notNull(),
     subtotalAmount: moneyColumn("subtotal_amount"),
     discountAmount: moneyColumn("discount_amount"),
     taxAmount: moneyColumn("tax_amount"),
@@ -53,6 +55,7 @@ export const salesOrders = pgTable(
     uniqueIndex("sales_orders_org_offline_ref_uidx").on(table.organizationId, table.offlineReference).where(sql`${table.offlineReference} is not null`),
     index("sales_orders_org_branch_time_idx").on(table.organizationId, table.branchId, table.occurredAt),
     index("sales_orders_customer_idx").on(table.customerId),
+    index("sales_orders_table_idx").on(table.organizationId, table.tableId),
     check("sales_orders_nonnegative_total", sql`${table.totalAmount} >= 0`),
   ],
 );

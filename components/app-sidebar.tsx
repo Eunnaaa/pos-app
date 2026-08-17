@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   PackageSearch,
   Percent,
+  QrCode,
   ReceiptText,
   Settings,
   ShoppingCart,
@@ -40,7 +41,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const groups = [
-  {
+    {
     label: "Operasional",
     items: [
       ["Dashboard", "/dashboard", LayoutDashboard],
@@ -48,6 +49,7 @@ const groups = [
       ["Transaksi", "/dashboard/sales", ReceiptText],
       ["Kitchen Display", "/dashboard/kitchen", ChefHat],
       ["Reservasi", "/dashboard/reservations", CalendarDays],
+      ["Self Order QR", "/dashboard/self-order", QrCode],
     ],
   },
   {
@@ -90,6 +92,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const itemPermission: Record<string, string> = {
     "/dashboard": "dashboard:read", "/dashboard/pos": "pos:write", "/dashboard/sales": "sales:read",
     "/dashboard/customers": "customers:read", "/dashboard/cashiers": "users:manage", "/dashboard/reports": "reports:read",
+    "/dashboard/self-order": "selfOrder:manage",
   }
   const visibleGroups = groups.map((group) => ({ ...group, items: group.items.filter(([, href]) => allowed.has("all") || allowed.has(itemPermission[href] || "")) })).filter((group) => group.items.length)
   const userData = session?.user
