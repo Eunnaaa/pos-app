@@ -56,7 +56,12 @@ export default function SignUpPage() {
   async function social() {
     setError(""); setLoading(true)
     try {
-      const result = await signIn.social({ provider: "google", callbackURL: await resolveAuthenticatedDestination() })
+      const result = await signIn.social({
+        provider: "google",
+        // Sama seperti sign-in: resolve sebelum login selalu 401 -> onboarding.
+        // Dashboard layout yang menentukan tujuan akhir.
+        callbackURL: "/dashboard",
+      })
       if (result.error) setError(result.error.message || "Gagal daftar dengan Google")
     } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
     finally { setLoading(false) }

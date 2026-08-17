@@ -23,7 +23,14 @@ export default function SignInPage() {
   async function social(provider: "google") {
     setError(""); setLoading(true)
     try {
-      const result = await signIn.social({ provider, callbackURL: await resolveAuthenticatedDestination() })
+      const result = await signIn.social({
+        provider,
+        // Jangan resolve destination sebelum login: saat belum ada session, /me/organizations
+        // selalu 401 -> callbackURL jatuh ke /onboarding meski user sudah punya bisnis.
+        // Dashboard layout + OrganizationProvider yang menentukan tujuan setelah login
+        // (ada organisasi = dashboard, kosong = onboarding).
+        callbackURL: "/dashboard",
+      })
       if (result.error) setError(result.error.message || "Gagal masuk dengan Google")
     } catch { setError("Tidak dapat terhubung. Periksa koneksi Anda.") }
     finally { setLoading(false) }

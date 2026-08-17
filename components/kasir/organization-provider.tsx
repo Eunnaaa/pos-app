@@ -34,6 +34,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
   const [branchId, setBranchId] = useState<string>()
   const [warehouseId, setWarehouseId] = useState<string>()
   const [loading, setLoading] = useState(true)
+  const [noOrganization, setNoOrganization] = useState(false)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -42,7 +43,16 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       if (response.status === 401) { router.replace("/sign-in"); return }
       if (!response.ok) throw new Error("Gagal mengambil organisasi")
       const payload = await response.json() as ApiEnvelope<UserOrganization[]>
-      if (!payload.data.length) { router.replace("/onboarding"); return }
+      if (!payload.data.length) {
+        // User tersi tapi belum punya organisasi. Jangan render children (mereka
+        // memanggil API tenant dengan org id yang basi dan menghasilkan 403 berulang).
+        // Biarkan redirect ke onboarding jalan.
+        setNoOrganization(true)
+        router.replace("/onboarding")
+        setLoading(false)
+        return
+      }
+      setNoOrganization(false)
       setOrganizations(payload.data)
       const storedOrganizationId = localStorage.getItem(ACTIVE_ORGANIZATION_KEY)
       const selected = payload.data.find((item) => item.id === storedOrganizationId) ?? payload.data[0]
@@ -91,7 +101,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
 
   const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }
 
-  if (loading && !organization) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
+  if (loading || noOrganization) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>
 }
 
