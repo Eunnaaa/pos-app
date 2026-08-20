@@ -1,8 +1,10 @@
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { signOut } from "@/lib/auth-client"
+import { useRouter } from "@/i18n/navigation"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import {
   IconCreditCard,
   IconDotsVertical,
@@ -43,6 +45,7 @@ export function NavUser({
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
+  const t = useTranslations("NavUser")
   const [isSigningOut, setIsSigningOut] = useState(false)
 
   const handleSignOut = async () => {
@@ -52,9 +55,11 @@ export function NavUser({
       localStorage.removeItem("kasir-ku-organization-id")
       localStorage.removeItem("kasir-ku-branch-id")
       localStorage.removeItem("kasir-ku-warehouse-id")
+      showSuccess("Berhasil keluar")
       router.replace("/sign-in")
     } catch (error) {
       console.error("Sign out error:", error)
+      showError("Gagal keluar")
     } finally {
       setIsSigningOut(false)
     }
@@ -110,21 +115,21 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuItem>
                 <IconUserCircle />
-                Akun
+                {t("account")}
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconCreditCard />
-                Billing
+                {t("billing")}
               </DropdownMenuItem>
               <DropdownMenuItem>
                 <IconNotification />
-                Notifikasi
+                {t("notifications")}
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleSignOut} disabled={isSigningOut}>
               <IconLogout />
-              {isSigningOut ? "Keluar..." : "Keluar"}
+              {isSigningOut ? t("signingOut") : t("signOut")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

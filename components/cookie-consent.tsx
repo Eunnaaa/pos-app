@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Cookie } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { showInfo } from "@/lib/toast-handler"
 
 const CONSENT_KEY = "kasir-ku-cookie-consent"
 
@@ -26,6 +27,7 @@ export function CookieConsent() {
       // localStorage might be unavailable (private mode); dismiss visually only
     }
     setVisible(false)
+    showInfo(value === "accepted" ? "Preferensi cookie disimpan" : "Preferensi cookie disimpan")
   }
 
   if (!visible) return null

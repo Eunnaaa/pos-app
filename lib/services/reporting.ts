@@ -107,6 +107,7 @@ export async function salesReport(
       JOIN sales_orders so ON so.id = sp.order_id
       WHERE sp.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+        AND sp.status IN ('settled', 'authorized')
         AND sp.created_at >= ${startDate}
         AND sp.created_at < ${endDate}
       GROUP BY sp.method
@@ -230,11 +231,11 @@ export async function inventoryReport(
       SELECT 
         p.name,
         CASE 
-          WHEN avg_quantity = 0 THEN '0'
+          WHEN avg_quantity IS NULL OR avg_quantity = 0 THEN '0'
           ELSE (365 * sb.available / NULLIF(avg_quantity, 0))::text
         END as turnover_rate,
         CASE 
-          WHEN avg_quantity = 0 THEN 365
+          WHEN avg_quantity IS NULL OR avg_quantity = 0 THEN 365
           ELSE (sb.available / NULLIF(avg_quantity, 0))::int
         END as days_in_stock
       FROM stock_balances sb
@@ -282,7 +283,7 @@ export async function purchaseReport(
         COUNT(*)::int as total_orders,
         COALESCE(SUM(total_amount), 0)::text as total_amount,
         COALESCE(SUM(CASE WHEN status = 'received' THEN total_amount ELSE 0 END), 0)::text as received_amount,
-        COALESCE(SUM(CASE WHEN status IN ('draft', 'open') THEN total_amount ELSE 0 END), 0)::text as pending_amount,
+        COALESCE(SUM(CASE WHEN status IN ('draft', 'submitted', 'partially_received') THEN total_amount ELSE 0 END), 0)::text as pending_amount,
         COUNT(DISTINCT supplier_id)::int as unique_suppliers
       FROM purchase_orders
       WHERE organization_id = ${organizationId}

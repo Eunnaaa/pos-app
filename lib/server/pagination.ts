@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AppError } from "./errors";
 
 export const paginationSchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(25),
+  limit: z.coerce.number().int().min(1).max(200).default(25),
   cursor: z.string().max(500).optional(),
 });
 

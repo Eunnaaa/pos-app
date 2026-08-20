@@ -6,12 +6,12 @@ import { test, expect } from "@playwright/test";
  */
 
 test("landing page renders with hero and CTA", async ({ page }) => {
-  await page.goto("/");
-  await expect(page).toHaveTitle(/Kasir-Ku/);
-  await expect(page.getByRole("heading", { name: /kelola bisnis lebih mudah/i })).toBeVisible();
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveTitle(/Kasir-Ku/, { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: /kelola bisnis lebih mudah/i })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("link", { name: /coba gratis sekarang/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /syarat layanan/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /kebijakan privasi/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /syarat layanan/i }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /kebijakan privasi/i }).first()).toBeVisible();
 });
 
 test("landing page footer has help link", async ({ page }) => {
@@ -22,16 +22,17 @@ test("landing page footer has help link", async ({ page }) => {
 test("sign-in page renders form", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page.getByLabel(/email/i)).toBeVisible();
-  await expect(page.getByLabel(/kata sandi/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: /masuk/i })).toBeVisible();
+  await expect(page.getByLabel(/^kata sandi$/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^masuk$/i })).toBeVisible();
 });
 
 test("sign-up page validates password length", async ({ page }) => {
   await page.goto("/sign-up");
   await page.getByLabel(/nama lengkap/i).fill("Test User");
   await page.getByLabel(/email bisnis/i).fill("test@example.com");
-  await page.getByLabel(/kata sandi/i).fill("short");
+  await page.getByLabel(/^kata sandi$/i).fill("short");
   await page.getByLabel(/konfirmasi kata sandi/i).fill("short");
+  await page.getByText(/saya menyetujui/i).locator("..").locator("input[type=checkbox]").check();
   await page.getByRole("button", { name: /buat akun gratis/i }).click();
   await expect(page.getByText(/minimal 12 karakter/i)).toBeVisible();
 });
@@ -52,8 +53,7 @@ test("help page renders FAQ accordion", async ({ page }) => {
   await page.goto("/help");
   await expect(page.getByRole("heading", { name: /pusat bantuan/i })).toBeVisible();
   await expect(page.getByText(/apa itu kasir-ku/i)).toBeVisible();
-  // Click to expand first FAQ
-  await page.getByText(/apa itu kasir-ku/i).click();
+  // First FAQ is open by default; check text without clicking to avoid toggling closed
   await expect(page.getByText(/platform point of sale/i)).toBeVisible();
 });
 

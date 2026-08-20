@@ -1,4 +1,4 @@
-import { errorResponse } from "@/lib/server";
+import { AppError, errorResponse } from "@/lib/server";
 import { logger } from "@/lib/server/logger";
 
 export type ApiHandler = (request: Request) => Promise<Response>;
@@ -23,7 +23,11 @@ export function apiHandler(handler: ApiHandler): ApiHandler {
       }
       return response;
     } catch (error) {
-      logger.error("api unhandled error", { requestId, method: request.method, path: url.pathname }, error);
+      if (error instanceof AppError && error.status < 500) {
+        logger.warn("api error", { requestId, method: request.method, path: url.pathname, code: error.code, status: error.status });
+      } else {
+        logger.error("api unhandled error", { requestId, method: request.method, path: url.pathname }, error);
+      }
       return errorResponse(error, requestId);
     }
   };

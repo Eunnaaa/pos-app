@@ -23,6 +23,12 @@ export const salesReturnSchema = z.object({
   paymentId: z.string().uuid().optional(),
   externalReference: z.string().max(200).optional(),
   items: z.array(z.object({ orderItemId: z.string().uuid(), quantity: positive, restock: z.boolean().default(true) })).min(1).max(500),
+}).superRefine((input, ctx) => {
+  const ids = input.items.map((item) => item.orderItemId);
+  const duplicates = [...new Set(ids.filter((id, index) => ids.indexOf(id) !== index))];
+  if (duplicates.length) {
+    ctx.addIssue({ code: "custom", path: ["items"], message: `Duplicate orderItemId in return payload: ${duplicates.join(", ")}` });
+  }
 });
 
 export async function processSalesReturn(input: z.infer<typeof salesReturnSchema>, context: ApiContext) {

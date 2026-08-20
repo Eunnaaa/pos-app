@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import {
   ACTIVE_BRANCH_KEY,
@@ -12,6 +12,8 @@ import {
   type ApiEnvelope,
   type UserOrganization,
 } from "@/lib/client"
+import { useRouter } from "@/i18n/navigation"
+import { showError } from "@/lib/toast-handler"
 
 type OrganizationContextValue = {
   organizations: UserOrganization[]
@@ -28,6 +30,7 @@ type OrganizationContextValue = {
 const OrganizationContext = createContext<OrganizationContextValue | null>(null)
 
 export function OrganizationProvider({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("OrganizationProvider")
   const router = useRouter()
   const [organizations, setOrganizations] = useState<UserOrganization[]>([])
   const [organizationId, setOrganizationId] = useState<string>()
@@ -41,7 +44,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     try {
       const response = await fetch("/api/v1/me/organizations", { credentials: "include", cache: "no-store" })
       if (response.status === 401) { router.replace("/sign-in"); return }
-      if (!response.ok) throw new Error("Gagal mengambil organisasi")
+      if (!response.ok) throw new Error(t("fetchFailed"))
       const payload = await response.json() as ApiEnvelope<UserOrganization[]>
       if (!payload.data.length) {
         // User tersi tapi belum punya organisasi. Jangan render children (mereka
@@ -57,15 +60,17 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
       const storedOrganizationId = localStorage.getItem(ACTIVE_ORGANIZATION_KEY)
       const selected = payload.data.find((item) => item.id === storedOrganizationId) ?? payload.data[0]
       const storedBranchId = localStorage.getItem(ACTIVE_BRANCH_KEY)
-      const selectedBranch = storedBranchId ? selected.branches.find((item) => item.id === storedBranchId) : undefined
-      const storedWarehouseId = selectedBranch ? localStorage.getItem(ACTIVE_WAREHOUSE_KEY) : undefined
+      const selectedBranch = (storedBranchId ? selected.branches.find((item) => item.id === storedBranchId) : undefined) ?? selected.branches[0]
+      const storedWarehouseId = localStorage.getItem(ACTIVE_WAREHOUSE_KEY)
       const selectedWarehouse = selectedBranch?.warehouses.find((item) => item.id === storedWarehouseId)
         ?? selectedBranch?.warehouses.find((item) => item.isDefault)
         ?? selectedBranch?.warehouses[0]
       persistActiveContext({ organizationId: selected.id, branchId: selectedBranch?.id, warehouseId: selectedWarehouse?.id })
       setOrganizationId(selected.id); setBranchId(selectedBranch?.id); setWarehouseId(selectedWarehouse?.id)
+    } catch (caught) {
+      showError(caught instanceof Error ? caught.message : t("fetchFailed"))
     } finally { setLoading(false) }
-  }, [router])
+  }, [router, t])
 
   useEffect(() => { void refresh() }, [refresh])
 

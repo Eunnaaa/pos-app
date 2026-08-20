@@ -64,6 +64,13 @@
       "when": 1786986450519,
       "tag": "0008_clumsy_skullbuster",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787145687589,
+      "tag": "0009_chief_living_mummy",
+      "breakpoints": true
     }
   ]
 }

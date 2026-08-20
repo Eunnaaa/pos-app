@@ -11,12 +11,13 @@ import {
   salesOrders,
   salesPayments,
   kitchenTickets,
+  kitchenTicketItems,
   warehouses,
 } from "@/db/schema";
 import { AppError } from "@/lib/server";
 import { transformImageUrl } from "@/lib/integrations/storage";
 import { checkout, type CheckoutContext, type CheckoutInput } from "./checkout";
-import { createXenditPayment, type XenditPaymentMethod } from "@/lib/integrations/payments";
+import { createMidtransPayment, createXenditPayment, type XenditPaymentMethod } from "@/lib/integrations/payments";
 import { getServerEnv } from "@/config/env";
 
 export type SelfOrderMenuItem = {
@@ -124,9 +125,10 @@ export async function getMenu(token: string): Promise<SelfOrderMenu> {
       eq(productVariants.isActive, true),
     ));
 
-  // Ponytail: filter availableForSelfOrder post-query karena simpan di metadata jsonb.
-  // Upgrade: ganti dengan PG operator `(metadata->>'availableForSelfOrder')::bool = true` saat ada index.
-  const filtered = (rows as Array<MenuRow & { productMetadata: Record<string, unknown> }>).filter((r) => r.productMetadata?.availableForSelfOrder === true);
+  // Tampilkan produk aktif secara default untuk self-order (kecuali jika secara eksplisit diset availableForSelfOrder === false)
+  const filtered = (rows as Array<MenuRow & { productMetadata: Record<string, unknown> | null }>).filter(
+    (r) => r.productMetadata?.availableForSelfOrder !== false
+  );
 
   const categoriesMap = new Map<string, SelfOrderMenuCategory>();
   const productsMap = new Map<string, SelfOrderMenuItem>();
@@ -226,6 +228,46 @@ export async function createSelfOrder(params: {
   };
 
   const result = await checkout(checkoutInput, context);
+
+  // Pastikan Tiket Dapur (Kitchen Ticket) otomatis dibuat agar langsung tampil di Kitchen Display
+  const [existingTicket] = await db
+    .select({ id: kitchenTickets.id })
+    .from(kitchenTickets)
+    .where(eq(kitchenTickets.orderId, result.order.id))
+    .limit(1);
+
+  if (!existingTicket) {
+    const orderItems = await db
+      .select({ id: salesOrderItems.id, notes: salesOrderItems.notes })
+      .from(salesOrderItems)
+      .where(eq(salesOrderItems.orderId, result.order.id));
+
+    if (orderItems.length > 0) {
+      const ticketId = crypto.randomUUID();
+      const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
+
+      await db.insert(kitchenTickets).values({
+        id: ticketId,
+        organizationId: t.organizationId,
+        branchId: t.branchId,
+        orderId: result.order.id,
+        number: ticketNumber,
+        status: "queued",
+        priority: 0,
+      });
+
+      await db.insert(kitchenTicketItems).values(
+        orderItems.map((item) => ({
+          organizationId: t.organizationId,
+          ticketId,
+          orderItemId: item.id,
+          status: "queued" as const,
+          notes: item.notes,
+        })),
+      );
+    }
+  }
+
   return {
     order: {
       id: result.order.id,
@@ -258,7 +300,20 @@ export async function createXenditCharge(orderId: string, options?: { customerNa
     .limit(1);
 
   const env = getServerEnv();
-  void env;
+
+  if (env.MIDTRANS_SERVER_KEY && !env.XENDIT_SECRET_KEY) {
+    const result = await createMidtransPayment({
+      reference: order.orderNumber,
+      amount: Number(order.totalAmount),
+      customerName: options?.customerName || "Guest",
+      description: `Self-order ${order.orderNumber}`,
+      organizationSlug: org?.slug,
+    });
+    return {
+      invoiceUrl: result.paymentUrl ?? null,
+      externalId: result.externalId,
+    };
+  }
 
   const result = await createXenditPayment({
     reference: order.orderNumber,

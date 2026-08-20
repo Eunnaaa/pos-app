@@ -103,7 +103,7 @@ export async function closeCashSession(sessionId: string, input: z.infer<typeof 
     const [changeRow] = await tx.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
     const movementRows = await tx.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
     const payments = Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)]));
-    const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "unassigned_refund", BigInt(row.amount)]));
+    const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "cash", BigInt(row.amount)]));
     const cashIn = BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0");
     const cashOut = BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0");
     const requiredMethods = new Set(["cash", ...Object.keys(payments)]);
@@ -141,7 +141,7 @@ export async function previewSettlement(sessionId: string, context: ApiContext) 
   const movementRows = await db.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
 
   const payments = Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)]));
-  const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "unassigned_refund", BigInt(row.amount)]));
+  const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "cash", BigInt(row.amount)]));
   const cashIn = BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0");
   const cashOut = BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0");
 

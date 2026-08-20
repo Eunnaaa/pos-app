@@ -88,6 +88,20 @@ export const auth = betterAuth({
       locale: { type: "string", required: false, defaultValue: "id-ID" },
       metadata: { type: "json", required: false, input: false },
     },
+    ...(emailEnabled
+      ? {
+          changeEmail: {
+            enabled: true,
+            sendChangeEmailVerification: async ({ newEmail, url }) => {
+              await sendEmail(
+                newEmail,
+                "Konfirmasi Email Baru — Kasir-Ku",
+                `<p>Kami menerima permintaan untuk mengubah email akun Kasir-Ku Anda menjadi <strong>${newEmail}</strong>.</p><p>Klik tautan berikut untuk mengonfirmasi perubahan email:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Konfirmasi Email Baru</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta perubahan ini, abaikan email ini.</p>`,
+              );
+            },
+          },
+        }
+      : {}),
   },
   session: {
     expiresIn: 60 * 60 * 12,

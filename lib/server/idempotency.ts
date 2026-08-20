@@ -51,6 +51,11 @@ export async function claimIdempotency(
   if (existing.status === "completed" && existing.responseStatus && existing.responseBody !== null) {
     return { state: "replay", status: existing.responseStatus, body: existing.responseBody as JsonValue };
   }
+  // A previous attempt failed: allow a clean retry instead of blocking retries forever.
+  if (existing.status === "failed") {
+    await database.delete(idempotencyKeys).where(eq(idempotencyKeys.id, existing.id));
+    return claimIdempotency(input, database);
+  }
   if (existing.expiresAt <= now) {
     await database.delete(idempotencyKeys).where(eq(idempotencyKeys.id, existing.id));
     return claimIdempotency(input, database);

@@ -54,14 +54,14 @@ async function getRange(type: ClosingPeriodType, key: string, timezone: string, 
   return { start: new Date(result.rows[0].start_at), end: new Date(result.rows[0].end_at) };
 }
 
-async function aggregateDay(organizationId: string, branchId: string, start: Date, end: Date, database: Database = db): Promise<ClosingTotals> {
+async function aggregateDay(organizationId: string, branchId: string, start: Date, end: Date, timezone: string, database: Database = db): Promise<ClosingTotals> {
   const [sales] = await database.select({
     salesGross: sql<string>`coalesce(sum(${salesOrders.subtotalAmount}), 0)`, salesNet: sql<string>`coalesce(sum(${salesOrders.totalAmount}), 0)`,
     discounts: sql<string>`coalesce(sum(${salesOrders.discountAmount}), 0)`, tax: sql<string>`coalesce(sum(${salesOrders.taxAmount}), 0)`,
     cost: sql<string>`coalesce(sum(${salesOrders.costAmount}), 0)`, orders: sql<number>`count(*)::int`,
   }).from(salesOrders).where(and(eq(salesOrders.organizationId, organizationId), eq(salesOrders.branchId, branchId), gte(salesOrders.occurredAt, start), lt(salesOrders.occurredAt, end), sql`${salesOrders.status} in ('paid', 'partially_refunded', 'refunded')`));
   const [refundRow] = await database.select({ amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).where(and(eq(salesReturns.organizationId, organizationId), eq(salesReturns.branchId, branchId), eq(refunds.status, "processed"), gte(refunds.processedAt, start), lt(refunds.processedAt, end)));
-  const [expenseRow] = await database.select({ amount: sql<string>`coalesce(sum(${expenses.amount}), 0)` }).from(expenses).where(and(eq(expenses.organizationId, organizationId), eq(expenses.branchId, branchId), sql`${expenses.status} in ('approved', 'paid')`, gte(expenses.expenseDate, start.toISOString().slice(0, 10)), lt(expenses.expenseDate, end.toISOString().slice(0, 10))));
+  const [expenseRow] = await database.select({ amount: sql<string>`coalesce(sum(${expenses.amount}), 0)` }).from(expenses).where(and(eq(expenses.organizationId, organizationId), eq(expenses.branchId, branchId), sql`${expenses.status} in ('approved', 'paid')`, sql`${expenses.expenseDate} >= (${start}::timestamptz at time zone ${timezone})::date and ${expenses.expenseDate} < (${end}::timestamptz at time zone ${timezone})::date`));
   const paymentRows = await database.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.organizationId, organizationId), eq(salesOrders.branchId, branchId), gte(salesPayments.paidAt, start), lt(salesPayments.paidAt, end), inSettled())).groupBy(salesPayments.method);
   const movementRows = await database.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).innerJoin(cashRegisterSessions, eq(cashRegisterSessions.id, cashMovements.sessionId)).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(eq(cashMovements.organizationId, organizationId), eq(cashRegisters.branchId, branchId), gte(cashMovements.createdAt, start), lt(cashMovements.createdAt, end))).groupBy(cashMovements.direction);
   const refundsAmount = BigInt(refundRow?.amount ?? "0");
@@ -91,9 +91,10 @@ async function closePeriod(type: ClosingPeriodType, key: string, branchId: strin
 
     let totals: ClosingTotals;
     if (type === "day") {
+      if (range.end > new Date()) throw new AppError("CONFLICT", `Periode ${type} belum berakhir`);
       const openSessions = await tx.select({ id: cashRegisterSessions.id }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(eq(cashRegisters.branchId, branchId), eq(cashRegisterSessions.status, "open"), lt(cashRegisterSessions.openedAt, range.end)));
       if (openSessions.length) throw new AppError("CONFLICT", "Semua shift kasir harus settlement sebelum tutup buku harian", { details: { openSessionIds: openSessions.map((session) => session.id) } });
-      totals = await aggregateDay(context.organizationId, branchId, range.start, range.end, tx as unknown as Database);
+      totals = await aggregateDay(context.organizationId, branchId, range.start, range.end, branch.timezone, tx as unknown as Database);
     } else {
       if (range.end > new Date()) throw new AppError("CONFLICT", `Periode ${type} belum berakhir`);
       const childType = type === "month" ? "day" : "month";

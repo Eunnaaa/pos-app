@@ -27,14 +27,33 @@ export type XenditPaymentMethod = "QRIS" | "OVO" | "DANA" | "SHOPEEPAY" | "PAY_L
 export async function createMidtransPayment(input: PaymentRequest): Promise<PaymentResult> {
   const env = getServerEnv();
   const config = requireProviderConfig("Midtrans", { serverKey: env.MIDTRANS_SERVER_KEY });
-  const baseUrl = env.MIDTRANS_BASE_URL || "https://app.sandbox.midtrans.com";
+  const serverKey = config.serverKey.trim();
+  const isProductionKey = serverKey.startsWith("Mid-server-");
+  const baseUrl = isProductionKey ? "https://app.midtrans.com" : "https://app.sandbox.midtrans.com";
+
   const result = await providerRequest<{ token: string; redirect_url: string }>("Midtrans", `${baseUrl}/snap/v1/transactions`, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Basic ${Buffer.from(`${config.serverKey}:`).toString("base64")}` },
+    headers: {
+      "content-type": "application/json",
+      "accept": "application/json",
+      authorization: `Basic ${Buffer.from(`${serverKey}:`).toString("base64")}`,
+    },
     body: JSON.stringify({
-      transaction_details: { order_id: input.reference, gross_amount: input.amount },
-      customer_details: { first_name: input.customerName, email: input.customerEmail },
-      item_details: [{ id: input.reference, price: input.amount, quantity: 1, name: input.description.slice(0, 50) }],
+      transaction_details: { order_id: `${input.reference}-${Date.now().toString(36)}`, gross_amount: Math.round(input.amount) },
+      customer_details: { first_name: input.customerName || "Customer", email: input.customerEmail || "customer@self-order.local" },
+      item_details: [{ id: input.reference, price: Math.round(input.amount), quantity: 1, name: input.description.slice(0, 50) }],
+      enabled_payments: [
+        "qris",
+        "gopay",
+        "shopeepay",
+        "bca_va",
+        "bni_va",
+        "bri_va",
+        "mandiri_va",
+        "permata_va",
+        "other_va",
+        "credit_card"
+      ],
     }),
   });
   return { provider: "midtrans", externalId: input.reference, paymentUrl: result.redirect_url, token: result.token, raw: result };

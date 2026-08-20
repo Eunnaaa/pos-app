@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import createMiddleware from "next-intl/middleware";
+import { routing } from "./i18n/routing";
 
 /**
  * Edge-level rate limiting for domain API routes.
@@ -69,13 +71,8 @@ function getRateLimit(ip: string, isWrite: boolean, isSelfOrder: boolean): { all
   return { allowed, remaining, resetAt: bucket.resetAt };
 }
 
-export function middleware(request: NextRequest) {
+function handleRateLimit(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-
-  // Only rate-limit domain API routes; Better Auth handles /api/auth/*
-  if (!pathname.startsWith("/api/v1/")) {
-    return NextResponse.next();
-  }
 
   // Health check is exempt
   if (pathname === "/api/v1/health") {
@@ -113,6 +110,20 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
+const intlMiddleware = createMiddleware(routing);
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Only rate-limit domain API routes; Better Auth handles /api/auth/*
+  if (pathname.startsWith("/api/v1/")) {
+    return handleRateLimit(request);
+  }
+
+  return intlMiddleware(request);
+}
+
 export const config = {
-  matcher: ["/api/v1/:path*"],
+  // Matcher from next-intl defaults + API route rate limiting.
+  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)", "/api/v1/:path*"],
 };

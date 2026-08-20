@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import createNextIntlPlugin from "next-intl/plugin";
 
 const isProduction = process.env.NODE_ENV === "production";
 const contentSecurityPolicy = [
@@ -35,9 +36,35 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  compress: true,
+  images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days
+  },
+  experimental: {
+    optimizePackageImports: [
+      "lucide-react",
+      "date-fns",
+      "qrcode",
+      "@radix-ui/react-icons",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-select",
+      "@radix-ui/react-tabs",
+      "@radix-ui/react-scroll-area",
+      "@radix-ui/react-slot",
+    ],
+  },
   async headers() {
-    return [{ source: "/(.*)", headers: securityHeaders }];
+    return [
+      { source: "/(.*)", headers: securityHeaders },
+      {
+        source: "/_next/static/(.*)",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+    ];
   },
 };
 
-export default nextConfig;
+export default createNextIntlPlugin("./i18n/request.ts")({
+  ...nextConfig,
+});

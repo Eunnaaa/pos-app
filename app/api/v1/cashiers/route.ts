@@ -46,33 +46,56 @@ export const POST = apiHandler(async (request) => {
       .where(and(eq(branches.organizationId, context.organizationId), eq(branches.isActive, true), inArray(branches.id, input.branchIds)));
     if (validBranches.length !== input.branchIds.length) throw new AppError("VALIDATION_ERROR", "All branches must belong to organization");
   }
-  const [existingUser] = await db.select({ id: user.id }).from(user).where(sql`lower(${user.email}) = ${input.email}`).limit(1);
-  if (existingUser) throw new AppError("CONFLICT", "Email sudah terdaftar, gunakan email lain untuk kasir");
+  const [existingUser] = await db
+    .select({ id: user.id, name: user.name, email: user.email })
+    .from(user)
+    .where(sql`lower(${user.email}) = ${input.email}`)
+    .limit(1);
 
-  let created: { user?: { id: string; name: string; email: string }; error?: { status?: number; message?: string } };
-  try {
-    created = (await auth.api.signUpEmail({
-      body: { name: input.name, email: input.email, password: input.password },
-    })) as { user?: { id: string; name: string; email: string }; error?: { status?: number; message?: string } };
-  } catch (error) {
-    logger.error("cashiers signUpEmail threw", { email: input.email }, error);
-    throw new AppError("INTERNAL_ERROR", "Gagal membuat akun kasir", { cause: error });
+  let userId: string;
+  let displayName: string;
+  let displayEmail: string;
+
+  if (existingUser) {
+    const [alreadyMember] = await db
+      .select({ id: tenantMembers.id })
+      .from(tenantMembers)
+      .where(and(eq(tenantMembers.organizationId, context.organizationId), eq(tenantMembers.userId, existingUser.id)))
+      .limit(1);
+    if (alreadyMember) throw new AppError("CONFLICT", "Email sudah terdaftar sebagai member organisasi ini");
+    userId = existingUser.id;
+    displayName = existingUser.name || input.name;
+    displayEmail = existingUser.email;
+  } else {
+    let created: { user?: { id: string; name: string; email: string }; error?: { status?: number; message?: string } };
+    try {
+      created = (await auth.api.signUpEmail({
+        body: { name: input.name, email: input.email, password: input.password },
+      })) as { user?: { id: string; name: string; email: string }; error?: { status?: number; message?: string } };
+    } catch (error) {
+      logger.error("cashiers signUpEmail threw", { email: input.email }, error);
+      throw new AppError("INTERNAL_ERROR", "Gagal membuat akun kasir", { cause: error });
+    }
+    if (created.error) throw new AppError(created.error.status === 409 ? "CONFLICT" : "BAD_REQUEST", created.error.message || "Gagal membuat akun kasir");
+    const createdUser = created.user;
+    if (!createdUser) throw new AppError("INTERNAL_ERROR", "Failed to create cashier user");
+    userId = createdUser.id;
+    displayName = createdUser.name;
+    displayEmail = createdUser.email;
   }
-  if (created.error) throw new AppError(created.error.status === 409 ? "CONFLICT" : "BAD_REQUEST", created.error.message || "Gagal membuat akun kasir");
-  const createdUser = created.user;
-  if (!createdUser) throw new AppError("INTERNAL_ERROR", "Failed to create cashier user");
+
   try {
     const result = await db.transaction(async (tx) => {
-      const [member] = await tx.insert(tenantMembers).values({ organizationId: context.organizationId, userId: createdUser.id, role: "cashier" }).returning();
+      const [member] = await tx.insert(tenantMembers).values({ organizationId: context.organizationId, userId, role: "cashier" }).returning();
       if (!member) throw new AppError("INTERNAL_ERROR", "Failed to create cashier membership");
       if (input.branchIds.length > 0) {
         await tx.insert(memberBranches).values(input.branchIds.map((branchId) => ({ tenantMemberId: member.id, branchId })));
       }
       return member;
     });
-    return dataResponse({ memberId: result.id, userId: createdUser.id, name: createdUser.name, email: createdUser.email, role: result.role, branchIds: input.branchIds }, { status: 201 });
+    return dataResponse({ memberId: result.id, userId, name: displayName, email: displayEmail, role: result.role, branchIds: input.branchIds }, { status: 201 });
   } catch (error) {
-    await db.delete(user).where(eq(user.id, createdUser.id)).catch(() => undefined);
+    if (!existingUser) await db.delete(user).where(eq(user.id, userId)).catch(() => undefined);
     throw error;
   }
 });

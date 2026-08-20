@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { Building2, ChevronsUpDown, Wifi } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +19,8 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { NotificationBell } from "@/components/notification-bell"
 import { useOrganization } from "@/components/kasir/organization-provider"
+import { LanguageToggle } from "@/components/language-toggle"
+import { showSuccess } from "@/lib/toast-handler"
 
 const titles: Record<string, string> = {
   dashboard: "Dashboard",
@@ -42,6 +45,7 @@ const titles: Record<string, string> = {
 
 export function SiteHeader() {
   const pathname = usePathname()
+  const t = useTranslations("Header")
   const { organization, branch, selectBranch, selectAllBranches } = useOrganization()
   const [online, setOnline] = useState(true)
   useEffect(() => {
@@ -67,31 +71,32 @@ export function SiteHeader() {
           <p className="hidden text-xs text-muted-foreground sm:block">{new Intl.DateTimeFormat("id-ID", { dateStyle: "full" }).format(new Date())}</p>
         </div>
         <Badge variant="outline" className={`hidden gap-1.5 md:flex ${online ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"}`}>
-          <Wifi className="size-3" /> {online ? "Online" : "Offline"}
+          <Wifi className="size-3" /> {online ? t("online") : t("offline")}
         </Badge>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
               <Building2 className="mr-1.5 size-4 text-muted-foreground" />
-              <span className="truncate">{branch?.name || "Semua Cabang"}</span>
+              <span className="truncate">{branch?.name || t("allBranches")}</span>
               <ChevronsUpDown className="size-4 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>{organization?.name || "Pilih cabang"}</DropdownMenuLabel>
+            <DropdownMenuLabel>{organization?.name || t("selectBranch")}</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => selectAllBranches()}>
               <Building2 className="mr-2 size-4 text-muted-foreground" />
-              Semua Cabang{!branch ? " ✓" : ""}
+              {t("allBranches")}{!branch ? " ✓" : ""}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             {organization?.branches.map((item) => (
-              <DropdownMenuItem key={item.id} onClick={() => selectBranch(item.id)}>
+              <DropdownMenuItem key={item.id} onClick={() => { selectBranch(item.id); showSuccess("Cabang diganti") }}>
                 {item.name}{item.id === branch?.id ? " ✓" : ""}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
+        <LanguageToggle />
         <NotificationBell />
         <ThemeToggle />
       </div>

@@ -42,9 +42,9 @@ export const resources = {
   employees: { table: "employees", read: "dashboard:read", write: "employees:manage", search: ["employee_number", "name", "email", "phone"], fields: { userId: text(), employeeNumber: { ...text(true), column: "employee_number" }, name: text(true), email: text(), phone: text(), jobTitle: text(), employmentStatus: text(), hiredAt: date(), salaryReferenceAmount: bigint(), commissionRateBps: integer() } },
   expenses: { table: "expenses", read: "finance:read", write: "finance:write", search: ["expense_number", "category", "vendor", "description"], fields: { branchId: uuid(), accountId: uuid(), expenseNumber: { ...text(true), column: "expense_number" }, category: text(true), vendor: text(), description: text(true), amount: bigint(), status: text(), expenseDate: date(), receiptUrl: text() } },
   "cash-registers": { table: "cash_registers", read: "finance:read", write: "finance:write", search: ["name", "code"], fields: { branchId: uuid(true), name: text(true), code: text(true), isActive: boolean() } },
-  "dining-tables": { table: "dining_tables", read: "sales:read", write: "sales:write", search: ["name", "code"], fields: { branchId: uuid(true), name: text(true), code: text(true), capacity: integer(), status: text(), area: text() } },
+  "dining-tables": { table: "dining_tables", read: "sales:read", write: "sales:write", search: ["name", "area"], fields: { branchId: uuid(true), name: text(true), capacity: integer(), status: text(), area: text() } },
   "qr-order-tokens": { table: "qr_order_tokens", read: "selfOrder:read", write: "selfOrder:manage", search: ["token"], fields: { branchId: uuid(true), tableId: uuid(true), token: text(true), isActive: boolean(), expiresAt: timestamp() } },
-  reservations: { table: "reservations", read: "sales:read", write: "sales:write", search: ["booking_number", "guest_name", "guest_phone"], fields: { branchId: uuid(true), tableId: uuid(), customerId: uuid(), bookingNumber: { ...text(true), column: "booking_number" }, guestName: text(true), guestPhone: text(), partySize: integer(), status: text(), reservedAt: timestamp(), notes: text() } },
+  reservations: { table: "reservations", read: "sales:read", write: "sales:write", search: ["guest_name", "guest_phone"], fields: { branchId: uuid(), tableId: uuid(), customerId: uuid(), guestName: text(true), guestPhone: text(), partySize: integer(), status: text(), reservedAt: timestamp(), notes: text() } },
   "purchase-orders": { table: "purchase_orders", read: "purchases:read", write: "purchases:write", search: ["order_number", "notes"], fields: { branchId: uuid(), warehouseId: uuid(true), supplierId: uuid(true), orderNumber: { ...text(true), column: "order_number" }, status: text(), orderDate: date(), expectedDate: date(), subtotalAmount: bigint(), discountAmount: bigint(), taxAmount: bigint(), totalAmount: bigint(), notes: text() } },
   "stock-transfers": { table: "stock_transfers", read: "inventory:read", write: "inventory:write", search: ["transfer_number", "notes"], fields: { transferNumber: { ...text(true), column: "transfer_number" }, fromWarehouseId: uuid(true), toWarehouseId: uuid(true), status: text(), notes: text() } },
   "stock-counts": { table: "stock_counts", read: "inventory:read", write: "inventory:write", search: ["count_number", "notes"], fields: { warehouseId: uuid(true), countNumber: { ...text(true), column: "count_number" }, status: text(), notes: text() } },
@@ -146,9 +146,12 @@ export async function getResource(name: ResourceName, id: string, context: ApiCo
 }
 
 export async function createResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
-  const config = resources[name];
+  const config = resources[name] as { table: string; read: Permission; write: Permission; fields: Record<string, Field>; search?: string[] };
   const body = await parseResourceBody(request, config, false);
   enforceBranchScope(config, body, context);
+  if (config.fields.branchId && body.branch_id === undefined && context.branchId) {
+    body.branch_id = context.branchId;
+  }
   const id = crypto.randomUUID();
   const record = await db.transaction(async (tx) => {
     if (name === "expenses") {

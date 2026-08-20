@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { holdOrder, listHeldOrders } from "@/lib/services/pos-holds";
+import { AppError } from "@/lib/server";
 
 const cartItemSchema = z.object({
   variantId: z.string().uuid(),
@@ -18,15 +19,17 @@ const holdOrderSchema = z.object({
 
 export const POST = apiHandler(async (request) => {
   const context = await requireApiContext(request, "pos:write");
+  if (!context.branchId) throw new AppError("BAD_REQUEST", "x-branch-id header is required for held orders");
   const body = holdOrderSchema.parse(await request.json());
 
-  const held = await holdOrder(context.organizationId, context.branchId!, context.session.user.id, body);
+  const held = await holdOrder(context.organizationId, context.branchId, context.session.user.id, body);
   return dataResponse(held);
 });
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "pos:write");
+  if (!context.branchId) throw new AppError("BAD_REQUEST", "x-branch-id header is required for held orders");
 
-  const held = await listHeldOrders(context.organizationId, context.branchId!, context.session.user.id);
+  const held = await listHeldOrders(context.organizationId, context.branchId, context.session.user.id);
   return dataResponse(held);
 });

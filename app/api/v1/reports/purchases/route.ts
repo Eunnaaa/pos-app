@@ -8,7 +8,7 @@ const querySchema = z.object({
 });
 
 export const GET = apiHandler(async (request) => {
-  const context = await requireApiContext(request, "purchases:read");
+  const context = await requireApiContext(request, "reports:read");
   const url = new URL(request.url);
   const query = querySchema.parse(Object.fromEntries(url.searchParams));
 

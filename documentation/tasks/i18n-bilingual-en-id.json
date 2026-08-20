@@ -1,0 +1,11 @@
+{
+  "id": "i18n-bilingual-en-id",
+  "title": "Add Indonesian (default) and English i18n with next-intl",
+  "description": "next-intl setup with prefix routing, messages JSON, language toggle, translated Phase 1 components",
+  "status": "completed",
+  "createdAt": "2026-08-19T07:00:00.000Z",
+  "updatedAt": "2026-08-19T14:28:46.401Z",
+  "startedAt": "2026-08-19T14:28:46.361Z",
+  "completion": "i18n with next-intl: prefix routing /id /en, middleware locale handling + API rate limiting, messages/id.json + en.json with 9 namespaces, LanguageToggle in SiteHeader + auth pages, translated auth, landing, sidebar, header, nav-user, org provider, settings (4 tabs), POS, self-order. All routes moved under app/[locale]. typecheck, lint, build, 18 tests green.",
+  "completedAt": "2026-08-19T14:28:46.401Z"
+}

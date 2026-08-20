@@ -21,8 +21,11 @@ export async function providerRequest<T>(
   try { payload = text ? JSON.parse(text) : null; } catch { payload = text.slice(0, 1_000); }
   if (!response.ok) {
     const code = response.status === 429 ? "RATE_LIMITED" : response.status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST";
-    throw new AppError(code, `${provider} request failed`, {
-      details: { provider, status: response.status },
+    const detailsMsg = payload && typeof payload === "object" && "error_messages" in payload && Array.isArray((payload as { error_messages: string[] }).error_messages)
+      ? (payload as { error_messages: string[] }).error_messages.join(", ")
+      : `${provider} request failed (${response.status})`;
+    throw new AppError(code, detailsMsg, {
+      details: { provider, status: response.status, payload },
     });
   }
   if (payload === null || payload === undefined) {

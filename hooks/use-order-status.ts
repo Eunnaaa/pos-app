@@ -22,7 +22,7 @@ export type OrderStatus = {
   items: Array<{ id: string; name: string; quantity: string; totalAmount: string; notes: string | null }>;
 };
 
-export function useOrderStatus(orderId: string | null, token: string, intervalMs = 15_000) {
+export function useOrderStatus(orderId: string | null, token: string, intervalMs = 3_000) {
   const [status, setStatus] = useState<OrderStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ export function useOrderStatus(orderId: string | null, token: string, intervalMs
     let cancelled = false;
 
     async function refresh() {
-      if (cancelled) return;
+      if (cancelled || (typeof document !== "undefined" && document.hidden)) return;
       setLoading(true);
       try {
         const res = await selfOrderFetch<OrderStatus>(`/api/v1/self-order/orders/${orderId}?token=${encodeURIComponent(token)}`);
@@ -49,9 +49,18 @@ export function useOrderStatus(orderId: string | null, token: string, intervalMs
 
     void refresh();
     const id = setInterval(refresh, intervalMs);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) void refresh();
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
     return () => {
       cancelled = true;
       clearInterval(id);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
     };
   }, [orderId, token, intervalMs]);
 

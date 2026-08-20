@@ -1,0 +1,11 @@
+{
+  "id": "settings-profile-org-refactor",
+  "title": "Overhaul profile, organization, branch, and 2FA settings",
+  "description": "Enable full editing of user profile, 2FA, business organization, slug, and branch management",
+  "status": "completed",
+  "createdAt": "2026-08-19T06:00:00.000Z",
+  "updatedAt": "2026-08-19T13:45:39.071Z",
+  "startedAt": "2026-08-19T13:20:35.371Z",
+  "completion": "Full settings overhaul: user profile (name/email-reverify/avatar/2FA/password), org profile edit incl slug+extra fields+logo upload, soft-delete org, branch CRUD UI in settings, multi-business create/switch. Schema migration 0009. Typecheck, lint, build, 17 unit tests green.",
+  "completedAt": "2026-08-19T13:45:39.070Z"
+}

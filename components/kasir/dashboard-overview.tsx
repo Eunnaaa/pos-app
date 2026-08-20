@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { apiFetch } from "@/lib/client"
 import { subscribeToTable } from "@/lib/client/realtime"
+import { showError } from "@/lib/toast-handler"
 import { useOrganization } from "@/components/kasir/organization-provider"
 
 interface DashboardData {
@@ -52,8 +53,11 @@ export function DashboardOverview() {
     try {
       const response = await apiFetch<DashboardData>("/api/v1/dashboard")
       setDashboard(response.data)
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Gagal mengambil dashboard") }
-    finally { setLoading(false) }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Gagal mengambil dashboard"
+      setError(message)
+      showError(message)
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => {

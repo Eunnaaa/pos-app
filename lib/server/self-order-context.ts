@@ -20,8 +20,21 @@ export type SelfOrderContext = {
  */
 export async function requireSelfOrderContext(request: Request): Promise<SelfOrderContext> {
   const url = new URL(request.url);
-  const token =
+  let token =
     (url.searchParams.get("token")?.trim() || request.headers.get("x-self-order-token")?.trim() || "");
+
+  if (!token && request.method !== "GET" && request.method !== "HEAD") {
+    try {
+      const cloned = request.clone();
+      const body = (await cloned.json()) as Record<string, unknown>;
+      if (body && typeof body === "object" && typeof body.token === "string") {
+        token = body.token.trim();
+      }
+    } catch {
+      // Abaikan error clone bila body bukan JSON
+    }
+  }
+
   if (!token || token.length > 100) {
     throw new AppError("BAD_REQUEST", "Token self-order tidak valid");
   }

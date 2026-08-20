@@ -22,10 +22,10 @@ interface ToastOptions {
   position?: ToastPosition;
 }
 
-// Default configurations
-const DEFAULT_DURATION = 4000; // 4 seconds
-const ERROR_DURATION = 6000; // 6 seconds
-const SUCCESS_DURATION = 3000; // 3 seconds
+// Default configurations untuk notifikasi time singkat
+const DEFAULT_DURATION = 2000; // 2.0 detik
+const ERROR_DURATION = 2500;   // 2.5 detik
+const SUCCESS_DURATION = 1800; // 1.8 detik
 
 // Toast instances map untuk prevent duplicates
 const activeToasts = new Map<string, NodeJS.Timeout>();

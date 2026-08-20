@@ -13,7 +13,7 @@ export function getRealtimeClient(): SupabaseClient | null {
   return client
 }
 
-export type RealtimeTable = "sales_orders" | "stock_balances" | "cash_register_sessions"
+export type RealtimeTable = "sales_orders" | "stock_balances" | "cash_register_sessions" | "reservations"
 
 export function subscribeToTable(
   table: RealtimeTable,

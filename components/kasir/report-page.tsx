@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { apiFetch } from "@/lib/client"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrganization } from "@/components/kasir/organization-provider"
+import { showError, showSuccess } from "@/lib/toast-handler"
 import type { SalesReport, InventoryReport, PurchaseReport, FinanceReport, CustomerReport } from "@/lib/services/reporting"
 
 const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`
@@ -18,11 +20,12 @@ interface ReportPageProps {
 }
 
 export function ReportPage({ reportType, title }: ReportPageProps) {
-  const { branch } = useOrganization()
+  const { branch, organization } = useOrganization()
   const searchParams = useSearchParams()
   const [report, setReport] = useState<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(branch?.id || "all")
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "")
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "")
 
@@ -33,14 +36,17 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
       const params = new URLSearchParams()
       if (startDate) params.append("startDate", new Date(`${startDate}T00:00:00`).toISOString())
       if (endDate) params.append("endDate", new Date(`${endDate}T23:59:59.999`).toISOString())
-      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`, { branchId: branch?.id })
+      const targetBranchId = selectedBranchId === "all" ? undefined : selectedBranchId
+      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`, { branchId: targetBranchId })
       setReport(response.data)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Gagal memuat laporan")
+      const message = caught instanceof Error ? caught.message : "Gagal memuat laporan"
+      setError(message)
+      showError(message)
     } finally {
       setLoading(false)
     }
-  }, [reportType, startDate, endDate, branch?.id])
+  }, [reportType, startDate, endDate, selectedBranchId])
 
   useEffect(() => {
     void fetchReport()
@@ -48,33 +54,43 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
 
   const handleExport = () => {
     if (!report) return
-    const rows = Object.entries(report).flatMap(([section, value]) => {
-      if (!Array.isArray(value)) return [[section, typeof value === "object" ? JSON.stringify(value) : String(value)]]
-      return value.map((item) => [section, JSON.stringify(item)])
-    })
-    const csv = [["section", "value"], ...rows]
-      .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
-      .join("\n")
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `${reportType}-report-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const rows = Object.entries(report).flatMap(([section, value]) => {
+        if (!Array.isArray(value)) return [[section, typeof value === "object" ? JSON.stringify(value) : String(value)]]
+        return value.map((item) => [section, JSON.stringify(item)])
+      })
+      const csv = [["section", "value"], ...rows]
+        .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
+        .join("\n")
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const activeBranchName = selectedBranchId === "all" ? "semua-cabang" : (organization?.branches.find((b) => b.id === selectedBranchId)?.name || "cabang").toLowerCase().replace(/\s+/g, "-")
+      a.download = `${reportType}-${activeBranchName}-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      showSuccess("Laporan berhasil diekspor")
+    } catch (caught) {
+      showError(caught instanceof Error ? caught.message : "Gagal mengekspor laporan")
+    }
   }
+
+  const currentBranchLabel = selectedBranchId === "all"
+    ? "Semua Cabang (Konsolidasi)"
+    : (organization?.branches.find((b) => b.id === selectedBranchId)?.name || "Cabang Aktif")
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="text-muted-foreground">Laporan terperinci untuk analisis bisnis</p>
+          <p className="text-muted-foreground">Laporan terperinci dan analitik bisnis per cabang.</p>
         </div>
         <div className="flex items-center gap-3">
           <Badge variant="secondary" className="gap-1.5 py-1.5 pl-3 pr-3.5 text-sm">
             <Building2 className="size-3.5 text-muted-foreground" />
-            {branch?.name || "Semua Cabang"}
+            {currentBranchLabel}
           </Badge>
           <Button onClick={handleExport} disabled={!report} variant="outline">
             <Download className="mr-2 size-4" />
@@ -85,30 +101,48 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Filter Periode</CardTitle>
+          <CardTitle className="text-base">Filter Periode &amp; Cabang</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          {organization && organization.branches.length > 0 && (
+            <div className="flex-1">
+              <label className="text-xs font-semibold">Pilih Cabang</label>
+              <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                <SelectTrigger className="w-full mt-1 rounded-lg h-9 text-xs">
+                  <SelectValue placeholder="Pilih Cabang" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">🌐 Semua Cabang (Konsolidasi)</SelectItem>
+                  {organization.branches.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      🏬 {b.name} ({b.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="flex-1">
-            <label className="text-sm font-medium">Dari tanggal</label>
+            <label className="text-xs font-semibold">Dari tanggal</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9"
             />
           </div>
           <div className="flex-1">
-            <label className="text-sm font-medium">Sampai tanggal</label>
+            <label className="text-xs font-semibold">Sampai tanggal</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
+              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9"
             />
           </div>
-          <div className="flex items-end">
-            <Button onClick={fetchReport} className="w-full">
-              <Calendar className="mr-2 size-4" />
+          <div>
+            <Button onClick={fetchReport} className="w-full h-9 text-xs bg-emerald-600 hover:bg-emerald-700 font-semibold gap-1.5">
+              <Calendar className="size-3.5" />
               Terapkan Filter
             </Button>
           </div>

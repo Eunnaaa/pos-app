@@ -1,7 +1,6 @@
 "use client"
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { useSession } from "@/lib/auth-client"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import {
@@ -25,6 +24,7 @@ import {
   UserRoundCog,
   UsersRound,
   Warehouse,
+  type LucideIcon,
 } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
 import {
@@ -39,65 +39,69 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-
-const groups = [
-    {
-    label: "Operasional",
-    items: [
-      ["Dashboard", "/dashboard", LayoutDashboard],
-      ["Kasir / POS", "/dashboard/pos", ShoppingCart],
-      ["Transaksi", "/dashboard/sales", ReceiptText],
-      ["Kitchen Display", "/dashboard/kitchen", ChefHat],
-      ["Reservasi", "/dashboard/reservations", CalendarDays],
-      ["Self Order QR", "/dashboard/self-order", QrCode],
-    ],
-  },
-  {
-    label: "Produk & Stok",
-    items: [
-      ["Produk", "/dashboard/products", PackageSearch],
-      ["Inventory", "/dashboard/inventory", Boxes],
-      ["Pembelian", "/dashboard/purchases", Truck],
-      ["Supplier", "/dashboard/suppliers", Warehouse],
-    ],
-  },
-  {
-    label: "Pelanggan",
-    items: [
-      ["Customer CRM", "/dashboard/customers", ContactRound],
-      ["Loyalty", "/dashboard/loyalty", UsersRound],
-      ["Promosi", "/dashboard/promotions", Percent],
-    ],
-  },
-  {
-    label: "Manajemen",
-    items: [
-      ["Keuangan", "/dashboard/finance", Landmark],
-      ["Karyawan", "/dashboard/employees", UserRoundCog],
-      ["Cabang", "/dashboard/branches", Building2],
-      ["Laporan", "/dashboard/reports", FileBarChart],
-      ["AI Insights", "/dashboard/ai", BrainCircuit],
-      ["Cashier", "/dashboard/cashiers", UsersRound],
-      ["Pengaturan", "/dashboard/settings", Settings],
-    ],
-  },
-] as const
+import { Link, usePathname } from "@/i18n/navigation"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const t = useTranslations("Sidebar")
   const pathname = usePathname()
   const { data: session } = useSession()
   const { organization } = useOrganization()
-  const isOwner = organization?.role === "owner"
-  const allowed = new Set(isOwner ? ["all"] : ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "reports:read"])
+  const isOwner = !organization || organization.role === "owner"
+  const allowed = new Set(isOwner ? ["all"] : ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "inventory:read", "selfOrder:manage"])
   const itemPermission: Record<string, string> = {
     "/dashboard": "dashboard:read", "/dashboard/pos": "pos:write", "/dashboard/sales": "sales:read",
+    "/dashboard/kitchen": "sales:read", "/dashboard/reservations": "sales:read", "/dashboard/self-order": "sales:read",
+    "/dashboard/products": "inventory:read", "/dashboard/inventory": "inventory:read",
     "/dashboard/customers": "customers:read", "/dashboard/cashiers": "users:manage", "/dashboard/reports": "reports:read",
-    "/dashboard/self-order": "selfOrder:manage",
   }
+
+  const groups: { label: string; items: [string, string, LucideIcon][] }[] = [
+    {
+      label: t("groupOperational"),
+      items: [
+        [t("dashboard"), "/dashboard", LayoutDashboard],
+        [t("kasir"), "/dashboard/pos", ShoppingCart],
+        [t("transaksi"), "/dashboard/sales", ReceiptText],
+        [t("kitchen"), "/dashboard/kitchen", ChefHat],
+        [t("reservasi"), "/dashboard/reservations", CalendarDays],
+        [t("selfOrder"), "/dashboard/self-order", QrCode],
+      ],
+    },
+    {
+      label: t("groupProducts"),
+      items: [
+        [t("produk"), "/dashboard/products", PackageSearch],
+        [t("inventory"), "/dashboard/inventory", Boxes],
+        [t("pembelian"), "/dashboard/purchases", Truck],
+        [t("supplier"), "/dashboard/suppliers", Warehouse],
+      ],
+    },
+    {
+      label: t("groupCustomers"),
+      items: [
+        [t("customerCrm"), "/dashboard/customers", ContactRound],
+        [t("loyalty"), "/dashboard/loyalty", UsersRound],
+        [t("promosi"), "/dashboard/promotions", Percent],
+      ],
+    },
+    {
+      label: t("groupManagement"),
+      items: [
+        [t("keuangan"), "/dashboard/finance", Landmark],
+        [t("karyawan"), "/dashboard/employees", UserRoundCog],
+        [t("cabang"), "/dashboard/branches", Building2],
+        [t("laporan"), "/dashboard/reports", FileBarChart],
+        [t("aiInsights"), "/dashboard/ai", BrainCircuit],
+        [t("cashier"), "/dashboard/cashiers", UsersRound],
+        [t("pengaturan"), "/dashboard/settings", Settings],
+      ],
+    },
+  ]
+
   const visibleGroups = groups.map((group) => ({ ...group, items: group.items.filter(([, href]) => allowed.has("all") || allowed.has(itemPermission[href] || "")) })).filter((group) => group.items.length)
   const userData = session?.user
-    ? { name: session.user.name || "Pengguna", email: session.user.email, avatar: session.user.image || "" }
-    : { name: "Pengguna", email: "", avatar: "" }
+    ? { name: session.user.name || t("user"), email: session.user.email, avatar: session.user.image || "" }
+    : { name: t("user"), email: "", avatar: "" }
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -110,8 +114,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <Store className="size-5" />
                 </span>
                 <span className="grid flex-1 text-left leading-tight">
-                  <span className="truncate text-base font-bold tracking-tight">Kasir-Ku</span>
-                  <span className="truncate text-xs text-muted-foreground">Smart Point of Sale</span>
+                  <span className="truncate text-base font-bold tracking-tight">{t("appName")}</span>
+                  <span className="truncate text-xs text-muted-foreground">{t("appTagline")}</span>
                 </span>
               </Link>
             </SidebarMenuButton>

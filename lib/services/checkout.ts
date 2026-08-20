@@ -296,11 +296,14 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     const payments = input.payments.length ? await tx.insert(salesPayments).values(input.payments.map((payment) => {
       const isOnline = Boolean(payment.provider && payment.provider.trim());
       const isAuthorized = payment.method === "pay_later" || isOnline;
+      // Online/pending payments record the amount owed (already captured as total);
+      // a 0 amount would violate sales_payments_positive_amount (amount > 0).
+      const amount = isOnline && payment.amount === 0n ? totalAmount : payment.amount;
       return {
         organizationId: context.organizationId,
         orderId,
         method: payment.method,
-        amount: payment.amount,
+        amount,
         provider: payment.provider,
         externalReference: payment.externalReference,
         status: isAuthorized ? "authorized" as const : "settled" as const,

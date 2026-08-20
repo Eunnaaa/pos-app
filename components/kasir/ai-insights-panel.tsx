@@ -3,11 +3,24 @@
 import { useCallback, useEffect, useState } from "react"
 import { formatDistanceToNow } from "date-fns"
 import { id as idLocale } from "date-fns/locale"
-import { AlertTriangle, BrainCircuit, CheckCircle2, Clock, Loader2, Package, RefreshCw, ShoppingCart, TrendingDown, TrendingUp, Users } from "lucide-react"
+import {
+  AlertTriangle,
+  BrainCircuit,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  Package,
+  RefreshCw,
+  ShieldCheck,
+  ShoppingCart,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+  Users,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { apiFetch } from "@/lib/client"
 import { showError, showSuccess } from "@/lib/toast-handler"
@@ -23,6 +36,7 @@ type Insight = {
 const rupiah = (v: string | number) => `Rp ${Number(v).toLocaleString("id-ID")}`
 const rupiahShort = (v: string | number) => {
   const n = Number(v)
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1).replace(".", ",")}M`
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(".", ",")}jt`
   if (n >= 1_000) return `${Math.round(n / 1_000)}rb`
   return String(n)
@@ -38,8 +52,11 @@ export function AiInsightsPanel() {
     try {
       const response = await apiFetch<Insight[]>("/api/v1/ai/insights")
       setInsights(response.data)
-    } catch { showError("Gagal memuat insights") }
-    finally { setLoading(false) }
+    } catch {
+      showError("Gagal memuat AI insights")
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -53,10 +70,13 @@ export function AiInsightsPanel() {
     setGenerating(true)
     try {
       await apiFetch("/api/v1/ai/insights", { method: "POST" })
-      showSuccess("AI insights berhasil dibuat")
+      showSuccess("Analisis AI berhasil diperbarui")
       await load()
-    } catch { showError("Gagal membuat insights") }
-    finally { setGenerating(false) }
+    } catch {
+      showError("Gagal membuat AI insights")
+    } finally {
+      setGenerating(false)
+    }
   }
 
   const byType = (type: string) => insights.find((i) => i.type === type)
@@ -70,65 +90,116 @@ export function AiInsightsPanel() {
   const totalCustomers = segments?.segments?.reduce((sum, s) => sum + s.count, 0) ?? 0
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
+      {/* Header Bar */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b pb-4">
+        <div className="flex items-center gap-3.5">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-200/80 dark:bg-emerald-950/60 dark:text-emerald-400 dark:border-emerald-900/60 shadow-2xs">
             <BrainCircuit className="size-5" />
-          </span>
+          </div>
           <div>
-            <h2 className="text-2xl font-bold tracking-tight">AI Insights</h2>
-            <p className="text-sm text-muted-foreground">Analisis otomatis dari data bisnis Anda</p>
+            <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+              AI Business Intelligence
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-900">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Live Analysis
+              </span>
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">Analisis proyeksi omset, rekomendasi stok, dan profil pelanggan.</p>
           </div>
         </div>
+
         <div className="flex items-center gap-3">
           {latestUpdate && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Clock className="size-3.5" />
+            <span className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border">
+              <Clock className="size-3.5 text-muted-foreground/70" />
               {formatDistanceToNow(new Date(latestUpdate), { addSuffix: true, locale: idLocale })}
             </span>
           )}
-          <Button onClick={() => void generate()} disabled={generating} size="sm" className="bg-emerald-600 hover:bg-emerald-700">
-            {generating ? <><Loader2 className="size-4 animate-spin" /> Menganalisis...</> : <><RefreshCw className="size-4" /> Generate</>}
+          <Button
+            onClick={() => void generate()}
+            disabled={generating}
+            size="sm"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 h-9 px-4 rounded-xl"
+          >
+            {generating ? (
+              <>
+                <Loader2 className="size-4 animate-spin" /> Menganalisis...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" /> Generate Insights
+              </>
+            )}
           </Button>
         </div>
       </div>
 
-      {/* Summary KPI Strip */}
+      {/* KPI Summary Cards */}
       {!loading && insights.length > 0 && (
-        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-          <KpiCard icon={TrendingUp} label="Proyeksi 30 hari" value={forecast ? rupiahShort(forecast.days30 ?? 0) : "—"} color="emerald" trend={forecast?.trend} />
-          <KpiCard icon={ShoppingCart} label="Perlu restock" value={stock ? String(stock.totalLowStock ?? 0) : "—"} color={stock && stock.totalLowStock ? "amber" : "emerald"} suffix="item" />
-          <KpiCard icon={Users} label="Total pelanggan" value={String(totalCustomers)} color="blue" />
-          <KpiCard icon={AlertTriangle} label="Fraud alerts" value={fraud ? String(fraud.totalAlerts ?? 0) : "—"} color={fraud && fraud.totalAlerts ? "red" : "emerald"} />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            icon={TrendingUp}
+            label="Estimasi Omset (30 Hari)"
+            value={forecast ? rupiahShort(forecast.days30 ?? 0) : "—"}
+            color="emerald"
+            subtext="Proyeksi 30 hari ke depan"
+          />
+          <KpiCard
+            icon={ShoppingCart}
+            label="Stok Perlu Restock"
+            value={stock ? String(stock.totalLowStock ?? 0) : "—"}
+            color={stock && stock.totalLowStock ? "amber" : "emerald"}
+            suffix="produk"
+            subtext={stock && stock.totalLowStock ? "Perlu order ulang" : "Stok terkendali"}
+          />
+          <KpiCard
+            icon={Users}
+            label="Pelanggan Terdaftar"
+            value={String(totalCustomers)}
+            color="blue"
+            suffix="orang"
+            subtext="Profil pelanggan aktif"
+          />
+          <KpiCard
+            icon={ShieldCheck}
+            label="Deteksi Anomali"
+            value={fraud ? String(fraud.totalAlerts ?? 0) : "—"}
+            color={fraud && fraud.totalAlerts ? "red" : "emerald"}
+            suffix="kejadian"
+            subtext={fraud && fraud.totalAlerts ? "Transaksi mencurigakan" : "7 hari terakhir aman"}
+          />
         </div>
       )}
 
-      {/* Content */}
+      {/* Main Content Area */}
       {loading ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+          {[...Array(4)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : insights.length === 0 ? (
         <EmptyState onGenerate={() => void generate()} generating={generating} />
       ) : generating ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {[...Array(4)].map((_, i) => <SkeletonCard key={i} />)}
+          {[...Array(4)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Forecast — full width */}
+        <div className="space-y-6">
+          {/* Forecast Card */}
           <ForecastCard insight={byType("forecast")} />
 
-          {/* Stock + Affinity — 2 columns */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          {/* 2 Column Layout for Restock & Affinity */}
+          <div className="grid gap-6 lg:grid-cols-2">
             <StockPlanningCard insight={byType("stock_recommendation")} />
             <ProductAffinityCard insight={byType("product_affinity")} />
           </div>
 
-          {/* Segments + Fraud — 2 columns */}
-          <div className="grid gap-4 lg:grid-cols-2">
+          {/* 2 Column Layout for Segments & Fraud */}
+          <div className="grid gap-6 lg:grid-cols-2">
             <CustomerSegmentCard insight={byType("customer_segment")} />
             <FraudAlertCard insight={byType("fraud_alert")} />
           </div>
@@ -138,47 +209,68 @@ export function AiInsightsPanel() {
   )
 }
 
-// ─── KPI Card ───
-function KpiCard({ icon: Icon, label, value, color, trend, suffix }: { icon: typeof TrendingUp; label: string; value: string; color: "emerald" | "amber" | "red" | "blue"; trend?: string; suffix?: string }) {
-  const colors = {
-    emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-    amber: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-    red: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-    blue: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+// ─── Elegant KPI Card ───
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  color,
+  suffix,
+  subtext,
+}: {
+  icon: typeof TrendingUp
+  label: string
+  value: string
+  color: "emerald" | "amber" | "red" | "blue"
+  suffix?: string
+  subtext?: string
+}) {
+  const accentBorders = {
+    emerald: "border-t-emerald-500",
+    amber: "border-t-amber-500",
+    red: "border-t-rose-500",
+    blue: "border-t-blue-500",
   }
+
+  const iconColors = {
+    emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-900/60",
+    amber: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400 border-amber-200/60 dark:border-amber-900/60",
+    red: "bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400 border-rose-200/60 dark:border-rose-900/60",
+    blue: "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400 border-blue-200/60 dark:border-blue-900/60",
+  }
+
   return (
-    <Card>
-      <CardContent className="flex items-center gap-3 p-4">
-        <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${colors[color]}`}>
-          <Icon className="size-5" />
-          {trend === "up" && <TrendingUp className="ml-1 size-3" />}
-          {trend === "down" && <TrendingDown className="ml-1 size-3" />}
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-xs text-muted-foreground">{label}</p>
-          <p className="truncate text-lg font-bold">{value}{suffix && <span className="ml-1 text-xs font-normal text-muted-foreground">{suffix}</span>}</p>
+    <Card className={`group relative overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md bg-card border border-t-2 shadow-2xs rounded-2xl ${accentBorders[color]}`}>
+      <CardContent className="p-5 flex flex-col justify-between space-y-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-semibold text-foreground/80">{label}</span>
+          <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl border shadow-2xs ${iconColors[color]}`}>
+            <Icon className="size-4.5" />
+          </div>
+        </div>
+        <div>
+          <div className="flex items-baseline gap-1.5">
+            <p className="text-2xl font-extrabold tracking-tight text-foreground">{value}</p>
+            {suffix && <span className="text-xs font-medium text-muted-foreground">{suffix}</span>}
+          </div>
+          {subtext && <p className="text-[11px] text-muted-foreground/80 font-normal mt-1">{subtext}</p>}
         </div>
       </CardContent>
     </Card>
   )
 }
 
-// ─── Skeleton Loading ───
+
+// ─── Skeleton Card Loading ───
 function SkeletonCard() {
   return (
-    <Card>
+    <Card className="shadow-2xs">
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-5 w-16 rounded-full" />
-        </div>
+        <Skeleton className="h-5 w-40" />
       </CardHeader>
       <CardContent className="space-y-3">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
-        <div className="grid grid-cols-3 gap-2">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)}
-        </div>
       </CardContent>
     </Card>
   )
@@ -187,17 +279,18 @@ function SkeletonCard() {
 // ─── Empty State ───
 function EmptyState({ onGenerate, generating }: { onGenerate: () => void; generating: boolean }) {
   return (
-    <Card className="border-dashed">
-      <CardContent className="flex min-h-[280px] flex-col items-center justify-center gap-4 text-center">
-        <span className="flex size-16 items-center justify-center rounded-2xl bg-emerald-100 dark:bg-emerald-950">
-          <BrainCircuit className="size-8 text-emerald-600" />
-        </span>
+    <Card className="border-dashed shadow-2xs">
+      <CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-center p-6">
+        <BrainCircuit className="size-10 text-muted-foreground/40" />
         <div>
-          <h3 className="text-lg font-semibold">Mulai analisis bisnis Anda</h3>
-          <p className="mt-1 max-w-md text-sm text-muted-foreground">Generate insights untuk mendapatkan forecast penjualan, rekomendasi restock, segmentasi pelanggan, deteksi fraud, dan afinitas produk — semuanya otomatis dari data transaksi Anda.</p>
+          <h3 className="font-bold text-foreground text-base">Belum ada data AI Insights</h3>
+          <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+            Klik tombol di bawah untuk membuat analisis proyeksi penjualan dan rekomendasi bisnis.
+          </p>
         </div>
-        <Button onClick={onGenerate} disabled={generating} className="bg-emerald-600 hover:bg-emerald-700">
-          {generating ? <><Loader2 className="size-4 animate-spin" /> Menganalisis data...</> : <><RefreshCw className="size-4" /> Generate Insights</>}
+        <Button onClick={onGenerate} disabled={generating} size="sm" className="bg-emerald-600 hover:bg-emerald-700 mt-2">
+          {generating ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4 mr-2" />}
+          Generate Insights
         </Button>
       </CardContent>
     </Card>
@@ -207,93 +300,71 @@ function EmptyState({ onGenerate, generating }: { onGenerate: () => void; genera
 // ─── Confidence Badge ───
 function ConfidenceBadge({ value }: { value: number | null }) {
   if (value === null) return null
-  const color = value >= 80 ? "text-emerald-600" : value >= 50 ? "text-amber-600" : "text-red-600"
   return (
-    <div className="flex items-center gap-1.5">
-      <Progress value={value} className="h-1.5 w-12" />
-      <span className={`text-xs font-medium ${color}`}>{value}%</span>
-    </div>
+    <span className="text-[11px] text-muted-foreground font-medium bg-muted px-2 py-0.5 rounded-full border">
+      Akurasi AI: <strong className="text-foreground">{value}%</strong>
+    </span>
   )
 }
 
-// ─── Placeholder for missing insights ───
-function PlaceholderCard({ icon: Icon, title, description }: { icon: typeof TrendingUp; title: string; description: string }) {
-  return (
-    <Card className="border-dashed">
-      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Icon className="size-4 text-muted-foreground" /> {title}</CardTitle></CardHeader>
-      <CardContent><p className="py-6 text-center text-sm text-muted-foreground">{description}</p></CardContent>
-    </Card>
-  )
-}
-
-// ─── Error Card ───
-function ErrorCard({ title, icon: Icon }: { title: string; icon: typeof TrendingUp }) {
-  return (
-    <Card className="border-red-200 dark:border-red-900">
-      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-base"><Icon className="size-4 text-red-500" /> {title}</CardTitle></CardHeader>
-      <CardContent><p className="py-4 text-center text-sm text-muted-foreground">Gagal menganalisis data. Coba generate ulang.</p></CardContent>
-    </Card>
-  )
-}
-
-// ─── Forecast Card (full width) ───
+// ─── Forecast Card ───
 function ForecastCard({ insight }: { insight?: Insight }) {
-  if (!insight) return <PlaceholderCard icon={TrendingUp} title="Forecast Penjualan" description="Generate insights untuk melihat proyeksi penjualan." />
-  const p = insight.payload as { avgDailySales?: number; trend?: string; slope?: number; days30?: number; days90?: number; days365?: number; confidence?: number; error?: string }
-  if (p.error) return <ErrorCard title="Forecast Penjualan" icon={TrendingUp} />
+  if (!insight) return null
+  const p = insight.payload as {
+    avgDailySales?: number
+    trend?: string
+    slope?: number
+    days30?: number
+    days90?: number
+    days365?: number
+    error?: string
+  }
+  if (p.error) return null
 
   const trendUp = p.trend === "up"
   const trendDown = p.trend === "down"
   const TrendIcon = trendUp ? TrendingUp : trendDown ? TrendingDown : null
-  const trendColor = trendUp ? "text-emerald-600" : trendDown ? "text-red-600" : "text-muted-foreground"
-  const trendLabel = trendUp ? "Naik" : trendDown ? "Turun" : "Stabil"
-  const projections = [
-    { label: "30 hari", value: p.days30 ?? 0, sub: "≈1 bulan" },
-    { label: "90 hari", value: p.days90 ?? 0, sub: "≈3 bulan" },
-    { label: "365 hari", value: p.days365 ?? 0, sub: "≈1 tahun" },
-  ]
 
   return (
-    <Card className="overflow-hidden border-emerald-200 dark:border-emerald-900">
-      <div className="bg-gradient-to-r from-emerald-50 to-blue-50 p-5 dark:from-emerald-950/30 dark:to-blue-950/30">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900">
-              <TrendingUp className="size-5 text-emerald-600" />
-            </span>
-            <div>
-              <h3 className="text-lg font-bold">Forecast Penjualan</h3>
-              <p className="text-sm text-muted-foreground">Proyeksi berbasis regresi linier 30 hari terakhir</p>
-            </div>
-          </div>
-          <div className="text-right">
-            {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
-          </div>
+    <Card className="rounded-2xl border shadow-2xs bg-card">
+      <CardHeader className="border-b pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <TrendingUp className="size-4.5 text-emerald-600" /> Forecast Penjualan
+          </CardTitle>
+          {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-4">
+        <CardDescription className="text-xs">Proyeksi omset berbasis regresi linier 30 hari terakhir</CardDescription>
+      </CardHeader>
+
+      <CardContent className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl bg-muted/40 p-4 border border-border/60">
           <div>
-            <p className="text-xs text-muted-foreground">Rata-rata penjualan harian</p>
-            <p className="text-2xl font-bold text-emerald-600">{rupiah(p.avgDailySales ?? 0)}</p>
+            <p className="text-xs font-medium text-muted-foreground">Rata-rata Penjualan Harian</p>
+            <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">{rupiah(p.avgDailySales ?? 0)}</p>
           </div>
           {TrendIcon && (
-            <div className="flex items-center gap-1.5 rounded-full bg-white/60 px-3 py-1 dark:bg-white/10">
-              <TrendIcon className={`size-4 ${trendColor}`} />
-              <span className={`text-sm font-semibold ${trendColor}`}>{trendLabel}</span>
-              {p.slope !== undefined && <span className="text-xs text-muted-foreground">({p.slope > 0 ? "+" : ""}{p.slope}/hari)</span>}
+            <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border bg-background shadow-2xs">
+              <TrendIcon className={`size-4 ${trendUp ? "text-emerald-600" : "text-rose-600"}`} />
+              <span>{trendUp ? "Tren Naik" : trendDown ? "Tren Turun" : "Stabil"}</span>
             </div>
           )}
         </div>
-      </div>
-      <CardContent className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3">
-        {projections.map((proj) => (
-          <div key={proj.label} className="rounded-xl border bg-card p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-muted-foreground">{proj.label}</p>
-              <span className="text-xs text-muted-foreground">{proj.sub}</span>
-            </div>
-            <p className="mt-2 text-xl font-bold">{rupiah(proj.value)}</p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+          <div className="rounded-xl border p-4 bg-card/60 shadow-2xs">
+            <p className="text-xs font-medium text-muted-foreground">Proyeksi 30 Hari</p>
+            <p className="text-xl font-bold text-foreground mt-1">{rupiah(p.days30 ?? 0)}</p>
           </div>
-        ))}
+          <div className="rounded-xl border p-4 bg-card/60 shadow-2xs">
+            <p className="text-xs font-medium text-muted-foreground">Proyeksi 90 Hari</p>
+            <p className="text-xl font-bold text-foreground mt-1">{rupiah(p.days90 ?? 0)}</p>
+          </div>
+          <div className="rounded-xl border p-4 bg-card/60 shadow-2xs">
+            <p className="text-xs font-medium text-muted-foreground">Proyeksi 1 Tahun</p>
+            <p className="text-xl font-bold text-foreground mt-1">{rupiah(p.days365 ?? 0)}</p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
@@ -301,55 +372,52 @@ function ForecastCard({ insight }: { insight?: Insight }) {
 
 // ─── Stock Planning Card ───
 function StockPlanningCard({ insight }: { insight?: Insight }) {
-  if (!insight) return <PlaceholderCard icon={ShoppingCart} title="Rekomendasi Restock" description="Generate insights untuk melihat item yang perlu direstock." />
-  const p = insight.payload as { items?: Array<{ product_name: string; variant_name: string; available: string; reorder_point: string; daysUntilOut: number | null; recommendedQty: number; dailyVelocity: number; value: string }>; totalLowStock?: number; error?: string }
-  if (p.error) return <ErrorCard title="Rekomendasi Restock" icon={ShoppingCart} />
-
+  if (!insight) return null
+  const p = insight.payload as {
+    items?: Array<{
+      product_name: string
+      variant_name: string
+      available: string
+      daysUntilOut: number | null
+      recommendedQty: number
+      dailyVelocity: number
+    }>
+    totalLowStock?: number
+    error?: string
+  }
+  if (p.error) return null
   const items = p.items ?? []
-  const critical = items.filter((i) => i.daysUntilOut !== null && i.daysUntilOut <= 3).length
-  const warning = items.filter((i) => i.daysUntilOut !== null && i.daysUntilOut > 3 && i.daysUntilOut <= 7).length
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="rounded-2xl border shadow-2xs bg-card">
+      <CardHeader className="border-b pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><ShoppingCart className="size-4 text-emerald-600" /> Rekomendasi Restock</CardTitle>
-          {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <ShoppingCart className="size-4.5 text-emerald-600" /> Rekomendasi Restock
+          </CardTitle>
+          <Badge variant="outline" className="text-xs font-medium rounded-lg">
+            {items.length} Perlu Restock
+          </Badge>
         </div>
-        <CardDescription>
-          {items.length === 0 ? "Semua stok aman" : `${p.totalLowStock ?? 0} item perlu restock`}
-          {critical > 0 && <span className="ml-2 text-red-600">• {critical} kritis</span>}
-          {warning > 0 && <span className="ml-2 text-amber-600">• {warning} mendesak</span>}
-        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {items.length > 0 ? items.slice(0, 5).map((item, i) => {
-          const isCritical = item.daysUntilOut !== null && item.daysUntilOut <= 3
-          const isWarning = item.daysUntilOut !== null && item.daysUntilOut > 3 && item.daysUntilOut <= 7
-          return (
-            <div key={i} className={`rounded-lg border p-3 ${isCritical ? "border-red-300 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20" : isWarning ? "border-amber-300 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20" : ""}`}>
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{item.product_name}</p>
-                  <p className="text-xs text-muted-foreground">{item.variant_name}</p>
-                </div>
-                {item.daysUntilOut !== null && (
-                  <Badge className={`shrink-0 ${isCritical ? "bg-red-600" : isWarning ? "bg-amber-600" : "bg-muted"}`}>
-                    {item.daysUntilOut === 0 ? "Habis" : `${item.daysUntilOut} hari`}
-                  </Badge>
-                )}
+      <CardContent className="p-5 space-y-3">
+        {items.length > 0 ? (
+          items.slice(0, 5).map((item, i) => (
+            <div key={i} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60 text-xs shadow-2xs">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-foreground truncate text-sm">{item.product_name}</p>
+                <p className="text-muted-foreground text-[11px] truncate mt-0.5">{item.variant_name} • Sisa: {item.available}</p>
               </div>
-              <div className="mt-2 flex items-center justify-between text-xs">
-                <span className="text-muted-foreground">Tersisa: <span className="font-medium text-foreground">{item.available}</span> • Velocity: {item.dailyVelocity}/hari</span>
-                <span className="font-semibold text-emerald-600">Beli {item.recommendedQty} unit</span>
+              <div className="text-right shrink-0">
+                <Badge variant={item.daysUntilOut !== null && item.daysUntilOut <= 3 ? "destructive" : "outline"} className="text-[10px] rounded-md">
+                  {item.daysUntilOut === 0 ? "Habis" : `${item.daysUntilOut} hr lagi`}
+                </Badge>
+                <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1">Beli +{item.recommendedQty}</p>
               </div>
             </div>
-          )
-        }) : (
-          <div className="flex items-center gap-2 py-6 text-center">
-            <CheckCircle2 className="size-5 text-emerald-600" />
-            <p className="text-sm text-muted-foreground">Semua stok di atas reorder point.</p>
-          </div>
+          ))
+        ) : (
+          <p className="text-xs text-muted-foreground text-center py-6">Seluruh stok dalam kondisi aman.</p>
         )}
       </CardContent>
     </Card>
@@ -358,96 +426,81 @@ function StockPlanningCard({ insight }: { insight?: Insight }) {
 
 // ─── Product Affinity Card ───
 function ProductAffinityCard({ insight }: { insight?: Insight }) {
-  if (!insight) return <PlaceholderCard icon={Package} title="Afinitas Produk" description="Generate insights untuk melihat produk yang sering dibeli bersama." />
-  const p = insight.payload as { pairs?: Array<{ product_a: string; product_b: string; co_occurrence: number; orders: number }>; totalPairs?: number; error?: string }
-  if (p.error) return <ErrorCard title="Afinitas Produk" icon={Package} />
-
+  if (!insight) return null
+  const p = insight.payload as {
+    pairs?: Array<{ product_a: string; product_b: string; co_occurrence: number }>
+    error?: string
+  }
+  if (p.error) return null
   const pairs = p.pairs ?? []
-  const maxCo = pairs.length > 0 ? pairs[0].co_occurrence : 1
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="rounded-2xl border shadow-2xs bg-card">
+      <CardHeader className="border-b pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><Package className="size-4 text-emerald-600" /> Afinitas Produk</CardTitle>
-          {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <Package className="size-4.5 text-emerald-600" /> Afinitas Produk
+          </CardTitle>
+          <Badge variant="outline" className="text-xs font-medium rounded-lg">Bundling</Badge>
         </div>
-        <CardDescription>Produk yang sering dibeli bersama</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {pairs.length > 0 ? pairs.slice(0, 5).map((pair, i) => (
-          <div key={i} className="rounded-lg border p-3">
-            <div className="flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{pair.product_a}</span>
-              <span className="shrink-0 text-muted-foreground">+</span>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{pair.product_b}</span>
-              <Badge variant="secondary" className="shrink-0">{pair.co_occurrence}x</Badge>
+      <CardContent className="p-5 space-y-3">
+        {pairs.length > 0 ? (
+          pairs.slice(0, 5).map((pair, i) => (
+            <div key={i} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60 text-xs shadow-2xs">
+              <div className="min-w-0 flex-1 flex items-center gap-1.5 truncate">
+                <span className="font-semibold text-foreground truncate text-sm">{pair.product_a}</span>
+                <span className="text-muted-foreground font-bold">+</span>
+                <span className="font-semibold text-foreground truncate text-sm">{pair.product_b}</span>
+              </div>
+              <Badge variant="secondary" className="text-[10px] shrink-0 font-bold rounded-md">
+                {pair.co_occurrence}x dibeli bersama
+              </Badge>
             </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${(pair.co_occurrence / maxCo) * 100}%` }} />
-            </div>
-          </div>
-        )) : (
-          <div className="flex items-center gap-2 py-6 text-center">
-            <Package className="size-5 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Belum cukup data transaksi multi-item.</p>
-          </div>
+          ))
+        ) : (
+          <p className="text-xs text-muted-foreground text-center py-6">Belum ada cukup data transaksi bundling.</p>
         )}
       </CardContent>
     </Card>
   )
 }
 
-// ─── Customer Segments Card ───
+// ─── Customer Segment Card ───
 function CustomerSegmentCard({ insight }: { insight?: Insight }) {
-  if (!insight) return <PlaceholderCard icon={Users} title="Segmentasi Pelanggan" description="Generate insights untuk segmentasi RFM pelanggan." />
-  const p = insight.payload as { segments?: Array<{ segment: string; count: number; total_spend: string; avg_frequency: string; avg_recency_days: number }>; error?: string }
-  if (p.error) return <ErrorCard title="Segmentasi Pelanggan" icon={Users} />
-
-  const segments = p.segments ?? []
-  const total = segments.reduce((sum, s) => sum + s.count, 0) || 1
-  const segStyle: Record<string, { bg: string; bar: string; text: string }> = {
-    Champions: { bg: "bg-emerald-100 dark:bg-emerald-950", bar: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-300" },
-    Loyal: { bg: "bg-blue-100 dark:bg-blue-950", bar: "bg-blue-500", text: "text-blue-700 dark:text-blue-300" },
-    Potential: { bg: "bg-violet-100 dark:bg-violet-950", bar: "bg-violet-500", text: "text-violet-700 dark:text-violet-300" },
-    "At Risk": { bg: "bg-amber-100 dark:bg-amber-950", bar: "bg-amber-500", text: "text-amber-700 dark:text-amber-300" },
-    Lost: { bg: "bg-red-100 dark:bg-red-950", bar: "bg-red-500", text: "text-red-700 dark:text-red-300" },
-    New: { bg: "bg-cyan-100 dark:bg-cyan-950", bar: "bg-cyan-500", text: "text-cyan-700 dark:text-cyan-300" },
+  if (!insight) return null
+  const p = insight.payload as {
+    segments?: Array<{ segment: string; count: number; total_spend: string }>
+    error?: string
   }
+  if (p.error) return null
+  const segments = p.segments ?? []
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="rounded-2xl border shadow-2xs bg-card">
+      <CardHeader className="border-b pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><Users className="size-4 text-emerald-600" /> Segmentasi Pelanggan</CardTitle>
-          {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <Users className="size-4.5 text-emerald-600" /> Segmentasi Pelanggan
+          </CardTitle>
+          <Badge variant="outline" className="text-xs font-medium rounded-lg">RFM</Badge>
         </div>
-        <CardDescription>RFM: Recency, Frequency, Monetary • {total} pelanggan</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {segments.length > 0 ? segments.map((seg) => {
-          const style = segStyle[seg.segment] ?? segStyle.New
-          const pct = Math.round((seg.count / total) * 100)
-          return (
-            <div key={seg.segment} className={`rounded-lg p-3 ${style.bg}`}>
-              <div className="flex items-center justify-between">
-                <span className={`text-sm font-semibold ${style.text}`}>{seg.segment}</span>
-                <span className={`text-sm font-bold ${style.text}`}>{seg.count}</span>
+      <CardContent className="p-5 space-y-3">
+        {segments.length > 0 ? (
+          segments.map((seg) => (
+            <div key={seg.segment} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60 text-xs shadow-2xs">
+              <div>
+                <p className="font-bold text-foreground text-sm">{seg.segment}</p>
+                <p className="text-muted-foreground text-[11px] mt-0.5">Total Belanja: {rupiahShort(seg.total_spend)}</p>
               </div>
-              <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/40 dark:bg-black/20">
-                <div className={`h-full rounded-full ${style.bar} transition-all`} style={{ width: `${pct}%` }} />
-              </div>
-              <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
-                <span>{rupiahShort(seg.total_spend)}</span>
-                <span>avg {seg.avg_frequency}x • {seg.avg_recency_days}h lalu</span>
-              </div>
+              <Badge variant="secondary" className="text-[11px] font-bold rounded-md">
+                {seg.count} Kontak
+              </Badge>
             </div>
-          )
-        }) : (
-          <div className="flex items-center gap-2 py-6 text-center">
-            <Users className="size-5 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Belum ada data pelanggan.</p>
-          </div>
+          ))
+        ) : (
+          <p className="text-xs text-muted-foreground text-center py-6">Belum ada data segmen pelanggan.</p>
         )}
       </CardContent>
     </Card>
@@ -456,38 +509,46 @@ function CustomerSegmentCard({ insight }: { insight?: Insight }) {
 
 // ─── Fraud Alert Card ───
 function FraudAlertCard({ insight }: { insight?: Insight }) {
-  if (!insight) return <PlaceholderCard icon={AlertTriangle} title="Fraud Detection" description="Generate insights untuk deteksi transaksi mencurigakan." />
-  const p = insight.payload as { alerts?: Array<{ order_number: string; total_amount: string; cashier_name: string; reason: string; occurred_at: string }>; totalAlerts?: number; error?: string }
-  if (p.error) return <ErrorCard title="Fraud Detection" icon={AlertTriangle} />
-
+  if (!insight) return null
+  const p = insight.payload as {
+    alerts?: Array<{ order_number: string; total_amount: string; cashier_name: string; reason: string }>
+    totalAlerts?: number
+    error?: string
+  }
+  if (p.error) return null
   const alerts = p.alerts ?? []
-  const hasAlerts = alerts.length > 0
 
   return (
-    <Card className={hasAlerts ? "border-amber-200 dark:border-amber-900" : ""}>
-      <CardHeader className="pb-3">
+    <Card className="rounded-2xl border shadow-2xs bg-card">
+      <CardHeader className="border-b pb-4">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className={`size-4 ${hasAlerts ? "text-amber-600" : "text-emerald-600"}`} /> Fraud Detection</CardTitle>
-          {insight.confidence !== null && <ConfidenceBadge value={insight.confidence} />}
+          <CardTitle className="flex items-center gap-2 text-base font-bold text-foreground">
+            <AlertTriangle className="size-4.5 text-emerald-600" /> Deteksi Fraud
+          </CardTitle>
+          <Badge variant="outline" className="text-xs font-medium rounded-lg">
+            {alerts.length === 0 ? "Aman" : `${alerts.length} Alert`}
+          </Badge>
         </div>
-        <CardDescription>{hasAlerts ? `${p.totalAlerts ?? 0} transaksi mencurigakan (7 hari)` : "7 hari terakhir bersih"}</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {hasAlerts ? alerts.slice(0, 5).map((alert, i) => (
-          <div key={i} className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900 dark:bg-amber-950/20">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{alert.order_number}</p>
-              <p className="text-xs text-muted-foreground">{alert.cashier_name} • {alert.reason.replace(/_/g, " ")}</p>
+      <CardContent className="p-5 space-y-3">
+        {alerts.length > 0 ? (
+          alerts.slice(0, 5).map((alert, i) => (
+            <div key={i} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60 text-xs border-amber-200/80 shadow-2xs">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-foreground truncate text-sm">{alert.order_number}</p>
+                <p className="text-muted-foreground text-[11px] truncate mt-0.5">{alert.cashier_name} • {alert.reason}</p>
+              </div>
+              <span className="font-extrabold text-amber-700 dark:text-amber-400 shrink-0 ml-2 text-sm">{rupiah(alert.total_amount)}</span>
             </div>
-            <span className="ml-2 shrink-0 font-semibold text-amber-700 dark:text-amber-400">{rupiah(alert.total_amount)}</span>
-          </div>
-        )) : (
-          <div className="flex items-center gap-2 py-6">
-            <CheckCircle2 className="size-5 text-emerald-600" />
-            <p className="text-sm text-emerald-600">Tidak ada transaksi mencurigakan.</p>
+          ))
+        ) : (
+          <div className="flex items-center justify-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 py-6">
+            <CheckCircle2 className="size-4" />
+            <span className="font-medium">Tidak ditemukan transaksi mencurigakan.</span>
           </div>
         )}
       </CardContent>
     </Card>
   )
 }
+

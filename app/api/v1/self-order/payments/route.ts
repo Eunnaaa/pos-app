@@ -10,6 +10,7 @@ import { createXenditCharge } from "@/lib/services/self-order";
 import type { XenditPaymentMethod } from "@/lib/integrations/payments";
 
 const schema = z.object({
+  token: z.string().max(100).optional(),
   orderId: z.string().uuid(),
   customerName: z.string().max(150).optional(),
   paymentMethods: z.array(z.enum(["QRIS", "OVO", "DANA", "SHOPEEPAY", "PAY_LATER"])).max(5).optional(),
