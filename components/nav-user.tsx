@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { useTranslations } from "next-intl"
 import { signOut } from "@/lib/auth-client"
-import { useRouter } from "@/i18n/navigation"
+import { Link, useRouter } from "@/i18n/navigation"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import {
   IconCreditCard,
@@ -113,17 +113,23 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
-                <IconUserCircle />
-                {t("account")}
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings?tab=account" className="flex items-center gap-2 cursor-pointer w-full">
+                  <IconUserCircle />
+                  {t("account")}
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                {t("billing")}
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings?tab=billing" className="flex items-center gap-2 cursor-pointer w-full">
+                  <IconCreditCard />
+                  {t("billing")}
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconNotification />
-                {t("notifications")}
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings?tab=notifications" className="flex items-center gap-2 cursor-pointer w-full">
+                  <IconNotification />
+                  {t("notifications")}
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

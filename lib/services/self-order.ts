@@ -183,7 +183,7 @@ export async function createSelfOrder(params: {
   notes?: string;
   customerName?: string;
   paymentMethod: "qris" | "e_wallet";
-}): Promise<{ order: { id: string; orderNumber: string; totalAmount: string; status: string }; payment: { provider: "xendit"; chargeRequired: true } }> {
+}): Promise<{ order: { id: string; orderNumber: string; totalAmount: string; status: string }; payment: { provider: "xendit" | "midtrans"; chargeRequired: true } }> {
   const t = await resolveQrToken(params.token);
 
   // Default warehouse
@@ -193,6 +193,8 @@ export async function createSelfOrder(params: {
     .where(and(eq(warehouses.organizationId, t.organizationId), eq(warehouses.branchId, t.branchId), eq(warehouses.isActive, true)))
     .limit(1);
   if (!warehouse) throw new AppError("NOT_FOUND", "Gudang cabang belum dikonfigurasi");
+
+  const env = getServerEnv();
 
   const checkoutInput: CheckoutInput = {
     branchId: t.branchId,
@@ -216,7 +218,7 @@ export async function createSelfOrder(params: {
       {
         method: params.paymentMethod,
         amount: 0n,
-        provider: "xendit",
+        provider: env.MIDTRANS_SERVER_KEY ? "midtrans" : "xendit",
       },
     ],
   };
@@ -275,7 +277,7 @@ export async function createSelfOrder(params: {
       totalAmount: result.order.totalAmount?.toString() ?? "0",
       status: result.order.status ?? "pending",
     },
-    payment: { provider: "xendit", chargeRequired: true },
+    payment: { provider: env.MIDTRANS_SERVER_KEY ? "midtrans" : "xendit", chargeRequired: true },
   };
 }
 
@@ -301,7 +303,7 @@ export async function createXenditCharge(orderId: string, options?: { customerNa
 
   const env = getServerEnv();
 
-  if (env.MIDTRANS_SERVER_KEY && !env.XENDIT_SECRET_KEY) {
+  if (env.MIDTRANS_SERVER_KEY) {
     const result = await createMidtransPayment({
       reference: order.orderNumber,
       amount: Number(order.totalAmount),

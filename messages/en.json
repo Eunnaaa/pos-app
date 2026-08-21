@@ -155,7 +155,9 @@
     "tabAccount": "My Account",
     "tabBusiness": "Business Profile",
     "tabBranches": "Branches",
-    "tabBusinesses": "My Businesses"
+    "tabBusinesses": "My Businesses",
+    "tabBilling": "Billing & Plans",
+    "tabNotifications": "Notifications"
   },
   "AccountTab": {
     "personalTitle": "Personal Information",

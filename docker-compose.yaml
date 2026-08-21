@@ -1,66 +1,72 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # ============================================================================
+  # 1. PostgreSQL 16 Database Service
+  # ============================================================================
   postgres:
     image: postgres:16-alpine
-    container_name: codeguide-starter-fullstack-postgres
+    container_name: pos-app-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-pos_db}
+      POSTGRES_USER: ${POSTGRES_USER:-pos_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pos_secure_password}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pos_user} -d ${POSTGRES_DB:-pos_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     networks:
-      - codeguide-starter-fullstack-network
+      - pos-network
 
-  # Next.js Application
+  # ============================================================================
+  # 2. Next.js POS Application Service
+  # ============================================================================
   app:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: codeguide-starter-fullstack-app
+    container_name: pos-app-web
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-pos_user}:${POSTGRES_PASSWORD:-pos_secure_password}@postgres:5432/${POSTGRES_DB:-pos_db}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - MIDTRANS_SERVER_KEY=${MIDTRANS_SERVER_KEY:-}
+      - MIDTRANS_CLIENT_KEY=${MIDTRANS_CLIENT_KEY:-}
+      - MIDTRANS_IS_PRODUCTION=${MIDTRANS_IS_PRODUCTION:-false}
     ports:
       - "3000:3000"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks:
-      - codeguide-starter-fullstack-network
+      - pos-network
 
-  # Development database only
-  postgres-dev:
-    image: postgres:16-alpine
-    container_name: codeguide-starter-fullstack-postgres-dev
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
-    networks:
-      - codeguide-starter-fullstack-network
-    profiles:
-      - dev
-
+# ==============================================================================
+# Persistent Volumes & Network Definitions
+# ==============================================================================
 volumes:
   postgres_data:
-    driver: local
-  postgres_dev_data:
+    name: pos_postgres_data
     driver: local
 
 networks:
-  codeguide-starter-fullstack-network:
+  pos-network:
+    name: pos-network
     driver: bridge

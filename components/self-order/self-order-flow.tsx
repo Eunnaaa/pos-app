@@ -12,8 +12,12 @@ import {
   Plus,
   Printer,
   ShoppingCart,
+  Sparkles,
   Trash2,
+  User,
   Utensils,
+  ChevronRight,
+  ShoppingBag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +32,8 @@ import { useSelfOrderCart, type CartItem } from "@/hooks/use-self-order-cart";
 import { useOrderStatus, type OrderStatus } from "@/hooks/use-order-status";
 import { useTranslations } from "next-intl";
 import { showError, showInfo, showSuccess } from "@/lib/toast-handler";
-import { getCategoryEmoji } from "@/lib/services/category-images";
+import { getCategoryEmoji, getCategoryColor, getCategorySlug } from "@/lib/services/category-images";
+import { playOrderReadyChime } from "@/lib/services/sound-alert";
 
 type MenuItem = {
   id: string;
@@ -68,6 +73,9 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
   const [activeOrderId, setActiveOrderId] = useState<string | null>(null);
   const [callStaffOpen, setCallStaffOpen] = useState(false);
   const [callingStaff, setCallingStaff] = useState(false);
+  const [diningType, setDiningType] = useState<"dine_in" | "takeaway">("dine_in");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const cart = useSelfOrderCart(token);
 
   useEffect(() => {
@@ -201,6 +209,7 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
               } else {
                 const v = p.variants[0];
                 if (!v) return;
+                const existing = cart.items.find((i) => i.productId === p.id && i.variantId === v.id);
                 cart.add({
                   variantId: v.id,
                   productId: p.id,
@@ -209,7 +218,9 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
                   price: Number(v.priceAmount),
                   quantity: 1,
                 });
-                showSuccess(`${p.name} ditambahkan ke keranjang`);
+                if (!existing) {
+                  showSuccess(`${p.name} ditambahkan ke keranjang`);
+                }
               }
             }}
             onQuickRemove={(p) => {
@@ -219,7 +230,6 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
               if (existing) {
                 if (existing.quantity > 1) {
                   cart.updateQuantity(v.id, existing.notes, existing.quantity - 1);
-                  showInfo(`${p.name} dikurangi (${existing.quantity - 1})`);
                 } else {
                   cart.remove(v.id, existing.notes);
                   showInfo(`${p.name} dikeluarkan dari keranjang`);
@@ -232,8 +242,14 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
         {step === "product" && activeProduct && (
           <ProductDetail
             product={activeProduct}
+            categoryName={menu.categories.find((c) => c.id === activeProduct.categoryId)?.name}
             isKiosk={isKiosk}
-            onAdd={(item) => { cart.add(item); setActiveProduct(null); setStep("menu"); }}
+            onAdd={(item) => {
+              cart.add(item);
+              showSuccess(`${item.name} ditambahkan ke keranjang`);
+              setActiveProduct(null);
+              setStep("menu");
+            }}
             onBack={() => { setActiveProduct(null); setStep("menu"); }}
           />
         )}
@@ -242,6 +258,8 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
           <CartView
             items={cart.items}
             totalAmount={cart.totalAmount}
+            diningType={diningType}
+            setDiningType={setDiningType}
             onChangeQty={cart.updateQuantity}
             onRemove={cart.remove}
             onCheckout={() => setStep("payment")}
@@ -255,6 +273,11 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
             items={cart.items}
             totalAmount={cart.totalAmount}
             isKiosk={isKiosk}
+            diningType={diningType}
+            customerName={customerName}
+            setCustomerName={setCustomerName}
+            customerPhone={customerPhone}
+            setCustomerPhone={setCustomerPhone}
             onPaid={(orderId) => {
               cart.clear();
               setStep("tracking");
@@ -269,50 +292,36 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
         )}
       </main>
 
-      {/* Floating Mini Cart Box Popup (Pojok Kanan Bawah) */}
+      {/* Sticky Floating Bottom Cart Bar */}
       {cart.totalItems > 0 && step === "menu" && (
-        <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <div className="flex flex-col gap-2.5 p-4 rounded-3xl bg-slate-900/95 backdrop-blur-md text-white shadow-2xl border border-slate-800 w-80 max-w-[calc(100vw-2rem)]">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-slate-950 font-extrabold text-xs">
+        <div className="fixed bottom-4 inset-x-4 sm:bottom-6 sm:inset-x-auto sm:right-6 sm:w-96 z-40 animate-in fade-in slide-in-from-bottom-5 duration-300">
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-950/95 backdrop-blur-md text-white shadow-2xl border border-slate-800 ring-1 ring-white/10">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="relative flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-slate-950 font-black text-sm shadow-xs">
+                <ShoppingBag className="size-5" />
+                <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-slate-900 text-emerald-400 border border-emerald-500 font-extrabold text-[10px]">
                   {cart.totalItems}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-                    <ShoppingCart className="size-3.5 text-emerald-400" /> Ringkasan Keranjang
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">{cart.totalItems} Produk Siap Diproses</p>
-                </div>
+                </span>
               </div>
-              <span className="text-sm font-extrabold text-emerald-400">
-                {rupiah(cart.totalAmount)}
-              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-200 truncate">{cart.totalItems} Produk di Keranjang</p>
+                <p className="text-sm font-extrabold text-emerald-400 mt-0.5">{rupiah(cart.totalAmount)}</p>
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 pt-0.5">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setStep("cart")}
-                className="rounded-xl text-xs font-semibold h-9 bg-slate-800 hover:bg-slate-700 text-white border-slate-700"
-              >
-                Validasi Pesanan
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setStep("payment")}
-                className="rounded-xl text-xs font-bold h-9 bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-xs"
-              >
-                Bayar Sekarang
-              </Button>
-            </div>
+            <Button
+              size="sm"
+              onClick={() => setStep("cart")}
+              className="rounded-xl text-xs font-bold h-10 px-4 bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-md gap-1.5 shrink-0"
+            >
+              Keranjang <ChevronRight className="size-4" />
+            </Button>
           </div>
         </div>
       )}
 
       {/* Floating Action Button (FAB) Panggil Pelayan */}
-      <div className="fixed bottom-5 left-4 z-40 sm:bottom-6 sm:left-6">
+      <div className={cn("fixed z-40 transition-all", cart.totalItems > 0 && step === "menu" ? "bottom-20 left-4 sm:bottom-6 sm:left-6" : "bottom-5 left-4 sm:bottom-6 sm:left-6")}>
         <Button
           size="sm"
           onClick={() => setCallStaffOpen(true)}
@@ -367,6 +376,21 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
   );
 }
 
+
+function getPresetNotes(productName: string, categoryName?: string): string[] {
+  const slug = getCategorySlug(categoryName || "");
+  const t = (productName + " " + (categoryName || "")).toLowerCase();
+  if (slug === "minuman" || t.includes("kopi") || t.includes("tea") || t.includes("jus") || t.includes("drink")) {
+    return ["❄️ Less Ice", "🚫 No Ice", "🍬 Less Sugar", "🚫 No Sugar", "🥛 Gula Pisah", "☕ Extra Shot"];
+  }
+  if (slug === "bakery" || slug === "dessert" || t.includes("roti") || t.includes("cake") || t.includes("pastry")) {
+    return ["🔥 Hangatkan", "❄️ Dingin", "🍫 Pisah Saus", "🎂 Lilin Ultah", "🥡 Bungkus"];
+  }
+  if (slug === "makanan" || slug === "snack" || t.includes("nasi") || t.includes("mie") || t.includes("ayam")) {
+    return ["🌶️ Pedas Sedang", "🔥 Ekstra Pedas", "🚫 Tanpa Bawang", "🥗 Pisah Sambal", "🥡 Bungkus"];
+  }
+  return ["🥡 Bungkus", "🥢 Alat Makan Ekstra", "🌶️ Sambal Tambahan", "🚫 Tanpa Bawang"];
+}
 
 function MenuView(props: {
   menu: MenuData;
@@ -428,11 +452,15 @@ function MenuView(props: {
 
       {/* Product Cards Grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        {filteredProducts.map((p) => {
+        {filteredProducts.map((p, idx) => {
           const v = p.variants[0];
           const qty = cartItems
             .filter((i) => i.productId === p.id)
             .reduce((sum, i) => sum + i.quantity, 0);
+          const pCatName = menu.categories.find((c) => c.id === p.categoryId)?.name || categoryName;
+          const emoji = getCategoryEmoji(pCatName, p.name);
+          const colorClass = getCategoryColor(pCatName, p.name);
+          const isFeatured = p.variants.length > 1 || idx % 4 === 0;
 
           return (
             <div
@@ -441,6 +469,13 @@ function MenuView(props: {
               className="group flex flex-col justify-between overflow-hidden rounded-2xl border bg-card text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer shadow-2xs"
             >
               <div className="aspect-square overflow-hidden bg-muted relative">
+                {isFeatured && (
+                  <div className="absolute top-2 left-2 z-10 pointer-events-none">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/90 backdrop-blur-xs px-1.5 py-0.5 text-[9px] font-extrabold text-slate-950 shadow-xs">
+                      <Sparkles className="size-2.5 fill-slate-950" /> {idx % 4 === 0 ? "Best Seller" : "Pilihan Rasa"}
+                    </span>
+                  </div>
+                )}
                 {p.imageUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -449,8 +484,8 @@ function MenuView(props: {
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                   />
                 ) : (
-                  <div className="flex h-full items-center justify-center text-4xl bg-gradient-to-br from-emerald-50 to-muted dark:from-emerald-950 dark:to-muted">
-                    {getCategoryEmoji(categoryName)}
+                  <div className={cn("flex h-full items-center justify-center text-4xl transition-transform duration-200 group-hover:scale-105", colorClass)}>
+                    {emoji}
                   </div>
                 )}
                 {qty > 0 && (
@@ -533,16 +568,18 @@ function MenuView(props: {
 
 function ProductDetail(props: {
   product: MenuItem;
+  categoryName?: string;
   isKiosk: boolean;
   onAdd: (item: CartItem) => void;
   onBack: () => void;
 }) {
-  const { product, isKiosk, onAdd, onBack } = props;
+  const { product, categoryName, isKiosk, onAdd, onBack } = props;
   const t = useTranslations("SelfOrder");
   const [variantId, setVariantId] = useState(product.variants[0]?.id ?? "");
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
   const variant = product.variants.find((v) => v.id === variantId) ?? product.variants[0];
+  const presets = getPresetNotes(product.name, categoryName);
 
   return (
     <div className="mx-auto max-w-xl space-y-5 bg-card border rounded-3xl p-5 shadow-sm">
@@ -550,10 +587,14 @@ function ProductDetail(props: {
         <ArrowLeft className="h-4 w-4 mr-1" /> {t("back")}
       </Button>
 
-      {product.imageUrl && (
+      {product.imageUrl ? (
         <div className="aspect-video w-full overflow-hidden rounded-2xl border shadow-2xs">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover" />
+        </div>
+      ) : (
+        <div className={cn("flex aspect-video w-full items-center justify-center rounded-2xl border shadow-2xs text-6xl", getCategoryColor(categoryName, product.name))}>
+          {getCategoryEmoji(categoryName, product.name)}
         </div>
       )}
 
@@ -595,7 +636,7 @@ function ProductDetail(props: {
           className="rounded-2xl text-xs shadow-2xs resize-none"
         />
         <div className="flex flex-wrap gap-1.5 pt-0.5">
-          {["🌶️ Pedas Sedang", "❄️ Less Ice", "🚫 Tanpa Gula", "🥛 Gula Pisah", "🥡 Bungkus"].map((preset) => (
+          {presets.map((preset) => (
             <Button
               key={preset}
               type="button"
@@ -650,12 +691,14 @@ function ProductDetail(props: {
 function CartView(props: {
   items: CartItem[];
   totalAmount: number;
+  diningType: "dine_in" | "takeaway";
+  setDiningType: (v: "dine_in" | "takeaway") => void;
   onChangeQty: (variantId: string, notes: string | undefined, q: number) => void;
   onRemove: (variantId: string, notes: string | undefined) => void;
   onCheckout: () => void;
   onBack: () => void;
 }) {
-  const { items, totalAmount, onChangeQty, onRemove, onCheckout, onBack } = props;
+  const { items, totalAmount, diningType, setDiningType, onChangeQty, onRemove, onCheckout, onBack } = props;
   const t = useTranslations("SelfOrder");
 
   return (
@@ -664,7 +707,43 @@ function CartView(props: {
         <ArrowLeft className="h-4 w-4 mr-1" /> {t("backToMenu")}
       </Button>
 
-      <h1 className="text-xl font-bold text-foreground">{t("cartTitle")}</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-foreground">{t("cartTitle")}</h1>
+        <Badge variant="outline" className="text-xs bg-muted/40 font-semibold">
+          {items.reduce((s, i) => s + i.quantity, 0)} Item
+        </Badge>
+      </div>
+
+      {/* Dine-In vs Takeaway Selector */}
+      <div className="rounded-2xl border p-3 bg-muted/20 space-y-2">
+        <Label className="text-xs font-bold text-foreground">Tipe Penyajian Pesanan</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant={diningType === "dine_in" ? "default" : "outline"}
+            className={cn(
+              "rounded-xl text-xs font-semibold h-9.5 transition-all",
+              diningType === "dine_in" && "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+            )}
+            onClick={() => setDiningType("dine_in")}
+          >
+            🍽️ Makan di Tempat
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={diningType === "takeaway" ? "default" : "outline"}
+            className={cn(
+              "rounded-xl text-xs font-semibold h-9.5 transition-all",
+              diningType === "takeaway" && "bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+            )}
+            onClick={() => setDiningType("takeaway")}
+          >
+            🥡 Bungkus (Takeaway)
+          </Button>
+        </div>
+      </div>
 
       {items.length === 0 ? (
         <div className="py-12 text-center text-muted-foreground text-sm">
@@ -712,7 +791,7 @@ function CartView(props: {
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl h-11 text-sm shadow-xs"
             onClick={onCheckout}
           >
-            Lanjut ke Pembayaran
+            Lanjut ke Pembayaran ➔
           </Button>
         </div>
       )}
@@ -725,10 +804,26 @@ function PaymentView(props: {
   items: CartItem[];
   totalAmount: number;
   isKiosk: boolean;
+  diningType: "dine_in" | "takeaway";
+  customerName: string;
+  setCustomerName: (v: string) => void;
+  customerPhone: string;
+  setCustomerPhone: (v: string) => void;
   onPaid: (orderId: string) => void;
   onBack: () => void;
 }) {
-  const { token, items, totalAmount, onPaid, onBack } = props;
+  const {
+    token,
+    items,
+    totalAmount,
+    diningType,
+    customerName,
+    setCustomerName,
+    customerPhone,
+    setCustomerPhone,
+    onPaid,
+    onBack,
+  } = props;
   const t = useTranslations("SelfOrder");
   const [method, setMethod] = useState<"qris" | "e_wallet">("qris");
   const [submitting, setSubmitting] = useState(false);
@@ -738,13 +833,23 @@ function PaymentView(props: {
     setSubmitting(true);
     setError("");
     try {
+      const orderMetaNotes = [
+        diningType === "takeaway" ? "[BUNGKUS/TAKEAWAY]" : "[DINE-IN]",
+        customerName.trim() ? `Pemesan: ${customerName.trim()}` : "",
+        customerPhone.trim() ? `WA: ${customerPhone.trim()}` : "",
+      ].filter(Boolean).join(" • ");
+
       const create = await selfOrderFetch<{ order: { id: string }; payment: { provider: string } }>(
         "/api/v1/self-order/orders",
         {
           method: "POST",
           body: JSON.stringify({
             token,
-            items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity, notes: i.notes })),
+            items: items.map((i, idx) => ({
+              variantId: i.variantId,
+              quantity: i.quantity,
+              notes: idx === 0 && orderMetaNotes ? [i.notes, orderMetaNotes].filter(Boolean).join(" | ") : i.notes,
+            })),
             paymentMethod: method,
           }),
         },
@@ -780,7 +885,37 @@ function PaymentView(props: {
 
       <div className="space-y-1">
         <h1 className="text-xl font-bold text-foreground">{t("paymentTitle")}</h1>
-        <p className="text-xs text-muted-foreground">Pilih metode pembayaran Payment Gateway otomatis via Xendit.</p>
+        <p className="text-xs text-muted-foreground">Pilih metode pembayaran Payment Gateway otomatis via Midtrans.</p>
+      </div>
+
+      {/* Customer Info (Optional for Loyalty & WhatsApp E-Receipt) */}
+      <div className="space-y-3 rounded-2xl border p-3.5 bg-muted/20">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+            <User className="size-3.5 text-emerald-600" /> Kontak &amp; E-Receipt (Opsional)
+          </Label>
+          <Badge variant="outline" className="text-[10px] text-emerald-700 dark:text-emerald-300 border-emerald-300">
+            Poin Loyalty
+          </Badge>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <Input
+            placeholder="Nama Pemesan (misal: Budi)"
+            value={customerName}
+            onChange={(e) => setCustomerName(e.target.value)}
+            className="h-9 text-xs rounded-xl bg-background shadow-2xs"
+          />
+          <Input
+            placeholder="No. WhatsApp (08...)"
+            type="tel"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            className="h-9 text-xs rounded-xl bg-background shadow-2xs"
+          />
+        </div>
+        <p className="text-[10px] text-muted-foreground">
+          ✨ Masukkan no. WhatsApp untuk mengklaim poin loyalitas &amp; struk digital otomatis.
+        </p>
       </div>
 
       {/* Payment Method Cards */}
@@ -825,7 +960,12 @@ function PaymentView(props: {
 
       {/* Total Amount Breakdown */}
       <div className="flex items-center justify-between text-foreground">
-        <span className="text-base font-bold">{t("total")}</span>
+        <div className="space-y-0.5">
+          <span className="text-base font-bold">{t("total")}</span>
+          <p className="text-[11px] text-muted-foreground">
+            {diningType === "takeaway" ? "🥡 Bungkus (Takeaway)" : "🍽️ Makan di Tempat"}
+          </p>
+        </div>
         <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{rupiah(totalAmount)}</span>
       </div>
 
@@ -839,7 +979,7 @@ function PaymentView(props: {
       >
         {submitting ? (
           <>
-            <Loader2 className="h-4 w-4 animate-spin" /> Memproses Payment...
+            <Loader2 className="h-4 w-4 animate-spin" /> Memproses Pembayaran...
           </>
         ) : (
           `Bayar Sekarang · ${rupiah(totalAmount)}`
@@ -847,7 +987,7 @@ function PaymentView(props: {
       </Button>
 
       <p className="text-[10px] text-center text-muted-foreground">
-        🔒 Transaksi aman &amp; terenkripsi via Xendit Payment Gateway.
+        🔒 Transaksi aman &amp; terenkripsi via Midtrans Payment Gateway.
       </p>
     </div>
   );
@@ -875,6 +1015,20 @@ function OrderTimeline({ status }: { status: OrderStatus }) {
   const isCooking = kitchen ? ["cooking", "ready", "served"].includes(kitchen.status) : false;
   const isReady = kitchen ? ["ready", "served"].includes(kitchen.status) : false;
 
+  // Sound chime & vibration alert saat pesanan selesai/siap
+  useEffect(() => {
+    if (isReady) {
+      playOrderReadyChime();
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        try {
+          navigator.vibrate([200, 100, 200]);
+        } catch {
+          // Ignore vibration permission error
+        }
+      }
+    }
+  }, [isReady]);
+
   const steps = [
     { key: "pending", label: "Pesanan Diterima", icon: Clock, done: order.status !== "cancelled" },
     { key: "paid", label: "Pembayaran Lunas", icon: CheckCircle2, done: isPaid },
@@ -884,6 +1038,18 @@ function OrderTimeline({ status }: { status: OrderStatus }) {
 
   return (
     <div className="mx-auto max-w-lg space-y-5 bg-card border rounded-3xl p-5 shadow-sm">
+      {/* Ready Alert Celebration Banner */}
+      {isReady && (
+        <div className="rounded-2xl border-2 border-emerald-500 bg-emerald-500/10 dark:bg-emerald-950/70 p-4 text-center space-y-1.5 animate-pulse">
+          <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-300 flex items-center justify-center gap-1.5">
+            🎉 Pesanan Siap Disajikan!
+          </p>
+          <p className="text-xs text-emerald-800 dark:text-emerald-200">
+            Staf restoran sedang mengantarkan pesanan langsung ke Meja Anda.
+          </p>
+        </div>
+      )}
+
       {/* Header Invoice Banner */}
       <div className="flex items-center justify-between border-b pb-4">
         <div>

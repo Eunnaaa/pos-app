@@ -86,3 +86,28 @@ export function playPosChimeSound() {
     console.warn("Audio play failed:", e);
   }
 }
+
+/**
+ * Membunyikan chime pesanan siap (Order Ready Chime 3-Tone C5 -> E5 -> G5)
+ */
+export function playOrderReadyChime() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+      gain.gain.setValueAtTime(0.4, now + idx * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.6);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.12);
+      osc.stop(now + idx * 0.12 + 0.6);
+    });
+  } catch (e) {
+    console.warn("Audio play failed:", e);
+  }
+}

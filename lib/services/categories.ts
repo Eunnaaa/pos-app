@@ -12,8 +12,10 @@ export const DEFAULT_CATEGORIES: DefaultCategory[] = [
   { name: "Makanan", slug: "makanan", sortOrder: 1 },
   { name: "Minuman", slug: "minuman", sortOrder: 2 },
   { name: "Snack", slug: "snack", sortOrder: 3 },
-  { name: "Dessert", slug: "dessert", sortOrder: 4 },
-  { name: "Add-on", slug: "add-on", sortOrder: 5 },
+  { name: "Bakery", slug: "bakery", sortOrder: 4 },
+  { name: "Dessert", slug: "dessert", sortOrder: 5 },
+  { name: "Bundling", slug: "bundling", sortOrder: 6 },
+  { name: "Add-on", slug: "add-on", sortOrder: 7 },
 ];
 
 export async function ensureDefaultCategories(organizationId: string): Promise<void> {

@@ -253,15 +253,15 @@ export function SelfOrderPage() {
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {/* Header & Action Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
             <QrCode className="size-6" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight">
               Table &amp; QR Self-Order
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-none">
               {isOwner
                 ? "Kelola meja operasional, buat baru, rotasi, atau hapus kode QR stiker sesuai kebutuhan."
                 : "Lihat daftar meja operasional dan QR stiker aktif yang dapat digunakan untuk melayani pelanggan."}
@@ -270,7 +270,7 @@ export function SelfOrderPage() {
         </div>
 
         {isOwner && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 shrink-0 sm:ml-auto">
             <Button
               variant="outline"
               className="text-xs rounded-xl h-9 font-semibold gap-1.5 border-muted"
@@ -290,7 +290,7 @@ export function SelfOrderPage() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 rounded-xl h-9 font-semibold gap-1.5"
+                  className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 dark:border-rose-900/40 rounded-xl h-9 font-semibold gap-1.5"
                   onClick={() => void deleteAllTokens()}
                 >
                   <Trash2 className="size-4" /> Hapus Semua
@@ -302,7 +302,7 @@ export function SelfOrderPage() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 h-9 px-4 rounded-xl"
               onClick={() => setCreateOpen(true)}
             >
-              <Plus className="size-4" /> Generate QR Baru
+              <Plus className="size-4" /> Generate QR
             </Button>
           </div>
         )}

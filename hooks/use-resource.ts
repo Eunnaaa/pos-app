@@ -16,8 +16,11 @@ export function useResource<T extends ResourceRecord = ResourceRecord>(resource:
     try {
       const suffix = query ? `?${query}` : ""
       const response = await apiFetch<T[]>(`/api/v1/resources/${resource}${suffix}`)
-      setData(response.data)
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Gagal mengambil data") }
+      setData(Array.isArray(response?.data) ? response.data : [])
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Gagal mengambil data")
+      setData([])
+    }
     finally { setLoading(false) }
   }, [resource, query])
 

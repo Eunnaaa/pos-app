@@ -49,10 +49,26 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isOwner = !organization || organization.role === "owner"
   const allowed = new Set(isOwner ? ["all"] : ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "inventory:read", "selfOrder:manage"])
   const itemPermission: Record<string, string> = {
-    "/dashboard": "dashboard:read", "/dashboard/pos": "pos:write", "/dashboard/sales": "sales:read",
-    "/dashboard/kitchen": "sales:read", "/dashboard/reservations": "sales:read", "/dashboard/self-order": "sales:read",
-    "/dashboard/products": "inventory:read", "/dashboard/inventory": "inventory:read",
-    "/dashboard/customers": "customers:read", "/dashboard/cashiers": "users:manage", "/dashboard/reports": "reports:read",
+    "/dashboard": "dashboard:read",
+    "/dashboard/pos": "pos:write",
+    "/dashboard/sales": "sales:read",
+    "/dashboard/kitchen": "sales:read",
+    "/dashboard/reservations": "sales:read",
+    "/dashboard/self-order": "sales:read",
+    "/dashboard/products": "inventory:read",
+    "/dashboard/inventory": "inventory:read",
+    "/dashboard/purchases": "purchases:read",
+    "/dashboard/suppliers": "suppliers:read",
+    "/dashboard/customers": "customers:read",
+    "/dashboard/loyalty": "customers:read",
+    "/dashboard/promotions": "sales:read",
+    "/dashboard/finance": "finance:read",
+    "/dashboard/employees": "employees:manage",
+    "/dashboard/branches": "branches:manage",
+    "/dashboard/reports": "reports:read",
+    "/dashboard/ai": "dashboard:read",
+    "/dashboard/cashiers": "users:manage",
+    "/dashboard/settings": "settings:manage",
   }
 
   const groups: { label: string; items: [string, string, LucideIcon][] }[] = [

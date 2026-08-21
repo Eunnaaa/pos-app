@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import type { SalesReport, InventoryReport, PurchaseReport, FinanceReport, CustomerReport } from "@/lib/services/reporting"
+import { exportToCsv } from "@/lib/utils/export-csv"
 
 const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`
 
@@ -55,22 +56,73 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
   const handleExport = () => {
     if (!report) return
     try {
-      const rows = Object.entries(report).flatMap(([section, value]) => {
-        if (!Array.isArray(value)) return [[section, typeof value === "object" ? JSON.stringify(value) : String(value)]]
-        return value.map((item) => [section, JSON.stringify(item)])
-      })
-      const csv = [["section", "value"], ...rows]
-        .map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(","))
-        .join("\n")
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
       const activeBranchName = selectedBranchId === "all" ? "semua-cabang" : (organization?.branches.find((b) => b.id === selectedBranchId)?.name || "cabang").toLowerCase().replace(/\s+/g, "-")
-      a.download = `${reportType}-${activeBranchName}-${new Date().toISOString().slice(0, 10)}.csv`
-      a.click()
-      URL.revokeObjectURL(url)
-      showSuccess("Laporan berhasil diekspor")
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const baseFilename = `laporan-${reportType}-${activeBranchName}-${dateStr}`
+
+      if (reportType === "sales") {
+        const salesRep = report as SalesReport
+        if (salesRep.byProduct && salesRep.byProduct.length > 0) {
+          exportToCsv(
+            `${baseFilename}-produk-terlaris`,
+            salesRep.byProduct,
+            [
+              { header: "Nama Produk", accessor: (i) => i.name },
+              { header: "Kuantitas Terjual", accessor: (i) => i.quantity },
+              { header: "Total Penjualan (Rp)", accessor: (i) => Number(i.sales) },
+              { header: "Estimasi Profit (Rp)", accessor: (i) => Number(i.profit) },
+            ]
+          )
+        } else {
+          exportToCsv(
+            baseFilename,
+            [salesRep.summary],
+            [
+              { header: "Total Penjualan (Rp)", accessor: (s) => Number(s.totalSales) },
+              { header: "Total Profit (Rp)", accessor: (s) => Number(s.totalProfit) },
+              { header: "Total Transaksi", accessor: (s) => s.totalOrders },
+              { header: "Rata-rata Transaksi (Rp)", accessor: (s) => Number(s.averageOrderValue) },
+              { header: "Jumlah Pelanggan Unik", accessor: (s) => s.uniqueCustomers },
+            ]
+          )
+        }
+      } else if (reportType === "inventory") {
+        const invRep = report as InventoryReport
+        exportToCsv(
+          baseFilename,
+          invRep.movements || [],
+          [
+            { header: "Tipe Mutasi", accessor: (i) => i.type },
+            { header: "Jumlah Kuantitas", accessor: (i) => i.quantity },
+            { header: "Total Nilai (Rp)", accessor: (i) => Number(i.value) },
+            { header: "Total Kejadian", accessor: (i) => i.count },
+          ]
+        )
+      } else if (reportType === "customers") {
+        const custRep = report as CustomerReport
+        exportToCsv(
+          baseFilename,
+          custRep.topCustomers || [],
+          [
+            { header: "Nama Pelanggan", accessor: (c) => c.name },
+            { header: "Total Belanja (Rp)", accessor: (c) => Number(c.spent) },
+            { header: "Jumlah Kunjungan/Order", accessor: (c) => c.orders },
+            { header: "Poin Loyalitas", accessor: (c) => c.points },
+          ]
+        )
+      } else {
+        // Generic structured export
+        exportToCsv(
+          baseFilename,
+          [report as any],
+          Object.keys(report).map((k) => ({
+            header: k.toUpperCase(),
+            accessor: (item: any) => typeof item[k] === "object" ? JSON.stringify(item[k]) : String(item[k]),
+          }))
+        )
+      }
+
+      showSuccess("Laporan Excel/CSV berhasil diunduh!")
     } catch (caught) {
       showError(caught instanceof Error ? caught.message : "Gagal mengekspor laporan")
     }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Award, Gift, Loader2, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react"
+import { Award, Gift, Loader2, MessageSquare, Pencil, Plus, Send, Sparkles, Star, Trash2 } from "lucide-react"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { useResource } from "@/hooks/use-resource"
 import { apiFetch } from "@/lib/client"
@@ -51,7 +51,7 @@ type MembershipLevel = { id: string; name: string; minimum_spend_amount: string;
 const emptyLevel = { name: "", minimumSpendAmount: "", pointMultiplier: "1" }
 
 export function LoyaltyPage() {
-  const { branch } = useOrganization()
+  const { branch, organization } = useOrganization()
   const [accounts, setAccounts] = useState<LoyaltyAccount[]>([])
   const [summary, setSummary] = useState<LoyaltySummary | null>(null)
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([])
@@ -71,11 +71,13 @@ export function LoyaltyPage() {
         apiFetch<{ accounts: LoyaltyAccount[]; summary: LoyaltySummary }>("/api/v1/loyalty/accounts"),
         apiFetch<LoyaltyTransaction[]>("/api/v1/loyalty/transactions"),
       ])
-      setAccounts(accountsRes.data.accounts)
-      setSummary(accountsRes.data.summary)
-      setTransactions(transactionsRes.data)
-    } catch (error) {
-      showError(error instanceof Error ? error.message : "Gagal memuat data loyalty")
+      setAccounts(Array.isArray(accountsRes.data?.accounts) ? accountsRes.data.accounts : [])
+      setSummary(accountsRes.data?.summary ?? { total_members: 0, total_points: "0", total_lifetime_points: "0" })
+      setTransactions(Array.isArray(transactionsRes.data) ? transactionsRes.data : [])
+    } catch {
+      setAccounts([])
+      setSummary({ total_members: 0, total_points: "0", total_lifetime_points: "0" })
+      setTransactions([])
     } finally {
       setLoading(false)
     }
@@ -110,7 +112,7 @@ export function LoyaltyPage() {
     try {
       const input = {
         name: levelForm.name.trim(),
-        minimumSpendAmount: levelForm.minimumSpendAmount || "0",
+        minimumSpendAmount: levelForm.minimumSpendAmount ? String(levelForm.minimumSpendAmount) : "0",
         pointMultiplier: Number(levelForm.pointMultiplier) || 1,
       }
       if (editingLevel) await levels.update(editingLevel.id, input)
@@ -270,23 +272,46 @@ export function LoyaltyPage() {
                       <TableHead>Level</TableHead>
                       <TableHead className="text-right">Poin</TableHead>
                       <TableHead className="text-right">Total Spend</TableHead>
+                      <TableHead className="text-center w-14">WA</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {accounts.length === 0 && (
-                      <TableRow><TableCell colSpan={4} className="h-20 text-center text-muted-foreground">Belum ada akun loyalty. Poin terbentuk otomatis saat checkout.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="h-20 text-center text-muted-foreground">Belum ada akun loyalty. Poin terbentuk otomatis saat checkout.</TableCell></TableRow>
                     )}
-                    {accounts.map((account) => (
-                      <TableRow key={account.id}>
-                        <TableCell>
-                          <p className="font-medium">{account.customer_name}</p>
-                          <p className="text-xs text-muted-foreground">{account.customer_code}{account.customer_phone ? ` • ${account.customer_phone}` : ""}</p>
-                        </TableCell>
-                        <TableCell>{account.membership_level ? <Badge variant="outline">{account.membership_level}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
-                        <TableCell className="text-right font-semibold text-amber-600">{Number(account.points_balance).toLocaleString("id-ID")}</TableCell>
-                        <TableCell className="text-right">{rupiah(account.total_spend)}</TableCell>
-                      </TableRow>
-                    ))}
+                    {accounts.map((account) => {
+                      const cleanPhone = (account.customer_phone || "").replace(/[^0-9]/g, "").replace(/^0/, "62")
+                      const storeName = organization?.name || "KASIR KITA"
+                      const pointMsg = `*INFO POIN LOYALTY ${storeName.toUpperCase()}* 🌟\n\nHalo Kak *${account.customer_name}*,\nSaat ini Kakak memiliki saldo *${Number(account.points_balance).toLocaleString("id-ID")} Poin Loyalty* (Level: *${account.membership_level || "Member"}*)!\n\nTukarkan poin Kakak saat transaksi di kasir untuk mendapatkan potongan harga & reward spesial. Terima kasih telah menjadi pelanggan setia kami! 😊`
+                      const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(pointMsg)}` : ""
+
+                      return (
+                        <TableRow key={account.id}>
+                          <TableCell>
+                            <p className="font-medium">{account.customer_name}</p>
+                            <p className="text-xs text-muted-foreground">{account.customer_code}{account.customer_phone ? ` • ${account.customer_phone}` : ""}</p>
+                          </TableCell>
+                          <TableCell>{account.membership_level ? <Badge variant="outline">{account.membership_level}</Badge> : <span className="text-xs text-muted-foreground">—</span>}</TableCell>
+                          <TableCell className="text-right font-semibold text-amber-600">{Number(account.points_balance).toLocaleString("id-ID")}</TableCell>
+                          <TableCell className="text-right">{rupiah(account.total_spend)}</TableCell>
+                          <TableCell className="text-center">
+                            {cleanPhone ? (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="size-7 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                onClick={() => window.open(waUrl, "_blank")}
+                                title="Kirim info poin via WhatsApp"
+                              >
+                                <Send className="size-3.5" />
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>

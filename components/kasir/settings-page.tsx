@@ -1,7 +1,9 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Building2, Landmark, MapPin, Store, User } from "lucide-react"
+import { Bell, Building2, CreditCard, Landmark, MapPin, Store, User } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrganization } from "@/components/kasir/organization-provider"
@@ -9,10 +11,21 @@ import { AccountTab } from "./settings/account-tab"
 import { BusinessTab } from "./settings/business-tab"
 import { BranchesTab } from "./settings/branches-tab"
 import { BusinessesTab } from "./settings/businesses-tab"
+import { BillingTab } from "./settings/billing-tab"
+import { NotificationsTab } from "./settings/notifications-tab"
 
 export function SettingsPage() {
   const t = useTranslations("Settings")
+  const searchParams = useSearchParams()
+  const tabParam = searchParams.get("tab")
+  const [activeTab, setActiveTab] = useState("account")
   const { organization } = useOrganization()
+
+  useEffect(() => {
+    if (tabParam && ["account", "business", "branches", "businesses", "billing", "notifications"].includes(tabParam)) {
+      setActiveTab(tabParam)
+    }
+  }, [tabParam])
 
   if (!organization) return null
 
@@ -36,12 +49,14 @@ export function SettingsPage() {
         <Card><CardContent className="p-5"><div className="flex size-11 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950"><Building2 className="size-5 text-amber-600" /></div><p className="mt-4 text-sm text-muted-foreground">{t("warehouseCount")}</p><p className="mt-1 text-lg font-bold">{warehouseCount}</p></CardContent></Card>
       </section>
 
-      <Tabs defaultValue="account" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="h-10 w-full sm:w-fit justify-start overflow-x-auto">
           <TabsTrigger value="account"><User className="size-4" /> {t("tabAccount")}</TabsTrigger>
           {isOwner && <TabsTrigger value="business"><Store className="size-4" /> {t("tabBusiness")}</TabsTrigger>}
           {isOwner && <TabsTrigger value="branches"><Landmark className="size-4" /> {t("tabBranches")}</TabsTrigger>}
           <TabsTrigger value="businesses"><Building2 className="size-4" /> {t("tabBusinesses")}</TabsTrigger>
+          <TabsTrigger value="billing"><CreditCard className="size-4" /> {t("tabBilling")}</TabsTrigger>
+          <TabsTrigger value="notifications"><Bell className="size-4" /> {t("tabNotifications")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="account" className="mt-6">
@@ -59,6 +74,12 @@ export function SettingsPage() {
         )}
         <TabsContent value="businesses" className="mt-6">
           <BusinessesTab />
+        </TabsContent>
+        <TabsContent value="billing" className="mt-6">
+          <BillingTab />
+        </TabsContent>
+        <TabsContent value="notifications" className="mt-6">
+          <NotificationsTab />
         </TabsContent>
       </Tabs>
     </div>

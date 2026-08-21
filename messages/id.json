@@ -155,7 +155,9 @@
     "tabAccount": "Akun Saya",
     "tabBusiness": "Profil Bisnis",
     "tabBranches": "Cabang",
-    "tabBusinesses": "Bisnis Saya"
+    "tabBusinesses": "Bisnis Saya",
+    "tabBilling": "Billing & Paket",
+    "tabNotifications": "Notifikasi"
   },
   "AccountTab": {
     "personalTitle": "Informasi Pribadi",

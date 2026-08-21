@@ -1,65 +1,45 @@
-# Dependencies
+# Git
+.git
+.gitignore
+
+# Node dependencies and build output
 node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.pnpm-debug.log*
 
-# Local env files
+# Next.js build output
+.next
+out
+
+# Environment variables (do not bake into image)
 .env
-.env*.local
-.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Vercel
-.vercel
+# AI & Agent artifacts
+.agents
+.gemini
 
-# TypeScript
-*.tsbuildinfo
-next-env.d.ts
-
-# Next.js
-.next/
-out/
-
-# Production
-build
-
-# Misc
-.DS_Store
-*.pem
-
-# Debug
-debug
-.nyc_output
-
-# IDEs and editors
-/.idea
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
-*.swp
-*.swo
-
-# OS generated files
-Thumbs.db
-
-# Docker
-Dockerfile*
-docker-compose*
-.dockerignore
-
-# Git
-.git
-.gitignore
-README.md
-
-# Testing
+# Tests & Coverage
 coverage
-.coverage
+tests
+__tests__
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
 
-# Drizzle
-drizzle/
+# Documentation & Scratch files
+documentation
+README.md
+*.png
+*.jpg
+*.jpeg
 
-# Reference files
-reference*
+# OS files
+.DS_Store
+Thumbs.db

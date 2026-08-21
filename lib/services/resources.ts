@@ -6,6 +6,7 @@ import { assertAccountingDateOpen, AppError, paginationSchema, parseJson, parseS
 import { dataResponse } from "@/lib/api";
 import type { ApiContext } from "@/lib/api";
 import { postExpenseToLedger } from "./ledger";
+import { ensureDefaultCategories } from "./categories";
 
 type FieldType = "text" | "uuid" | "boolean" | "integer" | "bigint" | "date" | "timestamp" | "json";
 type Field = { column?: string; type: FieldType; required?: boolean };
@@ -72,6 +73,7 @@ function fieldColumn(name: string, field: Field): string {
 function parseField(field: Field, value: unknown): unknown {
   if (value === undefined) return undefined;
   if (value === null) return null;
+  if (value === "" && field.type !== "text") return field.required ? "" : null;
   switch (field.type) {
     case "text": return z.string().max(5_000).parse(value);
     case "uuid": return z.string().uuid().parse(value);
@@ -122,6 +124,13 @@ function valuesSql(values: Record<string, unknown>) {
 
 export async function listResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
   const config: ResourceConfig = resources[name];
+  if (name === "categories" && context.organizationId) {
+    try {
+      await ensureDefaultCategories(context.organizationId);
+    } catch {
+      // Ignore
+    }
+  }
   const query = parseSearchParams(request.url, paginationSchema.extend({ q: z.string().max(100).optional(), page: z.coerce.number().int().min(1).default(1) }));
   const offset = (query.page - 1) * query.limit;
   const search = query.q && config.search?.length
@@ -130,7 +139,7 @@ export async function listResource(name: ResourceName, request: Request, context
   const result = await db.execute(sql`
     select * from ${sql.identifier(config.table)}
     where organization_id = ${context.organizationId}${tenantScope(config, context)}${search}
-    order by created_at desc, id desc
+    order by ${name === "categories" ? sql`sort_order asc, name asc` : sql`created_at desc, id desc`}
     limit ${query.limit + 1} offset ${offset}
   `);
   const hasMore = result.rows.length > query.limit;
@@ -151,6 +160,9 @@ export async function createResource(name: ResourceName, request: Request, conte
   enforceBranchScope(config, body, context);
   if (config.fields.branchId && body.branch_id === undefined && context.branchId) {
     body.branch_id = context.branchId;
+  }
+  if (name === "promotions" && !body.starts_at) {
+    body.starts_at = new Date();
   }
   const id = crypto.randomUUID();
   const record = await db.transaction(async (tx) => {

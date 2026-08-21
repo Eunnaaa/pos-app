@@ -117,7 +117,7 @@ export const promotions = pgTable(
     valueAmount: moneyColumn("value_amount"),
     percentageBps: integer("percentage_bps").default(0).notNull(),
     rules: jsonb("rules").$type<Record<string, JsonValue>>().default({}),
-    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).defaultNow().notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }),
     usageLimit: integer("usage_limit"),
     perCustomerLimit: integer("per_customer_limit"),
