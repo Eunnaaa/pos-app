@@ -41,8 +41,38 @@ const PRINTER_SERVICES = [
   "0000ff00-0000-1000-8000-00805f9b34fb", // General BLE Serial
 ];
 
-let connectedDevice: any = null;
-let printerCharacteristic: any = null;
+interface BluetoothCharacteristicLike {
+  properties: { write?: boolean; writeWithoutResponse?: boolean };
+  writeValue?: (data: BufferSource) => Promise<void>;
+  writeValueWithoutResponse?: (data: BufferSource) => Promise<void>;
+}
+
+interface BluetoothServiceLike {
+  getCharacteristics: () => Promise<BluetoothCharacteristicLike[]>;
+}
+
+interface BluetoothRemoteGATTServerLike {
+  connected?: boolean;
+  connect: () => Promise<BluetoothRemoteGATTServerLike>;
+  disconnect?: () => void;
+  getPrimaryService: (service: string) => Promise<BluetoothServiceLike>;
+  getPrimaryServices?: () => Promise<BluetoothServiceLike[]>;
+}
+
+interface BluetoothDeviceLike {
+  name?: string;
+  gatt?: BluetoothRemoteGATTServerLike;
+  addEventListener: (event: string, handler: () => void) => void;
+}
+
+interface NavigatorWithBluetooth {
+  bluetooth: {
+    requestDevice: (options: { acceptAllDevices?: boolean; optionalServices?: string[] }) => Promise<BluetoothDeviceLike>;
+  };
+}
+
+let connectedDevice: BluetoothDeviceLike | null = null;
+let printerCharacteristic: BluetoothCharacteristicLike | null = null;
 
 export function isBluetoothSupported(): boolean {
   return typeof navigator !== "undefined" && "bluetooth" in navigator;
@@ -68,18 +98,18 @@ export async function connectBluetoothPrinter(): Promise<string> {
   }
 
   try {
-    const nav = navigator as any;
+    const nav = navigator as unknown as NavigatorWithBluetooth;
     const device = await nav.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: PRINTER_SERVICES,
     });
 
-    if (!device) throw new Error("Tidak ada printer yang dipilih.");
+    if (!device || !device.gatt) throw new Error("Tidak ada printer yang dipilih.");
 
     const server = await device.gatt.connect();
 
     // Cari characteristic yang dapat menerima write command
-    let foundChar: any = null;
+    let foundChar: BluetoothCharacteristicLike | null = null;
     for (const serviceUuid of PRINTER_SERVICES) {
       try {
         const service = await server.getPrimaryService(serviceUuid);
@@ -96,7 +126,7 @@ export async function connectBluetoothPrinter(): Promise<string> {
       }
     }
 
-    if (!foundChar) {
+    if (!foundChar && server.getPrimaryServices) {
       // Coba fallback ambil service apapun yang tersedia
       const services = await server.getPrimaryServices();
       for (const service of services) {
@@ -140,7 +170,7 @@ export async function connectBluetoothPrinter(): Promise<string> {
  */
 export function disconnectBluetoothPrinter(): void {
   if (connectedDevice && connectedDevice.gatt?.connected) {
-    connectedDevice.gatt.disconnect();
+    connectedDevice.gatt.disconnect?.();
   }
   connectedDevice = null;
   printerCharacteristic = null;
@@ -352,7 +382,7 @@ export async function printDirectThermal(data: ReceiptData, width: PrinterWidth 
     const chunk = rawBytes.slice(i, i + CHUNK_SIZE);
     if (printerCharacteristic.writeValueWithoutResponse) {
       await printerCharacteristic.writeValueWithoutResponse(chunk);
-    } else {
+    } else if (printerCharacteristic.writeValue) {
       await printerCharacteristic.writeValue(chunk);
     }
     // Delay 20ms agar buffer printer tidak overflow

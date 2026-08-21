@@ -26,10 +26,7 @@ import { showError, showInfo, showSuccess, showWarning } from "@/lib/toast-handl
 import { playPosChimeSound } from "@/lib/services/sound-alert"
 import {
   connectBluetoothPrinter,
-  disconnectBluetoothPrinter,
   getConnectedPrinterName,
-  isBluetoothSupported,
-  isPrinterConnected,
   printDirectThermal,
   type ReceiptData,
 } from "@/lib/services/escpos-printer"
@@ -73,8 +70,6 @@ type HeldOrder = {
 }
 
 const paymentMethods = [["Tunai", "cash", Banknote], ["QRIS", "qris", QrCode], ["Kartu", "debit", CreditCard], ["Split Bill", "split_bill", ReceiptText]] as const
-const colors = ["bg-amber-100 dark:bg-amber-950", "bg-emerald-100 dark:bg-emerald-950", "bg-blue-100 dark:bg-blue-950", "bg-violet-100 dark:bg-violet-950", "bg-rose-100 dark:bg-rose-950"]
-const emojis = ["☕", "🍵", "🥤", "🍛", "🥐", "📦"]
 const rupiah = (amount: number) => `Rp ${amount.toLocaleString("id-ID")}`
 
 export function PosScreen() {

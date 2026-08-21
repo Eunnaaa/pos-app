@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Download, FileSpreadsheet, Image as ImageIcon, Layers, Loader2, PackagePlus, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { Download, FileSpreadsheet, Layers, Loader2, PackagePlus, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

@@ -114,10 +114,10 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
         // Generic structured export
         exportToCsv(
           baseFilename,
-          [report as any],
+          [report as unknown as Record<string, unknown>],
           Object.keys(report).map((k) => ({
             header: k.toUpperCase(),
-            accessor: (item: any) => typeof item[k] === "object" ? JSON.stringify(item[k]) : String(item[k]),
+            accessor: (item: Record<string, unknown>) => typeof item[k] === "object" ? JSON.stringify(item[k]) : String(item[k]),
           }))
         )
       }

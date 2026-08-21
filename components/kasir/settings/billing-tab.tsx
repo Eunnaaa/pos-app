@@ -1,6 +1,6 @@
 "use client"
 
-import { Check, CreditCard, Download, FileText, HelpCircle, ShieldCheck, Sparkles, Zap } from "lucide-react"
+import { Check, CreditCard, Download, FileText, ShieldCheck, Sparkles, Zap } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"

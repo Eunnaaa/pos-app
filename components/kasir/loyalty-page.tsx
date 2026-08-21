@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Award, Gift, Loader2, MessageSquare, Pencil, Plus, Send, Sparkles, Star, Trash2 } from "lucide-react"
+import { Award, Gift, Loader2, Pencil, Plus, Send, Sparkles, Star, Trash2 } from "lucide-react"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { useResource } from "@/hooks/use-resource"
 import { apiFetch } from "@/lib/client"

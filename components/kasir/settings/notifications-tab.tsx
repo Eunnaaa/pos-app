@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Bell, Bot, Check, CheckCheck, Loader2, Mail, MessageSquare, RefreshCw, Send, ShieldAlert } from "lucide-react"
+import { Bot, Loader2, Mail, MessageSquare, RefreshCw } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"

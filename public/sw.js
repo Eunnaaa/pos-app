@@ -1,4 +1,4 @@
-const CACHE = "kedai-ku-shell-v2";
+const CACHE = "kedai-ku-shell-v3";
 const SHELL = ["/", "/sign-in", "/offline", "/kedai-ku-icon.svg"];
 
 self.addEventListener("install", (event) => {
