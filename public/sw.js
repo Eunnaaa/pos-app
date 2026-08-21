@@ -1,5 +1,5 @@
-const CACHE = "kasir-ku-shell-v2";
-const SHELL = ["/", "/sign-in", "/offline", "/kasir-ku-icon.svg"];
+const CACHE = "kedai-ku-shell-v2";
+const SHELL = ["/", "/sign-in", "/offline", "/kedai-ku-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -43,7 +43,7 @@ self.addEventListener("fetch", (event) => {
 });
 
 self.addEventListener("sync", (event) => {
-  if (event.tag !== "kasir-ku-sync") return;
+  if (event.tag !== "kedai-ku-sync") return;
   event.waitUntil(
     self.clients.matchAll().then((clients) => {
       clients.forEach((client) => client.postMessage({ type: "SYNC_PENDING_TRANSACTIONS" }));

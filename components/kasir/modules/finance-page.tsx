@@ -59,8 +59,8 @@ export function FinancePage() {
   useEffect(() => {
     void load()
     const handleContextChange = () => void load()
-    window.addEventListener("kasir-ku-context-change", handleContextChange)
-    return () => window.removeEventListener("kasir-ku-context-change", handleContextChange)
+    window.addEventListener("kedai-ku-context-change", handleContextChange)
+    return () => window.removeEventListener("kedai-ku-context-change", handleContextChange)
   }, [load])
 
   function changeType(next: PeriodType) {

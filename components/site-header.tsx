@@ -59,7 +59,7 @@ export function SiteHeader() {
     }
   }, [])
   const segment = pathname.split("/").filter(Boolean).at(-1) || "dashboard"
-  const title = titles[segment] || "Kasir-Ku"
+  const title = titles[segment] || "Kedai-Ku"
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">

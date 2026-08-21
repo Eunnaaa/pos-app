@@ -6,6 +6,6 @@
   "createdAt": "2025-01-01T00:00:00.000Z",
   "updatedAt": "2026-08-13T04:39:57.002Z",
   "startedAt": "2026-08-13T04:38:43.838Z",
-  "completion": "Created /help page with 15 FAQ entries (accordion, Bahasa Indonesia) covering: what is Kasir-Ku, signup, offline mode, security, payment methods, multi-branch, pricing, product/stock setup, tax/PPN, loyalty, receipt printing, data export, password reset, limits, support contact. Added support contact section (email + WhatsApp). Linked from landing page footer alongside Terms and Privacy.",
+  "completion": "Created /help page with 15 FAQ entries (accordion, Bahasa Indonesia) covering: what is Kedai-Ku, signup, offline mode, security, payment methods, multi-branch, pricing, product/stock setup, tax/PPN, loyalty, receipt printing, data export, password reset, limits, support contact. Added support contact section (email + WhatsApp). Linked from landing page footer alongside Terms and Privacy.",
   "completedAt": "2026-08-13T04:39:57.002Z"
 }

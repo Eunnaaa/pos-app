@@ -36,8 +36,8 @@ export function useResource<T extends ResourceRecord = ResourceRecord>(resource:
   useEffect(() => {
     void doRefresh()
     const handleContextChange = () => void doRefresh()
-    window.addEventListener("kasir-ku-context-change", handleContextChange)
-    return () => window.removeEventListener("kasir-ku-context-change", handleContextChange)
+    window.addEventListener("kedai-ku-context-change", handleContextChange)
+    return () => window.removeEventListener("kedai-ku-context-change", handleContextChange)
   }, [doRefresh])
 
   async function create(input: Record<string, unknown>) {

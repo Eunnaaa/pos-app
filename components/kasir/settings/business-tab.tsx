@@ -178,7 +178,7 @@ export function BusinessTab() {
                 <Label htmlFor="org-slug">{t("slug")}</Label>
                 <div className="relative">
                   <Input id="org-slug" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" className="pr-24" disabled={!isOwner} />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">.kasir-ku.id</span>
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground font-mono">.kedai-ku.id</span>
                 </div>
               </div>
 

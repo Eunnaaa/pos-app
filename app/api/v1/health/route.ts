@@ -6,5 +6,5 @@ export const dynamic = "force-dynamic";
 
 export const GET = apiHandler(async () => {
   await db.execute(sql`select 1`);
-  return dataResponse({ status: "ok", service: "kasir-ku", timestamp: new Date() });
+  return dataResponse({ status: "ok", service: "kedai-ku", timestamp: new Date() });
 });

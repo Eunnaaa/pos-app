@@ -85,7 +85,7 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     const nextBranch = selected.branches[0]
     const nextWarehouse = nextBranch?.warehouses.find((item) => item.isDefault) ?? nextBranch?.warehouses[0]
     setOrganizationId(selected.id); setBranchId(nextBranch?.id); setWarehouseId(nextWarehouse?.id)
-    window.dispatchEvent(new Event("kasir-ku-context-change"))
+    window.dispatchEvent(new Event("kedai-ku-context-change"))
   }
 
   function selectBranch(id: string) {
@@ -94,14 +94,14 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     const nextWarehouse = selected.warehouses.find((item) => item.isDefault) ?? selected.warehouses[0]
     persistActiveContext({ organizationId: organization.id, branchId: selected.id, warehouseId: nextWarehouse?.id })
     setBranchId(selected.id); setWarehouseId(nextWarehouse?.id)
-    window.dispatchEvent(new Event("kasir-ku-context-change"))
+    window.dispatchEvent(new Event("kedai-ku-context-change"))
   }
 
   function selectAllBranches() {
     if (!organization) return
     persistActiveContext({ organizationId: organization.id })
     setBranchId(undefined); setWarehouseId(undefined)
-    window.dispatchEvent(new Event("kasir-ku-context-change"))
+    window.dispatchEvent(new Event("kedai-ku-context-change"))
   }
 
   const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }

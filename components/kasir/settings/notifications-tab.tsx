@@ -92,7 +92,7 @@ export function NotificationsTab() {
                 </div>
                 <div>
                   <CardTitle className="text-sm font-bold">Telegram Bot Alert</CardTitle>
-                  <p className="text-[11px] text-muted-foreground">Kasir-Ku Alert Bot</p>
+                  <p className="text-[11px] text-muted-foreground">Kedai-Ku Alert Bot</p>
                 </div>
               </div>
               <Badge variant="outline" className="text-[10px]">Siap Digunakan</Badge>

@@ -1,7 +1,7 @@
 {
   "Metadata": {
-    "title": "Kasir-Ku — Smart Point of Sale",
-    "titleTemplate": "%s | Kasir-Ku",
+    "title": "Kedai-Ku — Smart Point of Sale",
+    "titleTemplate": "%s | Kedai-Ku",
     "description": "POS cloud modern untuk penjualan, inventory, pelanggan, keuangan, laporan, dan AI analytics."
   },
   "Common": {
@@ -26,11 +26,11 @@
     "featureStock": "Stok multi-cabang",
     "featureSecurity": "Aman & terkontrol",
     "featureSetup": "Setup cepat",
-    "footer": "© 2026 Kasir-Ku · Dibuat untuk bisnis Indonesia"
+    "footer": "© 2026 Kedai-Ku · Dibuat untuk bisnis Indonesia"
   },
   "SignIn": {
     "title": "Selamat datang kembali",
-    "description": "Masuk ke akun Kasir-Ku Anda.",
+    "description": "Masuk ke akun Kedai-Ku Anda.",
     "email": "Email",
     "emailPlaceholder": "nama@bisnis.com",
     "password": "Kata sandi",
@@ -50,7 +50,7 @@
   },
   "SignUp": {
     "title": "Mulai kelola bisnis",
-    "description": "Buat akun Kasir-Ku gratis dalam beberapa langkah.",
+    "description": "Buat akun Kedai-Ku gratis dalam beberapa langkah.",
     "name": "Nama lengkap",
     "namePlaceholder": "Nama Anda",
     "email": "Email bisnis",
@@ -68,7 +68,7 @@
     "agreeTerms": "Syarat Layanan",
     "agreePart2": "dan",
     "agreePrivacy": "Kebijakan Privasi",
-    "agreeEnd": "Kasir-Ku.",
+    "agreeEnd": "Kedai-Ku.",
     "creating": "Membuat akun...",
     "submit": "Buat akun gratis",
     "or": "atau",
@@ -87,7 +87,7 @@
   },
   "Onboarding": {
     "title": "Siapkan toko Anda",
-    "description": "Lengkapi informasi dasar untuk mulai menggunakan Kasir-Ku.",
+    "description": "Lengkapi informasi dasar untuk mulai menggunakan Kedai-Ku.",
     "businessName": "Nama bisnis",
     "businessPlaceholder": "Kopi Senja",
     "slug": "Alamat workspace",
@@ -100,7 +100,7 @@
     "storeReady": "Toko berhasil disiapkan!"
   },
   "Sidebar": {
-    "appName": "Kasir-Ku",
+    "appName": "Kedai-Ku",
     "appTagline": "Smart Point of Sale",
     "groupOperational": "Operasional",
     "groupProducts": "Produk & Stok",
@@ -439,7 +439,7 @@
     "unitThousand": "rb",
     "heroTitle1": "Kelola bisnis lebih mudah.",
     "heroTitle2": "Jualan lebih cepat.",
-    "heroDesc": "Kasir-Ku menyatukan kasir, inventory, pembelian, pelanggan, keuangan, laporan, dan AI analytics—siap untuk satu hingga ratusan cabang.",
+    "heroDesc": "Kedai-Ku menyatukan kasir, inventory, pembelian, pelanggan, keuangan, laporan, dan AI analytics—siap untuk satu hingga ratusan cabang.",
     "ctaTry": "Coba gratis sekarang",
     "ctaDemo": "Lihat demo dashboard",
     "trust1": "Tanpa kartu kredit",
@@ -447,7 +447,7 @@
     "trust3": "Bantuan 24/7",
     "sectionLabel": "Semua dalam satu platform",
     "sectionTitle": "Dibuat untuk bisnis yang ingin tumbuh",
-    "sectionDesc": "Dari warung hingga multi-cabang, fitur lengkap Kasir-Ku mengikuti kebutuhan bisnis Anda.",
+    "sectionDesc": "Dari warung hingga multi-cabang, fitur lengkap Kedai-Ku mengikuti kebutuhan bisnis Anda.",
     "featurePos": "POS super cepat",
     "featurePosDesc": "Cari produk, scan barcode, split bill, multi-payment, dan receipt digital.",
     "featureInventory": "Inventory real-time",
@@ -462,7 +462,7 @@
     "featureAiDesc": "Forecast penjualan, stock planning, fraud detection, dan insight otomatis.",
     "reviewsLabel": "Dipercaya Pemilik Bisnis",
     "reviewsTitle": "Cerita Sukses dari UMKM hingga Coffee Shop",
-    "reviewsDesc": "Lihat bagaimana Kasir-Ku membantu operasional kedai kopi, resto, dan bakery semakin efisien dan menguntungkan.",
+    "reviewsDesc": "Lihat bagaimana Kedai-Ku membantu operasional kedai kopi, resto, dan bakery semakin efisien dan menguntungkan.",
     "review1Name": "Rian Ardiansyah",
     "review1Business": "Owner Kopi Titik Temu (Coffee Shop & Roastery)",
     "review1Quote": "Fitur Self-Order QR dan varian Hot/Iced sangat membantu saat jam ramai. Antrean di kasir berkurang 60%, dan barista langsung terima tiket pesanan di Kitchen Display tanpa salah racik.",
@@ -474,8 +474,8 @@
     "review3Quote": "Fitur CRM WhatsApp dan poin loyalitas sangat mendongkrak repeat order pelanggan kami. Kami bisa broadcast voucher diskon ke ratusan member hanya dalam sekali klik.",
     "ctaTitle": "Siap membuat operasional lebih efisien?",
     "ctaDesc": "Mulai kelola bisnis dengan data yang rapi, keputusan yang cepat, dan pengalaman pelanggan yang lebih baik.",
-    "ctaCreate": "Buat akun Kasir-Ku",
-    "footerRights": "© 2026 Kasir-Ku. Semua hak dilindungi.",
+    "ctaCreate": "Buat akun Kedai-Ku",
+    "footerRights": "© 2026 Kedai-Ku. Semua hak dilindungi.",
     "help": "Bantuan",
     "terms": "Syarat Layanan",
     "privacy": "Kebijakan Privasi",

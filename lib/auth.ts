@@ -14,7 +14,7 @@ const appleEnabled = Boolean(env.APPLE_CLIENT_ID && env.APPLE_CLIENT_SECRET);
 const emailEnabled = Boolean(env.EMAIL_API_URL && env.EMAIL_API_KEY);
 
 export const auth = betterAuth({
-  appName: "Kasir-Ku",
+  appName: "Kedai-Ku",
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
   database: drizzleAdapter(db, {
@@ -41,15 +41,15 @@ export const auth = betterAuth({
           sendVerificationEmail: async ({ user, url }: { user: { email: string }; url: string }) => {
             await sendEmail(
               user.email,
-              "Verifikasi Email — Kasir-Ku",
-              `<p>Terima kasih telah mendaftar di Kasir-Ku.</p><p>Klik tautan berikut untuk memverifikasi alamat email Anda:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Verifikasi Email</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak mendaftar di Kasir-Ku, abaikan email ini.</p>`,
+              "Verifikasi Email — Kedai-Ku",
+              `<p>Terima kasih telah mendaftar di Kedai-Ku.</p><p>Klik tautan berikut untuk memverifikasi alamat email Anda:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Verifikasi Email</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak mendaftar di Kedai-Ku, abaikan email ini.</p>`,
             );
           },
           sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
             await sendEmail(
               user.email,
-              "Reset Password — Kasir-Ku",
-              `<p>Kami menerima permintaan untuk mereset password akun Kasir-Ku Anda.</p><p>Klik tautan berikut untuk mengatur password baru:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Reset Password</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta reset password, abaikan email ini.</p>`,
+              "Reset Password — Kedai-Ku",
+              `<p>Kami menerima permintaan untuk mereset password akun Kedai-Ku Anda.</p><p>Klik tautan berikut untuk mengatur password baru:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Reset Password</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta reset password, abaikan email ini.</p>`,
             );
           },
         }
@@ -95,8 +95,8 @@ export const auth = betterAuth({
             sendChangeEmailVerification: async ({ newEmail, url }) => {
               await sendEmail(
                 newEmail,
-                "Konfirmasi Email Baru — Kasir-Ku",
-                `<p>Kami menerima permintaan untuk mengubah email akun Kasir-Ku Anda menjadi <strong>${newEmail}</strong>.</p><p>Klik tautan berikut untuk mengonfirmasi perubahan email:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Konfirmasi Email Baru</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta perubahan ini, abaikan email ini.</p>`,
+                "Konfirmasi Email Baru — Kedai-Ku",
+                `<p>Kami menerima permintaan untuk mengubah email akun Kedai-Ku Anda menjadi <strong>${newEmail}</strong>.</p><p>Klik tautan berikut untuk mengonfirmasi perubahan email:</p><p><a href="${url}" style="display:inline-block;padding:10px 20px;background:#059669;color:#fff;border-radius:6px;text-decoration:none;">Konfirmasi Email Baru</a></p><p>Atau salin tautan ini ke browser Anda:<br/>${url}</p><p>Jika Anda tidak meminta perubahan ini, abaikan email ini.</p>`,
               );
             },
           },
@@ -137,7 +137,7 @@ export const auth = betterAuth({
       impersonationSessionDuration: 60 * 30,
     }),
     twoFactor({
-      issuer: "Kasir-Ku",
+      issuer: "Kedai-Ku",
       totpOptions: { period: 30, digits: 6 },
       backupCodeOptions: { amount: 10, length: 12, storeBackupCodes: "encrypted" },
     }),

@@ -12,6 +12,7 @@ import {
   IconNotification,
   IconUserCircle,
 } from "@tabler/icons-react"
+import { MessageCircle } from "lucide-react"
 
 import {
   Avatar,
@@ -52,9 +53,9 @@ export function NavUser({
     setIsSigningOut(true)
     try {
       await signOut()
-      localStorage.removeItem("kasir-ku-organization-id")
-      localStorage.removeItem("kasir-ku-branch-id")
-      localStorage.removeItem("kasir-ku-warehouse-id")
+      localStorage.removeItem("kedai-ku-organization-id")
+      localStorage.removeItem("kedai-ku-branch-id")
+      localStorage.removeItem("kedai-ku-warehouse-id")
       showSuccess("Berhasil keluar")
       router.replace("/sign-in")
     } catch (error) {
@@ -130,6 +131,17 @@ export function NavUser({
                   <IconNotification />
                   {t("notifications")}
                 </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a
+                  href="https://wa.me/6285353111025?text=Halo%20Developer%20%26%20Support%20Kedai-Ku%2C%20saya%20butuh%20bantuan%20terkait%20aplikasi."
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 cursor-pointer w-full text-emerald-700 dark:text-emerald-400 font-medium"
+                >
+                  <MessageCircle className="size-4 text-emerald-600" />
+                  WhatsApp Support
+                </a>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

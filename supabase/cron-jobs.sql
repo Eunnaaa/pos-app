@@ -1,4 +1,4 @@
--- Kasir-Ku: Scheduled jobs via pg_cron
+-- Kedai-Ku: Scheduled jobs via pg_cron
 -- Jalankan di Supabase SQL Editor. pg_cron aktif di Supabase secara default.
 
 create extension if not exists pg_cron;

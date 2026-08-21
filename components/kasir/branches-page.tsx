@@ -83,7 +83,7 @@ export function BranchesPage() {
       setEditingId(undefined)
       setOpen(false)
       await refresh()
-      window.dispatchEvent(new Event("kasir-ku-context-change"))
+      window.dispatchEvent(new Event("kedai-ku-context-change"))
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal menyimpan cabang", { error })
     } finally {
@@ -97,7 +97,7 @@ export function BranchesPage() {
       await apiFetch(`/api/v1/branches/${id}`, { method: "DELETE" })
       showSuccess(`Cabang ${name} dinonaktifkan`)
       await refresh()
-      window.dispatchEvent(new Event("kasir-ku-context-change"))
+      window.dispatchEvent(new Event("kedai-ku-context-change"))
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal menonaktifkan cabang")
     }

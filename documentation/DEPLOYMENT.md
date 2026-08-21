@@ -1,6 +1,6 @@
-# Panduan Deployment — Kasir-Ku
+# Panduan Deployment — Kedai-Ku
 
-Panduan lengkap untuk men-deploy Kasir-Ku ke produksi. Dua opsi hosting: **Vercel** (termudah) atau **Docker self-host** (kontrol penuh).
+Panduan lengkap untuk men-deploy Kedai-Ku ke produksi. Dua opsi hosting: **Vercel** (termudah) atau **Docker self-host** (kontrol penuh).
 
 ---
 
@@ -91,7 +91,7 @@ Vercel auto-deploy pada setiap push ke `main`. Verifikasi:
 
 ### Langkah 1: Build image
 ```bash
-docker build -t kasir-ku .
+docker build -t kedai-ku .
 ```
 
 ### Langkah 2: Konfigurasi environment
@@ -111,11 +111,11 @@ TRUSTED_ORIGINS=https://DOMAIN_ANDA.com
 ### Langkah 3: Run container
 ```bash
 docker run -d \
-  --name kasir-ku \
+  --name kedai-ku \
   --env-file .env.production \
   -p 3000:3000 \
   --restart unless-stopped \
-  kasir-ku
+  kedai-ku
 ```
 
 ### Langkah 4: Reverse proxy + SSL (nginx/Caddy)
@@ -130,7 +130,7 @@ Atau nginx + certbot untuk Let's Encrypt.
 
 ### Langkah 5: Run migration
 ```bash
-docker exec kasir-ku node -e "import('./db/index.ts')"
+docker exec kedai-ku node -e "import('./db/index.ts')"
 # Atau dari local dengan direct pooler URL
 ```
 
@@ -185,8 +185,8 @@ docker exec kasir-ku node -e "import('./db/index.ts')"
 
 ### Docker
 ```bash
-docker stop kasir-ku
-docker run -d --name kasir-ku --env-file .env.production -p 3000:3000 kasir-ku:PREVIOUS_TAG
+docker stop kedai-ku
+docker run -d --name kedai-ku --env-file .env.production -p 3000:3000 kedai-ku:PREVIOUS_TAG
 ```
 
 ### Database

@@ -10,9 +10,9 @@ import { useOrganization } from "@/components/kasir/organization-provider"
 import { showSuccess } from "@/lib/toast-handler"
 
 const invoices = [
-  { id: "INV-2026-08", date: "01 Agu 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kasir-Ku Enterprise (Bulanan)" },
-  { id: "INV-2026-07", date: "01 Jul 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kasir-Ku Enterprise (Bulanan)" },
-  { id: "INV-2026-06", date: "01 Jun 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kasir-Ku Enterprise (Bulanan)" },
+  { id: "INV-2026-08", date: "01 Agu 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kedai-Ku Enterprise (Bulanan)" },
+  { id: "INV-2026-07", date: "01 Jul 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kedai-Ku Enterprise (Bulanan)" },
+  { id: "INV-2026-06", date: "01 Jun 2026", amount: "Rp 350.000", status: "Lunas", plan: "Kedai-Ku Enterprise (Bulanan)" },
 ]
 
 export function BillingTab() {
@@ -31,7 +31,7 @@ export function BillingTab() {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <CardTitle className="text-xl font-bold">Paket Kasir-Ku Enterprise</CardTitle>
+                  <CardTitle className="text-xl font-bold">Paket Kedai-Ku Enterprise</CardTitle>
                   <Badge className="bg-emerald-600 hover:bg-emerald-600 text-xs font-semibold">Aktif</Badge>
                 </div>
                 <CardDescription className="text-xs mt-0.5">

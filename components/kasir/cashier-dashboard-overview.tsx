@@ -77,8 +77,8 @@ export function CashierDashboardOverview() {
   useEffect(() => {
     void load()
     const refresh = () => void load()
-    window.addEventListener("kasir-ku-context-change", refresh)
-    return () => window.removeEventListener("kasir-ku-context-change", refresh)
+    window.addEventListener("kedai-ku-context-change", refresh)
+    return () => window.removeEventListener("kedai-ku-context-change", refresh)
   }, [load])
 
   const orgId = organization?.id

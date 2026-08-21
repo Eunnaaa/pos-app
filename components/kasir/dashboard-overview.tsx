@@ -63,8 +63,8 @@ export function DashboardOverview() {
   useEffect(() => {
     void load()
     const refresh = () => void load()
-    window.addEventListener("kasir-ku-context-change", refresh)
-    return () => window.removeEventListener("kasir-ku-context-change", refresh)
+    window.addEventListener("kedai-ku-context-change", refresh)
+    return () => window.removeEventListener("kedai-ku-context-change", refresh)
   }, [load, reloadKey])
 
   const orgId = organization?.id

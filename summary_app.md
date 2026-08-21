@@ -1,6 +1,6 @@
 # Product Requirements Document (PRD)
 
-## Kasir-Ku
+## Kedai-Ku
 
 **Version:** 1.0
 

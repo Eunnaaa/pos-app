@@ -2,7 +2,7 @@
 
 ## ✅ IMPLEMENTATION COMPLETE
 
-Telah dibuat sistem error dan success handling yang comprehensive menggunakan **gooey-toast** untuk seluruh project Kasir-Ku POS.
+Telah dibuat sistem error dan success handling yang comprehensive menggunakan **gooey-toast** untuk seluruh project Kedai-Ku POS.
 
 ---
 

@@ -96,11 +96,11 @@ export function KitchenDisplayPage() {
     const handleVisibility = () => {
       if (typeof document !== "undefined" && !document.hidden) void load()
     }
-    window.addEventListener("kasir-ku-context-change", handleContextChange)
+    window.addEventListener("kedai-ku-context-change", handleContextChange)
     document.addEventListener("visibilitychange", handleVisibility)
     return () => {
       clearInterval(interval)
-      window.removeEventListener("kasir-ku-context-change", handleContextChange)
+      window.removeEventListener("kedai-ku-context-change", handleContextChange)
       document.removeEventListener("visibilitychange", handleVisibility)
     }
   }, [load])

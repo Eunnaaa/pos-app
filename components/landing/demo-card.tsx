@@ -230,7 +230,7 @@ export function DemoCard() {
         <span className="size-2.5 rounded-full bg-red-400" />
         <span className="size-2.5 rounded-full bg-amber-400" />
         <span className="size-2.5 rounded-full bg-emerald-400" />
-        <span className="ml-3 text-xs text-muted-foreground">app.kasir-ku.id/dashboard</span>
+        <span className="ml-3 text-xs text-muted-foreground">app.kedai-ku.id/dashboard</span>
       </div>
       <CardContent className="p-5">
         <div className="flex items-center justify-between">

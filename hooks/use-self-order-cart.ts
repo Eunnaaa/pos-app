@@ -12,7 +12,7 @@ export type CartItem = {
   notes?: string;
 };
 
-const STORAGE_KEY_PREFIX = "kasir-ku-self-order-cart:";
+const STORAGE_KEY_PREFIX = "kedai-ku-self-order-cart:";
 
 function keyOf(token: string) {
   return `${STORAGE_KEY_PREFIX}${token}`;

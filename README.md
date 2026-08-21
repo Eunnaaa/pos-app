@@ -1,6 +1,6 @@
-# Kasir-Ku
+# Kedai-Ku
 
-Kasir-Ku is a responsive, multi-tenant Point of Sale platform for Indonesian retail, food & beverage, and service businesses. It combines POS, inventory, purchasing, CRM, loyalty, promotions, kitchen/reservations, finance, employees, reporting, offline workflows, integrations, and AI insights.
+Kedai-Ku is a responsive, multi-tenant Point of Sale platform for Indonesian retail, food & beverage, and service businesses. It combines POS, inventory, purchasing, CRM, loyalty, promotions, kitchen/reservations, finance, employees, reporting, offline workflows, integrations, and AI insights.
 
 ## Stack
 

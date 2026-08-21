@@ -62,8 +62,8 @@ export function AiInsightsPanel() {
   useEffect(() => {
     void load()
     const handler = () => void load()
-    window.addEventListener("kasir-ku-context-change", handler)
-    return () => window.removeEventListener("kasir-ku-context-change", handler)
+    window.addEventListener("kedai-ku-context-change", handler)
+    return () => window.removeEventListener("kedai-ku-context-change", handler)
   }, [load])
 
   async function generate() {

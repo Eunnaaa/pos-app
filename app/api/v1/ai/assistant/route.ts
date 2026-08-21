@@ -172,7 +172,7 @@ function deterministicAnswer(metrics: Metrics): string {
   return lines.join("\n");
 }
 
-const SYSTEM_PROMPT = `Anda adalah AI business analyst untuk Kasir-Ku, platform POS multi-cabang untuk bisnis Indonesia. Jawab dalam Bahasa Indonesia yang jelas, interaktif, dan praktis.
+const SYSTEM_PROMPT = `Anda adalah AI business analyst untuk Kedai-Ku, platform POS multi-cabang untuk bisnis Indonesia. Jawab dalam Bahasa Indonesia yang jelas, interaktif, dan praktis.
 
 Konteks bisnis:
 - Mata uang: IDR (Rupiah), format: Rp X.XXX.XXX

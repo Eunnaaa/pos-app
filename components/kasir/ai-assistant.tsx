@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { ClientApiError, apiFetch } from "@/lib/client"
 import { showError } from "@/lib/toast-handler"
 
-const STORAGE_KEY = "kasir-ku-ai-chat"
+const STORAGE_KEY = "kedai-ku-ai-chat"
 
 const suggestions = [
   "Analisis penjualan bulan ini",
@@ -158,7 +158,7 @@ export function AiAssistant() {
       <CardHeader>
         <div className="flex items-start justify-between">
           <div>
-            <Badge className="mb-3 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/20"><Sparkles className="size-3" /> Kasir-Ku AI</Badge>
+            <Badge className="mb-3 bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/20"><Sparkles className="size-3" /> Kedai-Ku AI</Badge>
             <CardTitle className="text-2xl">Tanyakan apa saja tentang bisnis Anda</CardTitle>
             <CardDescription className="mt-2 text-emerald-100/60">
               Tanya penjualan, profit, stok, pelanggan, pembelian, keuangan. Sebutkan periode: hari ini, minggu lalu, 30 hari terakhir, bulan ini.

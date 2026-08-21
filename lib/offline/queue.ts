@@ -1,6 +1,6 @@
 "use client"
 
-const DB_NAME = "kasir-ku-offline"
+const DB_NAME = "kedai-ku-offline"
 const STORE_NAME = "mutations"
 const DB_VERSION = 1
 

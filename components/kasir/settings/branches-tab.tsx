@@ -83,7 +83,7 @@ export function BranchesTab() {
       setEditingId(undefined)
       setOpen(false)
       await refresh()
-      window.dispatchEvent(new Event("kasir-ku-context-change"))
+      window.dispatchEvent(new Event("kedai-ku-context-change"))
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal menyimpan cabang", { error })
     } finally {
@@ -97,7 +97,7 @@ export function BranchesTab() {
       await apiFetch(`/api/v1/branches/${id}`, { method: "DELETE" })
       showSuccess(`${t("createdPrefix")} ${name} ${t("deactivated")}`)
       await refresh()
-      window.dispatchEvent(new Event("kasir-ku-context-change"))
+      window.dispatchEvent(new Event("kedai-ku-context-change"))
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal menonaktifkan cabang")
     }

@@ -268,8 +268,8 @@ export function PosScreen() {
   useEffect(() => {
     void loadSession()
     const refresh = () => void loadSession()
-    window.addEventListener("kasir-ku-context-change", refresh)
-    return () => window.removeEventListener("kasir-ku-context-change", refresh)
+    window.addEventListener("kedai-ku-context-change", refresh)
+    return () => window.removeEventListener("kedai-ku-context-change", refresh)
   }, [loadSession])
 
   const loadHeldOrders = useCallback(async () => {

@@ -1,4 +1,4 @@
--- Kasir-Ku: Storage security policies
+-- Kedai-Ku: Storage security policies
 -- Jalankan di Supabase SQL Editor (Dashboard > SQL Editor > New query).
 -- Bucket "product-images" dibuat public. Policy ini memastikan:
 --   * anon/authenticated boleh MEMBACA file (public URL)

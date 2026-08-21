@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Kasir-Ku — Smart Point of Sale",
-    short_name: "Kasir-Ku",
+    name: "Kedai-Ku — Smart Point of Sale",
+    short_name: "Kedai-Ku",
     description: "POS, inventory, pelanggan, keuangan, laporan, dan AI analytics untuk bisnis Indonesia.",
     start_url: "/dashboard",
     display: "standalone",
@@ -13,12 +13,12 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["business", "finance", "productivity"],
     icons: [
-      { src: "/kasir-ku-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/kasir-ku-icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+      { src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/kedai-ku-icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Buka Kasir", short_name: "Kasir", url: "/dashboard/pos", icons: [{ src: "/kasir-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
-      { name: "Inventory", short_name: "Stok", url: "/dashboard/inventory", icons: [{ src: "/kasir-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
+      { name: "Buka Kasir", short_name: "Kasir", url: "/dashboard/pos", icons: [{ src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
+      { name: "Inventory", short_name: "Stok", url: "/dashboard/inventory", icons: [{ src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
     ],
   };
 }

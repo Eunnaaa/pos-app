@@ -1,6 +1,6 @@
 # Frontend Guideline Document
 
-> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan boilerplate `codeguide-starter` asli (vanilla CSS/BEM, AuthContext, React 18) dan **tidak lagi akurat** untuk project Kasir-Ku aktual. Frontend sebenarnya: Next.js 15 App Router, React 19, Tailwind CSS 4 + shadcn/ui (46 komponen Radix), next-themes, Recharts, TanStack Table, OrganizationProvider context multi-tenant, useResource hook CRUD generik, PWA offline-first. Lihat `README.md` untuk arsitektur yang akurat.
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan boilerplate `codeguide-starter` asli (vanilla CSS/BEM, AuthContext, React 18) dan **tidak lagi akurat** untuk project Kedai-Ku aktual. Frontend sebenarnya: Next.js 15 App Router, React 19, Tailwind CSS 4 + shadcn/ui (46 komponen Radix), next-themes, Recharts, TanStack Table, OrganizationProvider context multi-tenant, useResource hook CRUD generik, PWA offline-first. Lihat `README.md` untuk arsitektur yang akurat.
 
 This document explains, in simple terms, how the frontend of the `codeguide-starter` project is structured, styled, and built. Anyone—technical or not—can read this and understand which tools are used, how components fit together, and what practices keep the app fast, reliable, and easy to maintain.
 

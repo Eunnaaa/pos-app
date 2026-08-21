@@ -29,7 +29,7 @@ export function BusinessesTab() {
     try {
       await apiFetch("/api/v1/settings/organization", { method: "DELETE", organizationId: id })
       showSuccess(`${t("deactivatedPrefix")} ${name} ${t("deactivatedSuffix")}`)
-      window.dispatchEvent(new Event("kasir-ku-context-change"))
+      window.dispatchEvent(new Event("kedai-ku-context-change"))
       await new Promise((r) => setTimeout(r, 300))
       router.replace("/dashboard")
       router.refresh()
@@ -67,7 +67,7 @@ export function BusinessesTab() {
                       {active ? <Badge className="bg-emerald-600">{t("active")}</Badge> : null}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {org.slug}.kasir-ku.id • {org.branches.length} {t("branches")}
+                      {org.slug}.kedai-ku.id • {org.branches.length} {t("branches")}
                     </p>
                   </div>
                 </div>

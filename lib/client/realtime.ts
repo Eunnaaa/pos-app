@@ -23,7 +23,7 @@ export function subscribeToTable(
   const supabase = getRealtimeClient()
   if (!supabase) return () => undefined
   const channel = supabase
-    .channel(`kasir-ku-${table}`)
+    .channel(`kedai-ku-${table}`)
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table, filter: `organization_id=eq.${organizationId}` },

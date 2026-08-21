@@ -29,7 +29,7 @@ export async function generateMetadata({
   return {
     title: { default: t("title"), template: t("titleTemplate") },
     description: t("description"),
-    applicationName: "Kasir-Ku",
+    applicationName: "Kedai-Ku",
   }
 }
 

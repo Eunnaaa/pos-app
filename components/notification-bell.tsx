@@ -32,8 +32,8 @@ export function NotificationBell() {
 
   useEffect(() => {
     const handler = () => void notifications.refresh()
-    window.addEventListener("kasir-ku-context-change", handler)
-    return () => window.removeEventListener("kasir-ku-context-change", handler)
+    window.addEventListener("kedai-ku-context-change", handler)
+    return () => window.removeEventListener("kedai-ku-context-change", handler)
   }, [notifications])
 
   const unread = notifications.data.filter((n) => n.status !== "read" && n.status !== "failed")

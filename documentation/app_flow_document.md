@@ -1,6 +1,6 @@
 # App Flow Document
 
-> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan flow boilerplate `codeguide-starter` asli dan **tidak lengkap** untuk project Kasir-Ku aktual. Flow sebenarnya: Landing → Sign-up (dengan email verification) → Onboarding (org/branch/warehouse) → Dashboard (role-based: owner/cashier) → POS checkout → Receipt → Sales/Returns/Inventory/Purchases/Finance/Kitchen/Loyalty/AI. Lihat `README.md` dan `summary_app.md` untuk flow yang lengkap.
+> ⚠️ **DEPRECATED**: Dokumen ini mendeskripsikan flow boilerplate `codeguide-starter` asli dan **tidak lengkap** untuk project Kedai-Ku aktual. Flow sebenarnya: Landing → Sign-up (dengan email verification) → Onboarding (org/branch/warehouse) → Dashboard (role-based: owner/cashier) → POS checkout → Receipt → Sales/Returns/Inventory/Purchases/Finance/Kitchen/Loyalty/AI. Lihat `README.md` dan `summary_app.md` untuk flow yang lengkap.
 
 ## Onboarding and Sign-In/Sign-Up
 

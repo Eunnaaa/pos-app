@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 
 test("landing page renders with hero and CTA", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page).toHaveTitle(/Kasir-Ku/, { timeout: 15_000 });
+  await expect(page).toHaveTitle(/Kedai-Ku/, { timeout: 15_000 });
   await expect(page.getByRole("heading", { name: /kelola bisnis lebih mudah/i })).toBeVisible({ timeout: 10_000 });
   await expect(page.getByRole("link", { name: /coba gratis sekarang/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /syarat layanan/i }).first()).toBeVisible();
@@ -52,7 +52,7 @@ test("privacy page references UU PDP", async ({ page }) => {
 test("help page renders FAQ accordion", async ({ page }) => {
   await page.goto("/help");
   await expect(page.getByRole("heading", { name: /pusat bantuan/i })).toBeVisible();
-  await expect(page.getByText(/apa itu kasir-ku/i)).toBeVisible();
+  await expect(page.getByText(/apa itu kedai-ku/i)).toBeVisible();
   // First FAQ is open by default; check text without clicking to avoid toggling closed
   await expect(page.getByText(/platform point of sale/i)).toBeVisible();
 });

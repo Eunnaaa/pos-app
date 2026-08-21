@@ -2,9 +2,9 @@
 
 import { enqueueOfflineMutation } from "@/lib/offline";
 
-export const ACTIVE_ORGANIZATION_KEY = "kasir-ku-organization-id";
-export const ACTIVE_BRANCH_KEY = "kasir-ku-branch-id";
-export const ACTIVE_WAREHOUSE_KEY = "kasir-ku-warehouse-id";
+export const ACTIVE_ORGANIZATION_KEY = "kedai-ku-organization-id";
+export const ACTIVE_BRANCH_KEY = "kedai-ku-branch-id";
+export const ACTIVE_WAREHOUSE_KEY = "kedai-ku-warehouse-id";
 
 export type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown>; queued?: boolean };
 

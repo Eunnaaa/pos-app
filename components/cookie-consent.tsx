@@ -6,7 +6,7 @@ import { Cookie } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { showInfo } from "@/lib/toast-handler"
 
-const CONSENT_KEY = "kasir-ku-cookie-consent"
+const CONSENT_KEY = "kedai-ku-cookie-consent"
 
 export function CookieConsent() {
   const [visible, setVisible] = useState(false)

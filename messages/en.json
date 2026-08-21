@@ -1,7 +1,7 @@
 {
   "Metadata": {
-    "title": "Kasir-Ku — Smart Point of Sale",
-    "titleTemplate": "%s | Kasir-Ku",
+    "title": "Kedai-Ku — Smart Point of Sale",
+    "titleTemplate": "%s | Kedai-Ku",
     "description": "Modern cloud POS for sales, inventory, customers, finance, reports, and AI analytics."
   },
   "Common": {
@@ -26,11 +26,11 @@
     "featureStock": "Multi-branch stock",
     "featureSecurity": "Secure & controlled",
     "featureSetup": "Quick setup",
-    "footer": "© 2026 Kasir-Ku · Built for Indonesian businesses"
+    "footer": "© 2026 Kedai-Ku · Built for Indonesian businesses"
   },
   "SignIn": {
     "title": "Welcome back",
-    "description": "Sign in to your Kasir-Ku account.",
+    "description": "Sign in to your Kedai-Ku account.",
     "email": "Email",
     "emailPlaceholder": "name@business.com",
     "password": "Password",
@@ -50,7 +50,7 @@
   },
   "SignUp": {
     "title": "Start managing your business",
-    "description": "Create your free Kasir-Ku account in a few steps.",
+    "description": "Create your free Kedai-Ku account in a few steps.",
     "name": "Full name",
     "namePlaceholder": "Your name",
     "email": "Business email",
@@ -68,7 +68,7 @@
     "agreeTerms": "Terms of Service",
     "agreePart2": "and",
     "agreePrivacy": "Privacy Policy",
-    "agreeEnd": "of Kasir-Ku.",
+    "agreeEnd": "of Kedai-Ku.",
     "creating": "Creating account...",
     "submit": "Create free account",
     "or": "or",
@@ -87,7 +87,7 @@
   },
   "Onboarding": {
     "title": "Set up your store",
-    "description": "Complete the basic information to start using Kasir-Ku.",
+    "description": "Complete the basic information to start using Kedai-Ku.",
     "businessName": "Business name",
     "businessPlaceholder": "Kopi Senja",
     "slug": "Workspace address",
@@ -100,7 +100,7 @@
     "storeReady": "Store ready!"
   },
   "Sidebar": {
-    "appName": "Kasir-Ku",
+    "appName": "Kedai-Ku",
     "appTagline": "Smart Point of Sale",
     "groupOperational": "Operations",
     "groupProducts": "Products & Stock",
@@ -439,7 +439,7 @@
     "unitThousand": "k",
     "heroTitle1": "Run your business easier.",
     "heroTitle2": "Sell faster.",
-    "heroDesc": "Kasir-Ku unifies cashier, inventory, purchasing, customers, finance, reports, and AI analytics—ready for one to hundreds of branches.",
+    "heroDesc": "Kedai-Ku unifies cashier, inventory, purchasing, customers, finance, reports, and AI analytics—ready for one to hundreds of branches.",
     "ctaTry": "Try free now",
     "ctaDemo": "View demo dashboard",
     "trust1": "No credit card required",
@@ -447,7 +447,7 @@
     "trust3": "24/7 support",
     "sectionLabel": "Everything in one platform",
     "sectionTitle": "Built for businesses that want to grow",
-    "sectionDesc": "From a small store to multi-branch, Kasir-Ku's full features grow with your business needs.",
+    "sectionDesc": "From a small store to multi-branch, Kedai-Ku's full features grow with your business needs.",
     "featurePos": "Ultra-fast POS",
     "featurePosDesc": "Search products, scan barcodes, split bills, multi-payment, and digital receipts.",
     "featureInventory": "Real-time inventory",
@@ -462,7 +462,7 @@
     "featureAiDesc": "Sales forecasts, stock planning, fraud detection, and automated insights.",
     "reviewsLabel": "Trusted by Business Owners",
     "reviewsTitle": "Success Stories from Small Businesses to Coffee Shops",
-    "reviewsDesc": "See how Kasir-Ku helps coffee shops, restaurants, and bakeries streamline daily operations.",
+    "reviewsDesc": "See how Kedai-Ku helps coffee shops, restaurants, and bakeries streamline daily operations.",
     "review1Name": "Rian Ardiansyah",
     "review1Business": "Owner of Kopi Titik Temu (Coffee Shop & Roastery)",
     "review1Quote": "The QR Self-Order and Hot/Iced variant features are lifesavers during peak hours. Cashier lines dropped by 60%, and our baristas receive orders on the Kitchen Display instantly without mistakes.",
@@ -474,8 +474,8 @@
     "review3Quote": "The WhatsApp CRM and loyalty points feature skyrocketed our customer repeat orders. We can broadcast voucher promos to hundreds of members in just one click.",
     "ctaTitle": "Ready to make operations more efficient?",
     "ctaDesc": "Start managing your business with clean data, fast decisions, and a better customer experience.",
-    "ctaCreate": "Create your Kasir-Ku account",
-    "footerRights": "© 2026 Kasir-Ku. All rights reserved.",
+    "ctaCreate": "Create your Kedai-Ku account",
+    "footerRights": "© 2026 Kedai-Ku. All rights reserved.",
     "help": "Help",
     "terms": "Terms of Service",
     "privacy": "Privacy Policy",

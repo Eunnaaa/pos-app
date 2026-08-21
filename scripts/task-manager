@@ -19,7 +19,7 @@ const defaultTasks = [
   },
   {
     id: "phase-3-responsive-ui",
-    title: "Responsive Kasir-Ku application UI",
+    title: "Responsive Kedai-Ku application UI",
     description: "Build Indonesian role-aware dashboard and operational module interfaces.",
     status: "pending",
   },

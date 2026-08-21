@@ -2,13 +2,13 @@ import Link from "next/link"
 import { Store } from "lucide-react"
 import { legalProseStyles } from "@/lib/legal-content"
 
-export const metadata = { title: "Kebijakan Privasi", description: "Kebijakan privasi dan perlindungan data pribadi Kasir-Ku." }
+export const metadata = { title: "Kebijakan Privasi", description: "Kebijakan privasi dan perlindungan data pribadi Kedai-Ku." }
 
 export default function PrivacyPage() {
   return (
     <main className="min-h-screen bg-background">
       <nav className="mx-auto flex h-20 max-w-4xl items-center px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-600 text-white"><Store className="size-5" /></span><span className="text-xl font-bold tracking-tight">Kasir-Ku</span></Link>
+        <Link href="/" className="flex items-center gap-3"><span className="flex size-10 items-center justify-center rounded-xl bg-emerald-600 text-white"><Store className="size-5" /></span><span className="text-xl font-bold tracking-tight">Kedai-Ku</span></Link>
       </nav>
       <article className="mx-auto max-w-4xl px-4 pb-20 sm:px-6">
         <h1 className="text-3xl font-bold tracking-tight">Kebijakan Privasi</h1>
@@ -20,7 +20,7 @@ export default function PrivacyPage() {
 }
 
 const privacyContent = `
-<p>Kebijakan Privasi ini menjelaskan bagaimana Kasir-Ku ("kami") mengumpulkan, menggunakan, menyimpan, dan melindungi data pribadi Anda ("Subjek Data") sesuai dengan <strong>UU No. 27 Tahun 2022 tentang Perlindungan Data Pribadi (UU PDP)</strong>.</p>
+<p>Kebijakan Privasi ini menjelaskan bagaimana Kedai-Ku ("kami") mengumpulkan, menggunakan, menyimpan, dan melindungi data pribadi Anda ("Subjek Data") sesuai dengan <strong>UU No. 27 Tahun 2022 tentang Perlindungan Data Pribadi (UU PDP)</strong>.</p>
 
 <h2>1. Data Pribadi yang Kami Kumpulkan</h2>
 <p>Kami mengumpulkan data pribadi berikut:</p>
@@ -44,7 +44,7 @@ const privacyContent = `
 <p>Data disimpan di server yang berlokasi di Indonesia atau wilayah yang menyediakan tingkat perlindungan yang setara. Kami menerapkan: enkripsi data saat transit (HTTPS/TLS) dan saat penyimpanan; kontrol akses berbasis peran (RBAC); audit log; serta pemisahan data antar tenant. Data disimpan selama akun Anda aktif, dan setelah itu dihapus dalam jangka waktu yang wajar kecuali diwajibkan oleh hukum untuk menyimpannya.</p>
 
 <h2>6. Hak Subjek Data</h2>
-<p>Sesuai Bab V UU PDP, Anda memiliki hak untuk: (a) mengakses dan memperoleh salinan data pribadi Anda; (b) meminta perbaikan data yang tidak akurat; (c) meminta penghapusan data pribadi ("hak untuk dilupakan"); (d) menarik persetujuan pemrosesan; (e) mengajukan keberatan atas pemrosesan tertentu; (f) memperoleh portabilitas data. Untuk menggunakan hak ini, hubungi <a href="mailto:dpo@kasir-ku.id">dpo@kasir-ku.id</a>.</p>
+<p>Sesuai Bab V UU PDP, Anda memiliki hak untuk: (a) mengakses dan memperoleh salinan data pribadi Anda; (b) meminta perbaikan data yang tidak akurat; (c) meminta penghapusan data pribadi ("hak untuk dilupakan"); (d) menarik persetujuan pemrosesan; (e) mengajukan keberatan atas pemrosesan tertentu; (f) memperoleh portabilitas data. Untuk menggunakan hak ini, hubungi <a href="mailto:garyhardiansyah02@gmail.com">garyhardiansyah02@gmail.com</a>.</p>
 
 <h2>7. Transfer Data Lintas Wilayah</h2>
 <p>Apabila data pribadi dipindahkan ke luar wilayah Indonesia, kami memastikan negara tujuan memiliki perlindungan data yang setara atau telah memperoleh persetujuan Anda sesuai Pasal 56 UU PDP.</p>
@@ -56,11 +56,11 @@ const privacyContent = `
 <p>Layanan tidak ditujukan untuk individu di bawah usia 17 tahun. Kami tidak dengan sengaja mengumpulkan data pribadi anak-anak. Jika Anda yakin kami mengumpulkan data dari anak di bawah umur, hubungi kami untuk penghapusan.</p>
 
 <h2>10. Pejabat Pelindungan Data (DPO)</h2>
-<p>Untuk pertanyaan terkait perlindungan data, hak Anda, atau pengajuan keberatan, silakan hubungi Pejabat Pelindungan Data kami di <a href="mailto:dpo@kasir-ku.id">dpo@kasir-ku.id</a>.</p>
+<p>Untuk pertanyaan terkait perlindungan data, hak Anda, atau pengajuan keberatan, silakan hubungi Pejabat Pelindungan Data kami di <a href="mailto:garyhardiansyah02@gmail.com">garyhardiansyah02@gmail.com</a>.</p>
 
 <h2>11. Perubahan Kebijakan</h2>
 <p>Kebijakan ini dapat diperbarui sewaktu-waktu. Perubahan signifikan akan diberitahukan melalui email atau pemberitahuan dalam aplikasi paling lambat 14 hari sebelum berlaku.</p>
 
 <h2>12. Kontak</h2>
-<p>Untuk pertanyaan lainnya, hubungi <a href="mailto:support@kasir-ku.id">support@kasir-ku.id</a>.</p>
+<p>Untuk pertanyaan lainnya atau bantuan langsung, hubungi tim kami via WhatsApp di <a href="https://wa.me/6285353111025">+62 853-5311-1025</a> atau email <a href="mailto:garyhardiansyah02@gmail.com">garyhardiansyah02@gmail.com</a>.</p>
 `
