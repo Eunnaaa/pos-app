@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Download, FileSpreadsheet, Image as ImageIcon, Loader2, PackagePlus, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react"
+import { Download, FileSpreadsheet, Image as ImageIcon, Layers, Loader2, PackagePlus, Pencil, Plus, Search, Trash2, Upload, X } from "lucide-react"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,16 @@ type Product = {
 type Variant = { id: string; product_id: string; name: string; sku: string; barcode?: string; cost_amount: string; price_amount: string; is_active: boolean }
 type Category = { id: string; name: string; slug: string; sort_order: number }
 
+export type VariantItemForm = {
+  id?: string
+  name: string
+  sku: string
+  barcode?: string
+  cost: string
+  price: string
+  stock: string
+}
+
 type FormState = {
   name: string
   sku: string
@@ -45,6 +55,8 @@ type FormState = {
   active: boolean
   categoryId: string
   imageUrl: string
+  hasVariants: boolean
+  variantsList: VariantItemForm[]
 }
 const empty: FormState = {
   name: "",
@@ -57,6 +69,8 @@ const empty: FormState = {
   active: true,
   categoryId: "",
   imageUrl: "",
+  hasVariants: false,
+  variantsList: [],
 }
 const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`
 const slugify = (value: string) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
@@ -70,7 +84,7 @@ export function ProductsPage() {
   const [search, setSearch] = useState("")
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [editing, setEditing] = useState<{ product: Product; variant?: Variant }>()
+  const [editing, setEditing] = useState<{ product: Product; variant?: Variant; allVariants?: Variant[] }>()
   const [form, setForm] = useState<FormState>(empty)
   const [importOpen, setImportOpen] = useState(false)
   const [csvText, setCsvText] = useState("")
@@ -79,35 +93,58 @@ export function ProductsPage() {
   const rows = useMemo(
     () =>
       products.data
-        .map((product) => ({ product, variant: variants.data.find((item) => item.product_id === product.id) }))
+        .map((product) => {
+          const productVariants = variants.data.filter((item) => item.product_id === product.id)
+          const primaryVariant = productVariants[0]
+          return { product, variant: primaryVariant, allVariants: productVariants }
+        })
         .filter(
-          ({ product, variant }) =>
-            `${product.name} ${variant?.sku || ""} ${variant?.barcode || ""}`.toLowerCase().includes(search.toLowerCase())
+          ({ product, allVariants }) =>
+            `${product.name} ${allVariants.map((v) => `${v.sku} ${v.barcode || ""}`).join(" ")}`.toLowerCase().includes(search.toLowerCase())
         ),
     [products.data, variants.data, search]
   )
 
   function showCreate() {
     setEditing(undefined)
-    setForm(empty)
+    setForm({
+      ...empty,
+      hasVariants: false,
+      variantsList: [],
+    })
     setOpen(true)
   }
 
-  function showEdit(product: Product, variant?: Variant) {
+  function showEdit(product: Product, allVariants: Variant[] = []) {
     const categoryId = product.category_id || "none"
     const img = product.image_url || product.imageUrl || ""
-    setEditing({ product, variant })
+    const primary = allVariants[0]
+    const hasMultiple = allVariants.length > 1 || (allVariants.length === 1 && allVariants[0].name !== "Default")
+
+    setEditing({ product, variant: primary, allVariants })
     setForm({
       name: product.name,
-      sku: variant?.sku || product.sku || "",
-      barcode: variant?.barcode || "",
-      cost: variant?.cost_amount || "0",
-      price: variant?.price_amount || "0",
+      sku: primary?.sku || product.sku || "",
+      barcode: primary?.barcode || "",
+      cost: primary?.cost_amount || "0",
+      price: primary?.price_amount || "0",
       stock: "0",
       trackStock: product.track_stock,
       active: product.is_active,
       categoryId,
       imageUrl: img,
+      hasVariants: hasMultiple,
+      variantsList: hasMultiple
+        ? allVariants.map((v) => ({
+            id: v.id,
+            name: v.name,
+            sku: v.sku,
+            barcode: v.barcode || "",
+            cost: v.cost_amount || "0",
+            price: v.price_amount || "0",
+            stock: "0",
+          }))
+        : [],
     })
     setOpen(true)
   }
@@ -121,7 +158,15 @@ export function ProductsPage() {
     event.preventDefault()
     setSaving(true)
     try {
-      if (!form.sku.trim()) throw new Error("SKU wajib diisi")
+      if (!form.sku.trim()) throw new Error("SKU produk wajib diisi")
+      if (form.hasVariants && form.variantsList.length === 0) {
+        throw new Error("Tambahkan minimal 1 varian atau matikan opsi varian")
+      }
+      for (const v of form.variantsList) {
+        if (!v.name.trim()) throw new Error("Nama semua varian wajib diisi")
+        if (!v.sku.trim()) throw new Error(`SKU untuk varian "${v.name}" wajib diisi`)
+      }
+
       const categoryId = form.categoryId === "none" ? null : form.categoryId || null
       const imageUrl = form.imageUrl.trim() ? form.imageUrl.trim() : null
 
@@ -135,26 +180,55 @@ export function ProductsPage() {
           categoryId,
           imageUrl,
         })
-        if (editing.variant)
-          await variants.update(editing.variant.id, {
-            name: "Default",
-            sku: form.sku,
-            barcode: form.barcode || null,
-            costAmount: form.cost,
-            priceAmount: form.price,
-            isActive: form.active,
-          })
-        else
-          await variants.create({
-            productId: editing.product.id,
-            name: "Default",
-            sku: form.sku,
-            barcode: form.barcode || null,
-            costAmount: form.cost,
-            priceAmount: form.price,
-            isDefault: true,
-            isActive: form.active,
-          })
+
+        if (form.hasVariants && form.variantsList.length > 0) {
+          for (let i = 0; i < form.variantsList.length; i++) {
+            const v = form.variantsList[i]
+            if (v.id) {
+              await variants.update(v.id, {
+                name: v.name.trim(),
+                sku: v.sku.trim(),
+                barcode: v.barcode || null,
+                costAmount: v.cost || form.cost,
+                priceAmount: v.price || form.price,
+                isActive: form.active,
+              })
+            } else {
+              await variants.create({
+                productId: editing.product.id,
+                name: v.name.trim(),
+                sku: v.sku.trim(),
+                barcode: v.barcode || null,
+                costAmount: v.cost || form.cost,
+                priceAmount: v.price || form.price,
+                isDefault: i === 0,
+                isActive: form.active,
+              })
+            }
+          }
+        } else {
+          if (editing.variant) {
+            await variants.update(editing.variant.id, {
+              name: "Default",
+              sku: form.sku,
+              barcode: form.barcode || null,
+              costAmount: form.cost,
+              priceAmount: form.price,
+              isActive: form.active,
+            })
+          } else {
+            await variants.create({
+              productId: editing.product.id,
+              name: "Default",
+              sku: form.sku,
+              barcode: form.barcode || null,
+              costAmount: form.cost,
+              priceAmount: form.price,
+              isDefault: true,
+              isActive: form.active,
+            })
+          }
+        }
         showSuccess("Produk diperbarui")
       } else {
         const productResponse = await products.create({
@@ -169,28 +243,61 @@ export function ProductsPage() {
         })
         if (productResponse.queued || !productResponse.data?.id)
           throw new Error("Pembuatan produk perlu koneksi internet")
-        const variantResponse = await variants.create({
-          productId: productResponse.data.id,
-          name: "Default",
-          sku: form.sku,
-          barcode: form.barcode || null,
-          costAmount: form.cost,
-          priceAmount: form.price,
-          isDefault: true,
-          isActive: form.active,
-        })
-        if (Number(form.stock) > 0 && variantResponse.data?.id && warehouse?.id) {
-          await apiFetch("/api/v1/inventory/adjustments", {
-            method: "POST",
-            queueOffline: true,
-            body: JSON.stringify({
-              branchId: branch?.id,
-              warehouseId: warehouse.id,
-              variantId: variantResponse.data.id,
-              quantity: form.stock,
-              reason: "Stok awal produk",
-            }),
+
+        const newProductId = productResponse.data.id
+
+        if (form.hasVariants && form.variantsList.length > 0) {
+          for (let i = 0; i < form.variantsList.length; i++) {
+            const v = form.variantsList[i]
+            const variantResponse = await variants.create({
+              productId: newProductId,
+              name: v.name.trim(),
+              sku: v.sku.trim(),
+              barcode: v.barcode || null,
+              costAmount: v.cost || form.cost,
+              priceAmount: v.price || form.price,
+              isDefault: i === 0,
+              isActive: form.active,
+            })
+
+            if (Number(v.stock) > 0 && variantResponse.data?.id && warehouse?.id) {
+              await apiFetch("/api/v1/inventory/adjustments", {
+                method: "POST",
+                queueOffline: true,
+                body: JSON.stringify({
+                  branchId: branch?.id,
+                  warehouseId: warehouse.id,
+                  variantId: variantResponse.data.id,
+                  quantity: v.stock,
+                  reason: `Stok awal varian ${v.name}`,
+                }),
+              })
+            }
+          }
+        } else {
+          const variantResponse = await variants.create({
+            productId: newProductId,
+            name: "Default",
+            sku: form.sku,
+            barcode: form.barcode || null,
+            costAmount: form.cost,
+            priceAmount: form.price,
+            isDefault: true,
+            isActive: form.active,
           })
+          if (Number(form.stock) > 0 && variantResponse.data?.id && warehouse?.id) {
+            await apiFetch("/api/v1/inventory/adjustments", {
+              method: "POST",
+              queueOffline: true,
+              body: JSON.stringify({
+                branchId: branch?.id,
+                warehouseId: warehouse.id,
+                variantId: variantResponse.data.id,
+                quantity: form.stock,
+                reason: "Stok awal produk",
+              }),
+            })
+          }
         }
         showSuccess("Produk ditambahkan")
       }
@@ -350,8 +457,13 @@ export function ProductsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {rows.map(({ product, variant }) => {
+                {rows.map(({ product, variant, allVariants }) => {
                   const img = product.image_url || product.imageUrl
+                  const hasMulti = allVariants.length > 1 || (allVariants.length === 1 && allVariants[0].name !== "Default")
+                  const prices = allVariants.map((v) => Number(v.price_amount || 0)).filter((n) => !isNaN(n))
+                  const minPrice = prices.length ? Math.min(...prices) : Number(variant?.price_amount || 0)
+                  const maxPrice = prices.length ? Math.max(...prices) : Number(variant?.price_amount || 0)
+
                   return (
                     <TableRow key={product.id}>
                       <TableCell className="font-medium">
@@ -367,14 +479,34 @@ export function ProductsPage() {
                           </div>
                           <div>
                             <p className="font-semibold text-sm">{product.name}</p>
-                            <p className="text-xs text-muted-foreground">{variant?.sku || product.sku || "—"}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {hasMulti ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
+                                  <Layers className="size-3" /> {allVariants.map((v) => v.name).join(" • ")}
+                                </span>
+                              ) : (
+                                variant?.sku || product.sku || "—"
+                              )}
+                            </p>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>{product.category_name || "—"}</TableCell>
-                      <TableCell>{variant?.sku || product.sku || "—"}</TableCell>
+                      <TableCell>
+                        {hasMulti ? (
+                          <Badge variant="outline" className="text-xs border-emerald-300 font-semibold text-emerald-700 dark:text-emerald-300">
+                            {allVariants.length} Varian
+                          </Badge>
+                        ) : (
+                          variant?.sku || product.sku || "—"
+                        )}
+                      </TableCell>
                       <TableCell>{variant?.barcode || "—"}</TableCell>
-                      <TableCell>{rupiah(variant?.price_amount || 0)}</TableCell>
+                      <TableCell className="font-semibold">
+                        {hasMulti && minPrice !== maxPrice
+                          ? `${rupiah(minPrice)} – ${rupiah(maxPrice)}`
+                          : rupiah(minPrice)}
+                      </TableCell>
                       {isOwner && <TableCell>{rupiah(variant?.cost_amount || 0)}</TableCell>}
                       <TableCell>
                         <Badge
@@ -388,7 +520,7 @@ export function ProductsPage() {
                         <div className="flex justify-end gap-1">
                           {isOwner && (
                             <>
-                              <Button variant="ghost" size="icon" onClick={() => showEdit(product, variant)}>
+                              <Button variant="ghost" size="icon" onClick={() => showEdit(product, allVariants)}>
                                 <Pencil className="size-4" />
                               </Button>
                               <Button
@@ -413,20 +545,20 @@ export function ProductsPage() {
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <form onSubmit={save}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <PackagePlus className="text-emerald-600" />
                 {editing ? "Edit produk" : "Tambah produk"}
               </DialogTitle>
-              <DialogDescription>Produk dibuat bersama varian default agar langsung dapat dijual.</DialogDescription>
+              <DialogDescription>Kelola detail produk, foto, harga, dan opsi varian.</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-4 py-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label>Nama produk</Label>
-                <Input value={form.name} onChange={update("name")} placeholder="Contoh: Kopi Latte, Croissant" required />
+                <Input value={form.name} onChange={update("name")} placeholder="Contoh: Matcha Latte, Kopi Susu" required />
               </div>
 
               {/* Foto Produk Opsional */}
@@ -491,35 +623,10 @@ export function ProductsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label>SKU</Label>
-                <Input value={form.sku} onChange={update("sku")} placeholder="SKU-001" required />
+                <Label>SKU Induk / Utama</Label>
+                <Input value={form.sku} onChange={update("sku")} placeholder="MTC-001" required />
               </div>
-              <div className="space-y-2">
-                <Label>Barcode</Label>
-                <Input value={form.barcode} onChange={update("barcode")} placeholder="Opsional barcode" />
-              </div>
-              <div className="space-y-2">
-                <Label>Harga jual</Label>
-                <Input type="number" min="0" value={form.price} onChange={update("price")} required />
-              </div>
-              {isOwner && (
-                <div className="space-y-2">
-                  <Label>Harga pokok (HPP)</Label>
-                  <Input type="number" min="0" value={form.cost} onChange={update("cost")} required />
-                </div>
-              )}
-              {!editing && (
-                <div className="space-y-2">
-                  <Label>Stok awal</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={form.stock}
-                    onChange={update("stock")}
-                    disabled={!form.trackStock}
-                  />
-                </div>
-              )}
+
               <div className="space-y-2">
                 <Label>Kategori</Label>
                 <Select value={form.categoryId} onValueChange={updateSelect("categoryId")}>
@@ -536,6 +643,238 @@ export function ProductsPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Multi-Variant Section */}
+              <div className="space-y-3 sm:col-span-2 border rounded-2xl p-4 bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm font-bold flex items-center gap-1.5 text-foreground cursor-pointer" htmlFor="toggle-variants">
+                      <Layers className="size-4 text-emerald-600" /> Memiliki Opsi Varian (Hot / Ice, Ukuran, dll.)
+                    </Label>
+                    <p className="text-[11px] text-muted-foreground">
+                      Aktifkan jika produk memiliki pilihan Hot/Ice atau ukuran berbeda dengan harga masing-masing.
+                    </p>
+                  </div>
+                  <Switch
+                    id="toggle-variants"
+                    checked={form.hasVariants}
+                    onCheckedChange={(checked) => {
+                      setForm((c) => {
+                        if (checked && c.variantsList.length === 0) {
+                          const baseSku = c.sku.trim() || "SKU"
+                          const basePrice = c.price || "0"
+                          const baseCost = c.cost || "0"
+                          return {
+                            ...c,
+                            hasVariants: true,
+                            variantsList: [
+                              { name: "Hot", sku: `${baseSku}-HOT`, price: basePrice, cost: baseCost, stock: "0" },
+                              { name: "Iced", sku: `${baseSku}-ICE`, price: String(Number(basePrice) > 0 ? Number(basePrice) + 3000 : "0"), cost: baseCost, stock: "0" },
+                            ],
+                          }
+                        }
+                        return { ...c, hasVariants: checked }
+                      })
+                    }}
+                  />
+                </div>
+
+                {form.hasVariants && (
+                  <div className="space-y-3 pt-2">
+                    {/* Preset quick buttons */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground">Preset:</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs rounded-lg gap-1 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                        onClick={() => {
+                          const baseSku = form.sku.trim() || "SKU"
+                          const basePrice = form.price || "0"
+                          const baseCost = form.cost || "0"
+                          setForm((c) => ({
+                            ...c,
+                            variantsList: [
+                              { name: "Hot", sku: `${baseSku}-HOT`, price: basePrice, cost: baseCost, stock: "0" },
+                              { name: "Iced", sku: `${baseSku}-ICE`, price: String(Number(basePrice) > 0 ? Number(basePrice) + 3000 : "0"), cost: baseCost, stock: "0" },
+                            ],
+                          }))
+                        }}
+                      >
+                        ☕ 🧊 Preset Hot &amp; Ice
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs rounded-lg gap-1 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                        onClick={() => {
+                          const baseSku = form.sku.trim() || "SKU"
+                          const basePrice = form.price || "0"
+                          const baseCost = form.cost || "0"
+                          setForm((c) => ({
+                            ...c,
+                            variantsList: [
+                              { name: "Regular", sku: `${baseSku}-REG`, price: basePrice, cost: baseCost, stock: "0" },
+                              { name: "Large", sku: `${baseSku}-LRG`, price: String(Number(basePrice) > 0 ? Number(basePrice) + 5000 : "0"), cost: baseCost, stock: "0" },
+                            ],
+                          }))
+                        }}
+                      >
+                        📏 Preset Ukuran (Reg / Large)
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs rounded-lg gap-1"
+                        onClick={() => {
+                          const baseSku = form.sku.trim() || "SKU"
+                          setForm((c) => ({
+                            ...c,
+                            variantsList: [
+                              ...c.variantsList,
+                              { name: "", sku: `${baseSku}-${c.variantsList.length + 1}`, price: c.price || "0", cost: c.cost || "0", stock: "0" },
+                            ],
+                          }))
+                        }}
+                      >
+                        <Plus className="size-3" /> Tambah Baris
+                      </Button>
+                    </div>
+
+                    {/* Variants Input List */}
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {form.variantsList.map((vItem, idx) => (
+                        <div key={idx} className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border bg-background p-2.5 shadow-2xs text-xs">
+                          <div className="w-28 space-y-1">
+                            <Label className="text-[10px] font-semibold text-muted-foreground">Nama Varian</Label>
+                            <Input
+                              placeholder="Hot / Iced"
+                              value={vItem.name}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setForm((c) => ({
+                                  ...c,
+                                  variantsList: c.variantsList.map((item, i) => (i === idx ? { ...item, name: val } : item)),
+                                }))
+                              }}
+                              className="h-8 text-xs font-semibold"
+                              required
+                            />
+                          </div>
+
+                          <div className="w-28 space-y-1">
+                            <Label className="text-[10px] font-semibold text-muted-foreground">SKU Varian</Label>
+                            <Input
+                              placeholder="MTC-HOT"
+                              value={vItem.sku}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setForm((c) => ({
+                                  ...c,
+                                  variantsList: c.variantsList.map((item, i) => (i === idx ? { ...item, sku: val } : item)),
+                                }))
+                              }}
+                              className="h-8 text-xs"
+                              required
+                            />
+                          </div>
+
+                          <div className="flex-1 min-w-24 space-y-1">
+                            <Label className="text-[10px] font-semibold text-muted-foreground">Harga Jual (Rp)</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              placeholder="22000"
+                              value={vItem.price}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setForm((c) => ({
+                                  ...c,
+                                  variantsList: c.variantsList.map((item, i) => (i === idx ? { ...item, price: val } : item)),
+                                }))
+                              }}
+                              className="h-8 text-xs font-bold text-emerald-600"
+                              required
+                            />
+                          </div>
+
+                          {isOwner && (
+                            <div className="w-24 space-y-1">
+                              <Label className="text-[10px] font-semibold text-muted-foreground">HPP (Rp)</Label>
+                              <Input
+                                type="number"
+                                min="0"
+                                placeholder="10000"
+                                value={vItem.cost}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  setForm((c) => ({
+                                    ...c,
+                                    variantsList: c.variantsList.map((item, i) => (i === idx ? { ...item, cost: val } : item)),
+                                  }))
+                                }}
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                          )}
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 mt-4 text-destructive hover:bg-destructive/10 shrink-0"
+                            onClick={() => {
+                              setForm((c) => ({
+                                ...c,
+                                variantsList: c.variantsList.filter((_, i) => i !== idx),
+                              }))
+                            }}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!form.hasVariants && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Barcode (Opsional)</Label>
+                    <Input value={form.barcode} onChange={update("barcode")} placeholder="Opsional barcode" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Harga jual</Label>
+                    <Input type="number" min="0" value={form.price} onChange={update("price")} required />
+                  </div>
+                  {isOwner && (
+                    <div className="space-y-2">
+                      <Label>Harga pokok (HPP)</Label>
+                      <Input type="number" min="0" value={form.cost} onChange={update("cost")} required />
+                    </div>
+                  )}
+                  {!editing && (
+                    <div className="space-y-2">
+                      <Label>Stok awal</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={form.stock}
+                        onChange={update("stock")}
+                        disabled={!form.trackStock}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
+
               <div className="flex items-center justify-between rounded-lg border p-3">
                 <Label>Lacak stok</Label>
                 <Switch
