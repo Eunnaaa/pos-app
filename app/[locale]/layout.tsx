@@ -18,8 +18,14 @@ export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }))
 }
 
-export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations({ locale: "id", namespace: "Metadata" })
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>
+}): Promise<Metadata> {
+  const { locale } = await params
+  const validLocale = hasLocale(routing.locales, locale) ? locale : "id"
+  const t = await getTranslations({ locale: validLocale, namespace: "Metadata" })
   return {
     title: { default: t("title"), template: t("titleTemplate") },
     description: t("description"),

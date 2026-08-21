@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import { Card, CardContent } from "@/components/ui/card"
 import { TrendingUp } from "lucide-react"
 
@@ -9,35 +10,38 @@ const ORDERS_TARGET = 47
 const CUSTOMERS_TARGET = 23
 const PROFIT_TARGET = 1_820_000
 
-const CHART_DATA = [
-  { day: "Sen", value: 1_850_000 },
-  { day: "Sel", value: 2_420_000 },
-  { day: "Rab", value: 1_980_000 },
-  { day: "Kam", value: 2_870_000 },
-  { day: "Jum", value: 2_560_000 },
-  { day: "Sab", value: 3_640_000 },
-  { day: "Min", value: 3_310_000 },
-]
+const CHART_RAW_DATA = [
+  { dayKey: "dayMon", value: 1_850_000 },
+  { dayKey: "dayTue", value: 2_420_000 },
+  { dayKey: "dayWed", value: 1_980_000 },
+  { dayKey: "dayThu", value: 2_870_000 },
+  { dayKey: "dayFri", value: 2_560_000 },
+  { dayKey: "daySat", value: 3_640_000 },
+  { dayKey: "daySun", value: 3_310_000 },
+] as const
 
 const CHART_W = 700
 const CHART_H = 150
 const TOTAL_H = 180
 const BAR_W = 44
-const SLOT_W = CHART_W / CHART_DATA.length
+const SLOT_W = CHART_W / CHART_RAW_DATA.length
 
 const rupiah = (value: number) => `Rp ${value.toLocaleString("id-ID")}`
-const rupiahShort = (value: number) => {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".", ",")}jt`
-  if (value >= 1_000) return `${Math.round(value / 1_000)}rb`
+
+function formatShort(value: number, millionSuffix: string, thousandSuffix: string) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1).replace(".", ",")}${millionSuffix}`
+  if (value >= 1_000) return `${Math.round(value / 1_000)}${thousandSuffix}`
   return String(value)
 }
 
 function useCountUp(target: number, duration = 1400): number {
-  const [value, setValue] = useState(0)
+  const [value, setValue] = useState(target)
   const frameRef = useRef<number | undefined>(undefined)
   const startRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
+    setValue(0)
+    startRef.current = undefined
     const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
     const animate = (timestamp: number) => {
       if (startRef.current === undefined) startRef.current = timestamp
@@ -47,7 +51,9 @@ function useCountUp(target: number, duration = 1400): number {
       if (progress < 1) frameRef.current = requestAnimationFrame(animate)
     }
     frameRef.current = requestAnimationFrame(animate)
-    return () => { if (frameRef.current) cancelAnimationFrame(frameRef.current) }
+    return () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current)
+    }
   }, [target, duration])
 
   return value
@@ -64,12 +70,14 @@ function AnimatedNumber({ target, className }: { target: number; className?: str
 }
 
 function AnimatedChart() {
-  const [progress, setProgress] = useState(0)
+  const t = useTranslations("Landing")
+  const [progress, setProgress] = useState(1)
   const [hovered, setHovered] = useState<number | null>(null)
   const pathRef = useRef<SVGPathElement>(null)
   const [pathLen, setPathLen] = useState(0)
 
   useEffect(() => {
+    setProgress(0)
     const easeOut = (t: number) => 1 - Math.pow(1 - t, 3)
     let start: number | undefined
     let frame: number
@@ -87,13 +95,24 @@ function AnimatedChart() {
     if (pathRef.current) setPathLen(pathRef.current.getTotalLength())
   }, [])
 
-  const maxVal = Math.max(...CHART_DATA.map((d) => d.value))
-  const bars = CHART_DATA.map((d, i) => {
+  const maxVal = Math.max(...CHART_RAW_DATA.map((d) => d.value))
+  const millionUnit = t("unitMillion")
+  const thousandUnit = t("unitThousand")
+
+  const bars = CHART_RAW_DATA.map((d, i) => {
     const x = i * SLOT_W + (SLOT_W - BAR_W) / 2
     const h = (d.value / maxVal) * CHART_H * progress
     const y = CHART_H - h
     const cx = x + BAR_W / 2
-    return { day: d.day, x, y, h, cx, value: Math.round(d.value * progress), raw: d.value }
+    return {
+      day: t(d.dayKey),
+      x,
+      y,
+      h,
+      cx,
+      value: Math.round(d.value * progress),
+      raw: d.value,
+    }
   })
 
   const linePath = bars.map((b, i) => `${i === 0 ? "M" : "L"} ${b.cx} ${b.y}`).join(" ")
@@ -101,7 +120,7 @@ function AnimatedChart() {
   const tooltipX = hovered !== null ? Math.max(42, Math.min(CHART_W - 42, bars[hovered].cx)) : 0
 
   return (
-    <svg viewBox={`0 0 ${CHART_W} ${TOTAL_H}`} className="w-full" role="img" aria-label="Grafik penjualan mingguan">
+    <svg viewBox={`0 0 ${CHART_W} ${TOTAL_H}`} className="w-full" role="img" aria-label={t("demoChartAria")}>
       <defs>
         <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#34d399" />
@@ -151,7 +170,7 @@ function AnimatedChart() {
           {/* Value label on top of bar */}
           {progress > 0.5 && b.h > 12 && (
             <text x={b.cx} y={b.y - 6} textAnchor="middle" className="fill-foreground text-[10px] font-semibold transition-opacity duration-300" style={{ opacity: progress > 0.6 ? 1 : 0 }}>
-              {rupiahShort(b.value)}
+              {formatShort(b.value, millionUnit, thousandUnit)}
             </text>
           )}
           {/* Day label */}
@@ -203,6 +222,8 @@ function AnimatedChart() {
 }
 
 export function DemoCard() {
+  const t = useTranslations("Landing")
+
   return (
     <Card className="overflow-hidden border-emerald-100 bg-card/90 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-emerald-950">
       <div className="flex items-center gap-2 border-b px-5 py-3">
@@ -214,7 +235,7 @@ export function DemoCard() {
       <CardContent className="p-5">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-muted-foreground">Penjualan hari ini</p>
+            <p className="text-sm text-muted-foreground">{t("demoSalesToday")}</p>
             <p className="mt-1 text-3xl font-bold text-emerald-600">
               <AnimatedRupiah target={SALES_TARGET} />
             </p>
@@ -228,16 +249,22 @@ export function DemoCard() {
         </div>
         <div className="mt-5 grid grid-cols-3 gap-3">
           <div className="rounded-xl bg-muted/70 p-3">
-            <p className="font-bold"><AnimatedNumber target={ORDERS_TARGET} /></p>
-            <p className="text-xs text-muted-foreground">Order</p>
+            <p className="font-bold">
+              <AnimatedNumber target={ORDERS_TARGET} />
+            </p>
+            <p className="text-xs text-muted-foreground">{t("demoOrders")}</p>
           </div>
           <div className="rounded-xl bg-muted/70 p-3">
-            <p className="font-bold"><AnimatedNumber target={CUSTOMERS_TARGET} /></p>
-            <p className="text-xs text-muted-foreground">Customer</p>
+            <p className="font-bold">
+              <AnimatedNumber target={CUSTOMERS_TARGET} />
+            </p>
+            <p className="text-xs text-muted-foreground">{t("demoCustomers")}</p>
           </div>
           <div className="rounded-xl bg-muted/70 p-3">
-            <p className="font-bold text-emerald-600"><AnimatedRupiah target={PROFIT_TARGET} /></p>
-            <p className="text-xs text-muted-foreground">Profit</p>
+            <p className="font-bold text-emerald-600">
+              <AnimatedRupiah target={PROFIT_TARGET} />
+            </p>
+            <p className="text-xs text-muted-foreground">{t("demoProfit")}</p>
           </div>
         </div>
       </CardContent>
