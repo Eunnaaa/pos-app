@@ -208,7 +208,7 @@ export function CashierDashboardOverview() {
       )}
 
       <Card className="shadow-sm">
-        <CardHeader className="flex-row items-center justify-between"><CardTitle className="text-base">Transaksi terbaru</CardTitle><Button variant="ghost" size="sm" asChild><Link href="/dashboard/sales">Semua transaksi</Link></Button></CardHeader>
+        <CardHeader className="flex-row items-center justify-start gap-4"><CardTitle className="text-base">Transaksi terbaru</CardTitle><Button variant="ghost" size="sm" asChild><Link href="/dashboard/sales">Semua transaksi</Link></Button></CardHeader>
         <CardContent className="space-y-2">
           {recentSales.length ? recentSales.map((sale) => (
             <div key={sale.id} className="flex items-center gap-3 rounded-xl p-3 hover:bg-muted/60">
