@@ -93,9 +93,11 @@ export function EmployeesCashierPage() {
           <h2 className="text-2xl font-bold text-foreground">Daftar Karyawan &amp; Kasir</h2>
           <p className="text-sm text-muted-foreground">Informasi staf, penugasan cabang, dan pemantauan shift aktif.</p>
         </div>
-        <Button variant="outline" size="sm" className="h-9 gap-2 shadow-2xs" onClick={() => void load()}>
-          <RefreshCw className="size-4" /> Refresh
-        </Button>
+        <div className="flex items-center justify-end sm:ml-auto">
+          <Button variant="outline" size="sm" className="h-9 gap-2 shadow-2xs" onClick={() => void load()}>
+            <RefreshCw className="size-4" /> Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Summary Stat Cards */}
@@ -146,7 +148,7 @@ export function EmployeesCashierPage() {
             className="pl-9 h-10 text-sm bg-background shadow-2xs"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-end gap-2 sm:ml-auto">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="h-10 text-xs w-[160px] bg-background shadow-2xs">
               <SelectValue placeholder="Filter status" />

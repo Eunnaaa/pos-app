@@ -47,6 +47,13 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `if(typeof window!=='undefined'&&'serviceWorker'in navigator&&(location.hostname==='localhost'||location.hostname==='127.0.0.1')){navigator.serviceWorker.getRegistrations().then(function(r){for(var i=0;i<r.length;i++)r[i].unregister()});if('caches'in window){caches.keys().then(function(k){for(var j=0;j<k.length;j++)caches.delete(k[j])})}}`,
+          }}
+        />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>

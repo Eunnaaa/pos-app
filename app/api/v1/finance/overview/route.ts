@@ -36,8 +36,9 @@ export const GET = apiHandler(async (request) => {
       from sales_payments sp
       join sales_orders so on so.id = sp.order_id
       where so.organization_id = ${orgId} ${branchFilter}
-        and sp.status in ('settled','authorized')
-        and sp.paid_at >= date_trunc('day', now())
+        and sp.status = 'settled'
+        and so.status in ('paid','partially_refunded','refunded')
+        and so.occurred_at >= date_trunc('day', now())
       group by sp.method order by sum(sp.amount) desc limit 5
     `),
     db.execute(sql`

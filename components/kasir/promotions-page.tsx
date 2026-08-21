@@ -100,9 +100,11 @@ export function PromotionsPage() {
   const [customMsgNote, setCustomMsgNote] = useState<string>("")
   const [broadcastSearch, setBroadcastSearch] = useState<string>("")
 
-  const data = Array.isArray(resource.data) ? resource.data : []
+  const rawData = resource.data
+  const promoList = useMemo(() => (Array.isArray(rawData) ? rawData : []), [rawData])
+  const data = promoList
   const visible = useMemo(() => {
-    return data.filter((item) => {
+    return promoList.filter((item) => {
       const q = search.toLowerCase()
       return (
         (item.name || "").toLowerCase().includes(q) ||
@@ -110,11 +112,11 @@ export function PromotionsPage() {
         (item.type || "").toLowerCase().includes(q)
       )
     })
-  }, [data, search])
+  }, [promoList, search])
 
-  const totalPromos = data.length
-  const activePromos = data.filter((item) => item.is_active ?? item.isActive ?? true).length
-  const couponPromos = data.filter((item) => Boolean(item.code)).length
+  const totalPromos = promoList.length
+  const activePromos = promoList.filter((item) => item.is_active ?? item.isActive ?? true).length
+  const couponPromos = promoList.filter((item) => Boolean(item.code)).length
 
   function showCreate() {
     setEditing(undefined)

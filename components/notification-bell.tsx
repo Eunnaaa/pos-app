@@ -30,12 +30,6 @@ const statusColor: Record<string, string> = {
 export function NotificationBell() {
   const notifications = useResource<Notification>("notifications", "limit=20")
 
-  useEffect(() => {
-    const handler = () => void notifications.refresh()
-    window.addEventListener("kedai-ku-context-change", handler)
-    return () => window.removeEventListener("kedai-ku-context-change", handler)
-  }, [notifications])
-
   const unread = notifications.data.filter((n) => n.status !== "read" && n.status !== "failed")
 
   return (

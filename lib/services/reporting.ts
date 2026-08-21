@@ -107,9 +107,10 @@ export async function salesReport(
       JOIN sales_orders so ON so.id = sp.order_id
       WHERE sp.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
-        AND sp.status IN ('settled', 'authorized')
-        AND sp.created_at >= ${startDate}
-        AND sp.created_at < ${endDate}
+        AND sp.status = 'settled'
+        AND so.status IN ('paid', 'partially_refunded', 'refunded')
+        AND so.occurred_at >= ${startDate}
+        AND so.occurred_at < ${endDate}
       GROUP BY sp.method
       ORDER BY SUM(sp.amount) DESC
     `),
@@ -123,8 +124,9 @@ export async function salesReport(
       JOIN sales_orders so ON so.id = soi.order_id
       WHERE soi.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
-        AND soi.created_at >= ${startDate}
-        AND soi.created_at < ${endDate}
+        AND so.status IN ('paid', 'partially_refunded', 'refunded')
+        AND so.occurred_at >= ${startDate}
+        AND so.occurred_at < ${endDate}
       GROUP BY soi.item_name
       ORDER BY SUM(soi.quantity) DESC
       LIMIT 20

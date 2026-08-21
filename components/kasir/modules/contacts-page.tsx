@@ -25,8 +25,11 @@ export function ContactsPage({ type }: { type: "customers" | "suppliers" }) {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Contact>()
   const [form, setForm] = useState<ContactForm>(empty)
-  const data = Array.isArray(resource.data) ? resource.data : []
-  const visible = useMemo(() => data.filter((item) => `${item.code || ""} ${item.name || ""} ${item.email || ""} ${item.phone || ""}`.toLowerCase().includes(search.toLowerCase())), [data, search])
+  const rawData = resource.data
+  const data = Array.isArray(rawData) ? rawData : []
+  const visible = useMemo(() => {
+    return data.filter((item) => `${item.code || ""} ${item.name || ""} ${item.email || ""} ${item.phone || ""}`.toLowerCase().includes(search.toLowerCase()))
+  }, [data, search])
 
   function showCreate() { setEditing(undefined); setForm(empty); setOpen(true) }
   function showEdit(item: Contact) { setEditing(item); setForm({ code: item.code, name: item.name, email: item.email || "", phone: item.phone || "", address: item.address || "", notes: item.notes || "", contactName: item.contact_name || "", paymentTermsDays: String(item.payment_terms_days || 0), active: item.is_active }); setOpen(true) }

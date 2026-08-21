@@ -9,6 +9,7 @@ import {
   Clock,
   CreditCard,
   Loader2,
+  LogOut,
   Minus,
   PauseCircle,
   Plus,
@@ -744,20 +745,19 @@ export function PosScreen() {
       {shiftDialog}
       {heldDialog}
       <section className="min-w-0 p-4 md:p-5">
-        <div className="mb-4 flex flex-col gap-3 rounded-xl border bg-background p-3.5 sm:flex-row sm:items-center sm:justify-between shadow-xs">
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="flex items-center gap-2 font-semibold text-foreground">
-              <Store className="size-4 text-emerald-600" />{session.registerName}
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900">
-                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />Shift aktif
-              </span>
-              {!isOnline ? (
-                <Badge variant="destructive" className="text-[10px] gap-1 py-0 bg-rose-600">
-                  <WifiOff className="size-3" /> Offline
-                </Badge>
-              ) : offlineCount > 0 ? (
-                <Badge variant="secondary" className="text-[10px] gap-1 py-0 bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border-amber-300">
+            <p className="flex items-center gap-2 font-semibold text-foreground text-sm">
+              <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
+              {session.registerName ? `${session.registerName} • ` : ""}Shift aktif
+              {offlineCount > 0 ? (
+                <Badge variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-1.5 py-0 font-normal">
                   ⚡ {offlineCount} Antrean
+                </Badge>
+              ) : null}
+              {!isOnline ? (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                  <WifiOff className="size-3 mr-1" /> Offline
                 </Badge>
               ) : null}
             </p>
@@ -767,7 +767,7 @@ export function PosScreen() {
               {session.shiftHours ? ` • Jaga ${session.shiftHours} jam` : ""}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 sm:ml-auto">
             {offlineCount > 0 && (
               <Button size="sm" variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs h-8" onClick={handleManualSync} disabled={syncingOffline}>
                 <RefreshCw className={`size-3.5 mr-1 ${syncingOffline ? "animate-spin" : ""}`} /> Sinkron ({offlineCount})
@@ -785,8 +785,12 @@ export function PosScreen() {
             <Button size="sm" variant="outline" className="relative shadow-2xs text-xs h-8" onClick={() => { void loadHeldOrders(); setHeldOpen(true) }}>
               <Clock className="size-3.5 mr-1" /> Ditahan {heldList.length > 0 && <Badge variant="secondary" className="ml-1 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{heldList.length}</Badge>}
             </Button>
-            <Button size="sm" variant="outline" className="shadow-2xs text-xs h-8" onClick={() => showShift("movement")}><Banknote className="size-3.5 mr-1" /> Mutasi</Button>
-            <Button size="sm" variant="destructive" className="shadow-2xs text-xs h-8" onClick={() => showShift("close")}>Tutup shift</Button>
+            <Button size="sm" variant="outline" className="shadow-2xs text-xs h-8" onClick={() => showShift("movement")}>
+              <Banknote className="size-3.5 mr-1" /> Mutasi
+            </Button>
+            <Button size="sm" variant="destructive" className="shadow-2xs text-xs h-8" onClick={() => showShift("close")}>
+              Tutup shift
+            </Button>
           </div>
         </div><div className="mb-4 flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" /><Input className="h-12 bg-background pl-10 text-sm font-medium shadow-xs" placeholder="Cari produk, SKU, atau barcode... (Ketik nama/scan)" value={search} onChange={(event) => setSearch(event.target.value)} autoFocus /></div><Button variant="outline" size="icon" className="size-12 bg-background shadow-xs" onClick={() => showInfo("Masukkan barcode pada kolom pencarian")}><Barcode className="size-5" /></Button></div><ScrollArea className="mb-4 w-full whitespace-nowrap"><div className="flex gap-2 pb-2">{categories.map((item) => <Button key={item} size="sm" variant={category === item ? "default" : "outline"} className={category === item ? "bg-emerald-600 hover:bg-emerald-700 shadow-xs" : "bg-background shadow-2xs"} onClick={() => setCategory(item)}>{item}</Button>)}</div></ScrollArea>{loading && <div className="flex h-64 items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>}{!loading && !filtered.length && <div className="flex h-64 flex-col items-center justify-center text-center"><ShoppingCart className="size-10 text-muted-foreground/30" /><p className="mt-3 font-medium">Produk tidak ditemukan</p><p className="text-sm text-muted-foreground">Tambahkan produk dan stok dari menu Produk.</p></div>}<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">{filtered.map((product) => { const isOut = product.trackStock && product.stock <= 0; const isLow = product.trackStock && product.stock > 0 && product.stock <= 5; return <button key={product.id} disabled={isOut} className="group overflow-hidden rounded-xl border bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-emerald-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50" onClick={() => add(product)}>{product.imageUrl ? <div className="aspect-[1.5] w-full overflow-hidden bg-muted"><img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105" /></div> : <div className={`flex aspect-[1.5] items-center justify-center text-4xl transition-transform duration-200 group-hover:scale-105 ${getCategoryColor(product.category, product.name)}`}>{getCategoryEmoji(product.category, product.name)}</div>}<div className="p-3"><p className="truncate text-sm font-semibold text-foreground">{product.name}</p><p className="mt-1 text-sm font-bold text-emerald-600 dark:text-emerald-400">{rupiah(product.price)}</p><div className="mt-2 flex items-center justify-between">{isOut ? <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Stok Habis</Badge> : isLow ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Stok {product.stock}</Badge> : <p className="truncate text-xs text-muted-foreground">{product.sku} • Stok {product.trackStock ? product.stock : "∞"}</p>}</div></div></button> })}</div></section><aside className="flex min-h-[600px] flex-col border-l bg-background xl:h-[calc(100vh-4rem)]"><div className="flex items-center justify-between border-b p-4"><div><h2 className="flex items-center gap-2 font-bold"><ShoppingCart className="size-5 text-emerald-600" /> Keranjang <Badge className="bg-emerald-600">{cart.reduce((sum, item) => sum + item.quantity, 0)}</Badge></h2><p className="mt-0.5 text-xs text-muted-foreground">{branch?.name} • {warehouse?.name}</p></div>{cart.length > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive" onClick={() => setCart([])}><Trash2 className="mr-1 size-3.5" /> Kosongkan</Button>}</div><div className="grid grid-cols-2 gap-2 border-b p-3"><Select value={customerId} onValueChange={setCustomerId}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Pilih pelanggan" /></SelectTrigger><SelectContent>{customerResource.data.filter((item) => item.is_active).map((item) => <SelectItem key={item.id} value={item.id}>{item.name} • {item.code}</SelectItem>)}</SelectContent></Select><Select value={selectedTableId} onValueChange={setSelectedTableId}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Pilih meja" /></SelectTrigger><SelectContent><SelectItem value="takeaway">Tanpa Meja (Takeaway)</SelectItem>{tableResource.data.filter((t) => t.is_active).map((t) => <SelectItem key={t.id} value={t.id}>{t.name} (Cap {t.capacity})</SelectItem>)}</SelectContent></Select></div><ScrollArea className="min-h-0 flex-1"><div className="space-y-2 p-3">{!cart.length && <div className="py-16 text-center"><ShoppingCart className="mx-auto size-12 text-muted-foreground/30" /><p className="mt-4 font-medium">Keranjang kosong</p></div>}{cart.map((item) => <div key={item.id} className="rounded-xl border p-3 bg-card shadow-2xs"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{item.name}</p><p className="text-xs text-muted-foreground">{rupiah(item.price)} • {item.sku}</p></div><Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setCart((current) => current.filter((entry) => entry.id !== item.id))}><Trash2 className="size-4" /></Button></div><div className="mt-3 flex items-center justify-between"><div className="flex items-center rounded-lg border bg-background"><Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, -1)}><Minus className="size-3" /></Button><Input type="number" min="0" placeholder="0" className="h-8 w-12 border-0 bg-transparent text-center p-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={item.quantity === 0 ? "" : item.quantity} onChange={(e) => { const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10); updateQuantity(item.id, isNaN(val) ? 0 : val) }} onFocus={(e) => e.target.select()} /><Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, 1)}><Plus className="size-3" /></Button></div><p className="font-bold text-foreground">{rupiah(item.price * item.quantity)}</p></div></div>)}</div></ScrollArea><div className="border-t p-4 bg-background"><div className="mb-3 grid grid-cols-2 gap-2"><Textarea placeholder="Catatan pesanan" className="min-h-16 resize-none text-xs" value={orderNote} onChange={(event) => setOrderNote(event.target.value)} /><div><Label className="text-xs">Diskon order</Label><Input type="number" min="0" className="h-9 text-xs" value={discount} onChange={(event) => setDiscount(event.target.value)} /></div></div><div className="space-y-2 text-sm"><div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{rupiah(subtotal)}</span></div>{discountAmount > 0 && <div className="flex justify-between text-rose-600"><span>Diskon</span><span>-{rupiah(discountAmount)}</span></div>}<div className="flex justify-between"><span className="text-muted-foreground">Pajak</span><span>{rupiah(tax)}</span></div><Separator /><div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-emerald-600 dark:text-emerald-400">{rupiah(total)}</span></div></div><div className="mt-4 grid grid-cols-[auto_1fr] gap-2"><Button variant="outline" size="icon" className="size-12 shadow-2xs" onClick={() => void submitOrder("held")} disabled={!cart.length || submitting}><PauseCircle className="size-5" /></Button><Button disabled={!cart.length} className="h-12 bg-emerald-600 text-base font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20" onClick={() => setPaymentOpen(true)}>Bayar • {rupiah(total)}</Button></div></div></aside></div>
   )

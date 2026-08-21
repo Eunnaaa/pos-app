@@ -231,42 +231,44 @@ export async function createSelfOrder(params: {
 
   const result = await checkout(checkoutInput, context);
 
-  // Pastikan Tiket Dapur (Kitchen Ticket) otomatis dibuat agar langsung tampil di Kitchen Display
-  const [existingTicket] = await db
-    .select({ id: kitchenTickets.id })
-    .from(kitchenTickets)
-    .where(eq(kitchenTickets.orderId, result.order.id))
-    .limit(1);
+  // Hanya buat Tiket Dapur jika pesanan sudah dibayar/dikonfirmasi (jangan buat untuk order pending)
+  if (result.order.status === "paid" || result.order.status === "confirmed") {
+    const [existingTicket] = await db
+      .select({ id: kitchenTickets.id })
+      .from(kitchenTickets)
+      .where(eq(kitchenTickets.orderId, result.order.id))
+      .limit(1);
 
-  if (!existingTicket) {
-    const orderItems = await db
-      .select({ id: salesOrderItems.id, notes: salesOrderItems.notes })
-      .from(salesOrderItems)
-      .where(eq(salesOrderItems.orderId, result.order.id));
+    if (!existingTicket) {
+      const orderItems = await db
+        .select({ id: salesOrderItems.id, notes: salesOrderItems.notes })
+        .from(salesOrderItems)
+        .where(eq(salesOrderItems.orderId, result.order.id));
 
-    if (orderItems.length > 0) {
-      const ticketId = crypto.randomUUID();
-      const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
+      if (orderItems.length > 0) {
+        const ticketId = crypto.randomUUID();
+        const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
 
-      await db.insert(kitchenTickets).values({
-        id: ticketId,
-        organizationId: t.organizationId,
-        branchId: t.branchId,
-        orderId: result.order.id,
-        number: ticketNumber,
-        status: "queued",
-        priority: 0,
-      });
-
-      await db.insert(kitchenTicketItems).values(
-        orderItems.map((item) => ({
+        await db.insert(kitchenTickets).values({
+          id: ticketId,
           organizationId: t.organizationId,
-          ticketId,
-          orderItemId: item.id,
-          status: "queued" as const,
-          notes: item.notes,
-        })),
-      );
+          branchId: t.branchId,
+          orderId: result.order.id,
+          number: ticketNumber,
+          status: "queued",
+          priority: 0,
+        });
+
+        await db.insert(kitchenTicketItems).values(
+          orderItems.map((item) => ({
+            organizationId: t.organizationId,
+            ticketId,
+            orderItemId: item.id,
+            status: "queued" as const,
+            notes: item.notes,
+          })),
+        );
+      }
     }
   }
 

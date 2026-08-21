@@ -46,6 +46,7 @@ void test("owner and cashier permissions match final role policy", () => {
   }
   assert.equal(can("cashier", "reports:read"), true);
   assert.equal(can("cashier", "inventory:read"), true);
+  assert.equal(can("cashier", "selfOrder:read"), true);
 });
 
 void test("role policy rejects removed roles at type boundary", () => {

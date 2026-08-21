@@ -25,7 +25,22 @@ export function PwaRegister() {
   }, [])
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || process.env.NODE_ENV !== "production") return
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return
+
+    if (process.env.NODE_ENV !== "production") {
+      // In development, auto-unregister service workers to prevent stale cache & hydration mismatch
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (const registration of registrations) {
+          void registration.unregister()
+        }
+      }).catch(() => undefined)
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => void caches.delete(key))
+        }).catch(() => undefined)
+      }
+      return
+    }
 
     const sync = async () => {
       const { failed } = await syncOfflineMutations()

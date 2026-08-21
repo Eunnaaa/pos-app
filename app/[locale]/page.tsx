@@ -77,7 +77,7 @@ export default async function Home({
           <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20">
             <Store className="size-5" />
           </span>
-          <span className="text-xl font-bold tracking-tight">Kedai-Ku</span>
+          <span className="text-xl font-bold tracking-tight" suppressHydrationWarning>Kedai-Ku</span>
         </Link>
         <div className="flex items-center gap-2">
           <ThemeToggle />

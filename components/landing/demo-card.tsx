@@ -61,12 +61,12 @@ function useCountUp(target: number, duration = 1400): number {
 
 function AnimatedRupiah({ target, className }: { target: number; className?: string }) {
   const value = useCountUp(target)
-  return <span className={className}>{rupiah(value)}</span>
+  return <span className={className} suppressHydrationWarning>{rupiah(value)}</span>
 }
 
 function AnimatedNumber({ target, className }: { target: number; className?: string }) {
   const value = useCountUp(target)
-  return <span className={className}>{value.toLocaleString("id-ID")}</span>
+  return <span className={className} suppressHydrationWarning>{value.toLocaleString("id-ID")}</span>
 }
 
 function AnimatedChart() {
@@ -225,12 +225,12 @@ export function DemoCard() {
   const t = useTranslations("Landing")
 
   return (
-    <Card className="overflow-hidden border-emerald-100 bg-card/90 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-emerald-950" suppressHydrationWarning>
-      <div className="flex items-center gap-2 border-b px-5 py-3" suppressHydrationWarning>
+    <Card className="overflow-hidden border-emerald-100 bg-card/90 shadow-2xl shadow-emerald-950/10 backdrop-blur dark:border-emerald-950">
+      <div className="flex items-center gap-2 border-b px-5 py-3">
         <span className="size-2.5 rounded-full bg-red-400" />
         <span className="size-2.5 rounded-full bg-amber-400" />
         <span className="size-2.5 rounded-full bg-emerald-400" />
-        <span className="ml-3 text-xs text-muted-foreground" suppressHydrationWarning>app.kedai-ku.id/dashboard</span>
+        <span className="ml-3 text-xs text-muted-foreground">app.kedai-ku.id/dashboard</span>
       </div>
       <CardContent className="p-5">
         <div className="flex items-center justify-between">

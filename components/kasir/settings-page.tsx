@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSearchParams } from "next/navigation"
+import { useRouter } from "@/i18n/navigation"
 import { useTranslations } from "next-intl"
 import { Bell, Building2, CreditCard, Landmark, MapPin, MessageCircle, Store, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -17,9 +18,15 @@ import { NotificationsTab } from "./settings/notifications-tab"
 
 export function SettingsPage() {
   const t = useTranslations("Settings")
+  const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
-  const [activeTab, setActiveTab] = useState("account")
+  const [activeTab, setActiveTab] = useState(() => {
+    if (tabParam && ["account", "business", "branches", "businesses", "billing", "notifications"].includes(tabParam)) {
+      return tabParam
+    }
+    return "account"
+  })
   const { organization } = useOrganization()
 
   useEffect(() => {
@@ -90,7 +97,14 @@ export function SettingsPage() {
         </div>
       </Card>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+      <Tabs
+        value={activeTab}
+        onValueChange={(val) => {
+          setActiveTab(val)
+          router.replace(`/dashboard/settings?tab=${val}`)
+        }}
+        className="w-full"
+      >
         <TabsList className="h-10 w-full sm:w-fit justify-start overflow-x-auto">
           <TabsTrigger value="account"><User className="size-4" /> {t("tabAccount")}</TabsTrigger>
           {isOwner && <TabsTrigger value="business"><Store className="size-4" /> {t("tabBusiness")}</TabsTrigger>}

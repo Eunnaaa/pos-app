@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode";
 import { Copy, Download, Loader2, Plus, QrCode, RefreshCw, Search, Trash2, Utensils } from "lucide-react";
 import { useOrganization } from "@/components/kasir/organization-provider";
@@ -43,9 +43,9 @@ export function SelfOrderPage() {
   const [tableArea, setTableArea] = useState("");
   const [tableCapacity, setTableCapacity] = useState("4");
 
-  const activeTables = tables.filter((t) => t.is_active);
+  const activeTables = useMemo(() => tables.filter((t) => t.is_active), [tables]);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
       const [tablesRes, tokensRes] = await Promise.all([
@@ -59,9 +59,9 @@ export function SelfOrderPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { void load(); }, [load]);
 
   // Pre-select first table when modal opens
   useEffect(() => {
@@ -252,7 +252,7 @@ export function SelfOrderPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {/* Header & Action Toolbar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
             <QrCode className="size-6" />
@@ -270,7 +270,7 @@ export function SelfOrderPage() {
         </div>
 
         {isOwner && (
-          <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 shrink-0 sm:ml-auto">
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 sm:ml-auto">
             <Button
               variant="outline"
               className="text-xs rounded-xl h-9 font-semibold gap-1.5 border-muted"
@@ -302,7 +302,7 @@ export function SelfOrderPage() {
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 h-9 px-4 rounded-xl"
               onClick={() => setCreateOpen(true)}
             >
-              <Plus className="size-4" /> Generate QR
+              <Plus className="size-4" /> Generate QR Baru
             </Button>
           </div>
         )}

@@ -111,7 +111,8 @@ export const GET = apiHandler(async (request) => {
         from sales_payments sp
         inner join sales_orders so on so.id = sp.order_id
         where so.cash_session_id = ${sessionId}
-          and sp.status in ('settled', 'authorized')
+          and sp.status = 'settled'
+          and so.status in ('paid', 'partially_refunded', 'refunded')
         group by sp.method
       `),
 
@@ -119,6 +120,7 @@ export const GET = apiHandler(async (request) => {
         select coalesce(sum(change_amount), 0)::text as amount
         from sales_orders
         where cash_session_id = ${sessionId}
+          and status in ('paid', 'partially_refunded', 'refunded')
       `),
 
       db.execute(sql`

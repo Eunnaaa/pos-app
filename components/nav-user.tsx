@@ -114,34 +114,39 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings?tab=account" className="flex items-center gap-2 cursor-pointer w-full">
-                  <IconUserCircle />
-                  {t("account")}
-                </Link>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer"
+                onSelect={() => router.push("/dashboard/settings?tab=account")}
+              >
+                <IconUserCircle className="size-4" />
+                <span>{t("account")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings?tab=billing" className="flex items-center gap-2 cursor-pointer w-full">
-                  <IconCreditCard />
-                  {t("billing")}
-                </Link>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer"
+                onSelect={() => router.push("/dashboard/settings?tab=billing")}
+              >
+                <IconCreditCard className="size-4" />
+                <span>{t("billing")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/dashboard/settings?tab=notifications" className="flex items-center gap-2 cursor-pointer w-full">
-                  <IconNotification />
-                  {t("notifications")}
-                </Link>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer"
+                onSelect={() => router.push("/dashboard/settings?tab=notifications")}
+              >
+                <IconNotification className="size-4" />
+                <span>{t("notifications")}</span>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <a
-                  href="https://wa.me/6285353111025?text=Halo%20Developer%20%26%20Support%20Kedai-Ku%2C%20saya%20butuh%20bantuan%20terkait%20aplikasi."
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 cursor-pointer w-full text-emerald-700 dark:text-emerald-400 font-medium"
-                >
-                  <MessageCircle className="size-4 text-emerald-600" />
-                  WhatsApp Support
-                </a>
+              <DropdownMenuItem
+                className="flex items-center gap-2 cursor-pointer text-emerald-700 dark:text-emerald-400 font-medium"
+                onSelect={() => {
+                  window.open(
+                    "https://wa.me/6285353111025?text=Halo%20Developer%20%26%20Support%20Kedai-Ku%2C%20saya%20butuh%20bantuan%20terkait%20aplikasi.",
+                    "_blank",
+                    "noopener,noreferrer"
+                  );
+                }}
+              >
+                <MessageCircle className="size-4 text-emerald-600" />
+                <span>WhatsApp Support</span>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
