@@ -1,10 +1,22 @@
 import "server-only";
 import { z } from "zod";
 
-const optionalUrl = z.preprocess(
-  (value) => (value === "" ? undefined : value),
-  z.string().url().optional(),
-);
+const optionalUrl = z.preprocess((value) => {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "..." || trimmed.includes("your_") || trimmed.includes("your-") || trimmed.startsWith("<")) {
+    return undefined;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return trimmed;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}, z.string().url().optional());
 
 const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -37,6 +49,8 @@ const serverEnvSchema = z.object({
   AI_API_KEY: z.string().optional(),
   AI_MODEL: z.string().default("claude-sonnet-5"),
   SENTRY_DSN: optionalUrl,
+  UPSTASH_REDIS_REST_URL: optionalUrl,
+  UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

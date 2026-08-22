@@ -281,7 +281,7 @@ export function LoyaltyPage() {
                     )}
                     {accounts.map((account) => {
                       const cleanPhone = (account.customer_phone || "").replace(/[^0-9]/g, "").replace(/^0/, "62")
-                      const storeName = organization?.name || "KASIR KITA"
+                      const storeName = organization?.name || "Kedai-Ku"
                       const pointMsg = `*INFO POIN LOYALTY ${storeName.toUpperCase()}* 🌟\n\nHalo Kak *${account.customer_name}*,\nSaat ini Kakak memiliki saldo *${Number(account.points_balance).toLocaleString("id-ID")} Poin Loyalty* (Level: *${account.membership_level || "Member"}*)!\n\nTukarkan poin Kakak saat transaksi di kasir untuk mendapatkan potongan harga & reward spesial. Terima kasih telah menjadi pelanggan setia kami! 😊`
                       const waUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(pointMsg)}` : ""
 

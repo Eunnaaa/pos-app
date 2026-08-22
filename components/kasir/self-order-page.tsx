@@ -252,57 +252,65 @@ export function SelfOrderPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
       {/* Header & Action Toolbar */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shrink-0">
-            <QrCode className="size-6" />
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center gap-3.5 min-w-0 pr-4">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 shadow-2xs shrink-0">
+            <QrCode className="size-5" />
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight">
-              Table &amp; QR Self-Order
+              Self-Order QR &amp; Manajemen Meja
             </h1>
-            <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-none">
+            <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
               {isOwner
-                ? "Kelola meja operasional, buat baru, rotasi, atau hapus kode QR stiker sesuai kebutuhan."
-                : "Lihat daftar meja operasional dan QR stiker aktif yang dapat digunakan untuk melayani pelanggan."}
+                ? "Kelola meja makan restoran, generate kode QR stiker mandiri, dan pantau status transaksi meja."
+                : "Lihat daftar meja operasional dan kode QR stiker aktif untuk transaksi mandiri pelanggan."}
             </p>
           </div>
         </div>
 
         {isOwner && (
-          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 sm:ml-auto">
+          <div className="flex items-center justify-end gap-2.5 shrink-0 md:ml-auto flex-nowrap overflow-x-auto py-1">
             <Button
               variant="outline"
-              className="text-xs rounded-xl h-9 font-semibold gap-1.5 border-muted"
+              size="sm"
+              className="h-9 px-3 text-xs font-semibold gap-1.5 rounded-xl whitespace-nowrap shrink-0 border-border bg-background shadow-2xs hover:bg-accent hover:text-accent-foreground transition-all"
               onClick={() => setAddTableOpen(true)}
             >
-              <Utensils className="size-4 text-emerald-600" /> Tambah Meja Baru
+              <Utensils className="size-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Tambah Meja Baru</span>
             </Button>
 
             {tokens.length > 0 && (
               <>
                 <Button
                   variant="outline"
-                  className="text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50 border-amber-200 dark:border-amber-900/40 rounded-xl h-9 font-semibold gap-1.5"
+                  size="sm"
+                  className="h-9 px-3 text-xs font-semibold gap-1.5 rounded-xl whitespace-nowrap shrink-0 border-amber-300 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 hover:bg-amber-100/70 dark:hover:bg-amber-950/60 transition-all shadow-2xs"
                   onClick={() => void rotateAllTokens()}
                 >
-                  <RefreshCw className="size-4" /> Rotasi Semua QR
+                  <RefreshCw className="size-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Rotasi Semua QR</span>
                 </Button>
                 <Button
                   variant="outline"
-                  className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 dark:border-rose-900/40 rounded-xl h-9 font-semibold gap-1.5"
+                  size="sm"
+                  className="h-9 px-3 text-xs font-semibold gap-1.5 rounded-xl whitespace-nowrap shrink-0 border-rose-300 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100/70 dark:hover:bg-rose-950/60 transition-all shadow-2xs"
                   onClick={() => void deleteAllTokens()}
                 >
-                  <Trash2 className="size-4" /> Hapus Semua
+                  <Trash2 className="size-3.5 text-rose-600 dark:text-rose-400 shrink-0" />
+                  <span>Hapus Semua</span>
                 </Button>
               </>
             )}
 
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-xs gap-2 h-9 px-4 rounded-xl"
+              size="sm"
+              className="h-9 px-3.5 text-xs font-semibold gap-1.5 rounded-xl whitespace-nowrap shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
               onClick={() => setCreateOpen(true)}
             >
-              <Plus className="size-4" /> Generate QR Baru
+              <Plus className="size-3.5 shrink-0" />
+              <span>Generate QR Baru</span>
             </Button>
           </div>
         )}

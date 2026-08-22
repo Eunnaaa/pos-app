@@ -9,7 +9,6 @@ import {
   Clock,
   CreditCard,
   Loader2,
-  LogOut,
   Minus,
   PauseCircle,
   Plus,
@@ -190,7 +189,7 @@ export function PosScreen() {
       const verification = targetReceipt.receipt.verificationToken || targetReceipt.receipt.verification_token
 
       const receiptData: ReceiptData = {
-        storeName: organization?.name || "KASIR POS",
+        storeName: organization?.name || "Kedai-Ku",
         branchName: branch?.name,
         orderNumber: String(number),
         cashierName: session?.registerName || "Kasir",

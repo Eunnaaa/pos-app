@@ -95,39 +95,39 @@ export function CashierManagement() {
   return (
     <div className="flex flex-1 flex-col gap-5 p-4 md:p-6">
       <div>
-        <h2 className="text-2xl font-bold">Manajemen Cashier</h2>
-        <p className="text-sm text-muted-foreground">Owner membuat akun cashier dan menentukan cabang akses.</p>
+        <h2 className="text-2xl font-bold">Manajemen Akun Kasir</h2>
+        <p className="text-sm text-muted-foreground">Buat akun staf kasir Kedai-Ku dan tentukan hak akses penugasan cabang.</p>
       </div>
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <Card>
-          <CardHeader><CardTitle>{editing ? "Edit cashier" : "Tambah cashier"}</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{editing ? "Edit Akun Kasir" : "Tambah Akun Kasir"}</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={save} className="space-y-4">
-              <div><Label>Nama</Label><Input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
+              <div><Label>Nama Lengkap</Label><Input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nama staf kasir" /></div>
               {!editing && (
                 <>
-                  <div><Label>Email</Label><Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></div>
-                  <div><Label>Password awal</Label><Input required minLength={12} type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></div>
+                  <div><Label>Email</Label><Input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="kasir@kedaiku.com" /></div>
+                  <div><Label>Password Awal</Label><Input required minLength={12} type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Minimal 12 karakter" /></div>
                 </>
               )}
               <div>
-                <Label>Cabang (opsional — semua cabang dapat diakses)</Label>
+                <Label>Penugasan Cabang (opsional — default semua cabang)</Label>
                 {organization?.branches.map((branch) => (
                   <label key={branch.id} className="flex items-center gap-2 py-2 text-sm">
                     <Checkbox checked={form.branchIds.includes(branch.id)} onCheckedChange={(checked) => toggleBranch(branch.id, checked === true)} />
                     {branch.name}
                   </label>
                 ))}
-                {!organization?.branches.length && <p className="text-sm text-muted-foreground">Belum ada cabang.</p>}
+                {!organization?.branches.length && <p className="text-sm text-muted-foreground">Belum ada cabang terdaftar.</p>}
               </div>
               <Button disabled={saving} className="w-full bg-emerald-600 hover:bg-emerald-700">
-                {saving ? <Loader2 className="size-4 animate-spin" /> : editing ? "Simpan" : "Buat cashier"}
+                {saving ? <Loader2 className="size-4 animate-spin" /> : editing ? "Simpan Perubahan" : "Buat Akun Kasir"}
               </Button>
             </form>
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle>Cashier terdaftar</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Daftar Kasir Terdaftar</CardTitle></CardHeader>
           <CardContent className="space-y-3">
             {loading && <div className="flex h-20 items-center justify-center"><Loader2 className="size-5 animate-spin text-emerald-600" /></div>}
             {cashiers.map((cashier) => (

@@ -25,6 +25,7 @@ import { postSaleToLedger } from "./ledger";
 import { exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
 import { resolvePromotionDiscount, recordPromotions } from "./promotions";
 import { accrueCommission } from "./commissions";
+import { publishEvent, cacheDel, RedisKeys } from "@/lib/redis";
 
 const bigintInput = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveBigint = bigintInput.refine((value) => value > 0n, "Must be greater than zero");
@@ -84,7 +85,7 @@ export function checkoutContextFromApi(context: ApiContext): CheckoutContext {
 }
 
 export async function checkout(input: CheckoutInput, context: CheckoutContext) {
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     if (input.channel === "pos") {
       await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });
     }
@@ -357,4 +358,29 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     }
     return { order, items: orderItems, payments, receipt, pointsEarned };
   });
+
+  // Post-commit Redis cache invalidations & real-time events
+  void cacheDel(
+    RedisKeys.tables(context.organizationId, input.branchId),
+    RedisKeys.catalog(context.organizationId, input.branchId)
+  );
+
+  if (result.order.status === "paid" || result.order.status === "confirmed") {
+    void publishEvent(RedisKeys.kdsChannel(input.branchId), {
+      type: "TICKET_CREATED",
+      orderId: result.order.id,
+      orderNumber: result.order.orderNumber,
+      status: result.order.status,
+    });
+  }
+
+  void publishEvent(RedisKeys.orderEventsChannel(context.organizationId, input.branchId), {
+    type: "ORDER_CREATED",
+    orderId: result.order.id,
+    orderNumber: result.order.orderNumber,
+    totalAmount: result.order.totalAmount,
+    status: result.order.status,
+  });
+
+  return result;
 }

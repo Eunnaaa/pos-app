@@ -19,6 +19,7 @@
     "english": "English"
   },
   "AuthLayout": {
+    "brandName": "Kedai-Ku",
     "smartPos": "Smart Point of Sale",
     "headline": "One platform to manage your entire business.",
     "subheadline": "Sales, inventory, customers, finance, and real-time reports—available anywhere.",

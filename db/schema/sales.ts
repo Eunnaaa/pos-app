@@ -54,6 +54,8 @@ export const salesOrders = pgTable(
     uniqueIndex("sales_orders_org_number_uidx").on(table.organizationId, table.orderNumber),
     uniqueIndex("sales_orders_org_offline_ref_uidx").on(table.organizationId, table.offlineReference).where(sql`${table.offlineReference} is not null`),
     index("sales_orders_org_branch_time_idx").on(table.organizationId, table.branchId, table.occurredAt),
+    index("sales_orders_org_status_time_idx").on(table.organizationId, table.status, table.occurredAt),
+    index("sales_orders_org_branch_status_time_idx").on(table.organizationId, table.branchId, table.status, table.occurredAt),
     index("sales_orders_customer_idx").on(table.customerId),
     index("sales_orders_table_idx").on(table.organizationId, table.tableId),
     check("sales_orders_nonnegative_total", sql`${table.totalAmount} >= 0`),
@@ -81,6 +83,7 @@ export const salesOrderItems = pgTable(
   },
   (table) => [
     index("sales_order_items_order_idx").on(table.orderId),
+    index("sales_order_items_org_order_idx").on(table.organizationId, table.orderId),
     check("sales_order_items_positive_quantity", sql`${table.quantity} > 0`),
   ],
 );
@@ -116,6 +119,7 @@ export const salesPayments = pgTable(
   },
   (table) => [
     index("sales_payments_order_idx").on(table.orderId),
+    index("sales_payments_org_status_idx").on(table.organizationId, table.status),
     uniqueIndex("sales_payments_org_external_ref_uidx").on(table.organizationId, table.externalReference).where(sql`${table.externalReference} is not null`),
     check("sales_payments_positive_amount", sql`${table.amount} > 0`),
   ],

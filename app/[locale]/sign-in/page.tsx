@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = "force-dynamic"
+
 import { useState } from "react"
 import { Link } from "@/i18n/navigation"
 import { Chrome, Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react"

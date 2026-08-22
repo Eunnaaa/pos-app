@@ -142,13 +142,19 @@ export function BillingTab() {
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="flex size-7 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-950 font-bold text-[10px] text-emerald-800 dark:text-emerald-300">
-                AUTO
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-8 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-2xs shrink-0">
+                <CreditCard className="size-4" />
               </div>
-              <p className="text-sm font-semibold">QRIS / Debit Online</p>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold leading-tight">QRIS / Debit Online</p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Auto-Debet Aktif</span>
+                </div>
+              </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">Auto-debet aktif via Midtrans Payment Gateway</p>
+            <p className="text-[11px] text-muted-foreground">Diproses aman via Midtrans Payment Gateway</p>
           </CardContent>
         </Card>
       </div>

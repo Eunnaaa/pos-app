@@ -15,10 +15,10 @@ export const GET = apiHandler(async (request) => {
         c.name as customer_name,
         c.code as customer_code,
         c.phone as customer_phone,
-        c.total_spend_amount::text as total_spend,
+        coalesce(c.total_spend_amount, 0)::text as total_spend,
         ml.name as membership_level,
-        la.points_balance::text as points_balance,
-        la.lifetime_points::text as lifetime_points,
+        coalesce(la.points_balance, 0)::text as points_balance,
+        coalesce(la.lifetime_points, 0)::text as lifetime_points,
         la.created_at,
         la.updated_at
       from loyalty_accounts la

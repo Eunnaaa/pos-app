@@ -569,7 +569,7 @@ export function PromotionsPage() {
             {/* Live WhatsApp Bubble Preview */}
             {(() => {
               const promo = data.find((p) => p.id === selectedPromoId) || data[0]
-              const storeName = organization?.name || "KASIR KITA"
+              const storeName = organization?.name || "Kedai-Ku"
               const promoDesc = promo
                 ? promo.percentage_bps
                   ? `Diskon Spesial ${promo.percentage_bps / 100}%`
@@ -619,7 +619,7 @@ export function PromotionsPage() {
                     })
                     .map((cust) => {
                       const promo = data.find((p) => p.id === selectedPromoId) || data[0]
-                      const storeName = organization?.name || "KASIR KITA"
+                      const storeName = organization?.name || "Kedai-Ku"
                       const promoDesc = promo
                         ? promo.percentage_bps
                           ? `Diskon Spesial ${promo.percentage_bps / 100}%`

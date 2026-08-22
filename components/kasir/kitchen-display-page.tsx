@@ -109,7 +109,13 @@ export function KitchenDisplayPage() {
     setUpdating(ticket.id)
     try {
       await apiFetch(`/api/v1/kitchen/tickets/${ticket.id}`, { method: "PATCH", body: JSON.stringify({ status: next }) })
-      showSuccess(`Tiket ${ticket.number} → ${next === "cooking" ? "dimasak" : next === "ready" ? "siap" : "disajikan"}`)
+      
+      // Bunyikan bel dapur otomatis ketika pesanan selesai dimasak dan masuk ke form/kolom Siap Saji
+      if (next === "ready" || soundEnabled) {
+        playKitchenBellSound()
+      }
+
+      showSuccess(`Tiket ${ticket.number} → ${next === "cooking" ? "dimasak" : next === "ready" ? "siap saji 🔔" : "disajikan"}`)
       await load()
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal memperbarui status")

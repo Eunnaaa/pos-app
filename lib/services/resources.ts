@@ -7,6 +7,7 @@ import { dataResponse } from "@/lib/api";
 import type { ApiContext } from "@/lib/api";
 import { postExpenseToLedger } from "./ledger";
 import { ensureDefaultCategories } from "./categories";
+import { cacheGet, cacheSet, cacheDel, RedisKeys } from "@/lib/redis";
 
 type FieldType = "text" | "uuid" | "boolean" | "integer" | "bigint" | "date" | "timestamp" | "json";
 type Field = { column?: string; type: FieldType; required?: boolean };
@@ -133,6 +134,19 @@ export async function listResource(name: ResourceName, request: Request, context
   }
   const query = parseSearchParams(request.url, paginationSchema.extend({ q: z.string().max(100).optional(), page: z.coerce.number().int().min(1).default(1) }));
   const offset = (query.page - 1) * query.limit;
+
+  const isCacheable = !query.q && query.page === 1 && query.limit <= 50 && ["categories", "dining-tables", "promotions", "brands"].includes(name);
+  const cacheKey = isCacheable
+    ? `tenant:${context.organizationId}${context.branchId ? `:branch:${context.branchId}` : ""}:resource:${name}`
+    : null;
+
+  if (cacheKey) {
+    const cached = await cacheGet<{ rows: unknown[]; hasMore: boolean }>(cacheKey);
+    if (cached) {
+      return dataResponse(cached.rows, {}, { page: 1, limit: query.limit, hasMore: cached.hasMore });
+    }
+  }
+
   const search = query.q && config.search?.length
     ? sql` and (${sql.join(config.search.map((column: string) => sql`${sql.identifier(column)} ilike ${`%${query.q}%`}`), sql.raw(" or "))})`
     : sql``;
@@ -143,7 +157,13 @@ export async function listResource(name: ResourceName, request: Request, context
     limit ${query.limit + 1} offset ${offset}
   `);
   const hasMore = result.rows.length > query.limit;
-  return dataResponse(result.rows.slice(0, query.limit), {}, { page: query.page, limit: query.limit, hasMore });
+  const rows = result.rows.slice(0, query.limit);
+
+  if (cacheKey) {
+    void cacheSet(cacheKey, { rows, hasMore }, 1800);
+  }
+
+  return dataResponse(rows, {}, { page: query.page, limit: query.limit, hasMore });
 }
 
 export async function getResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {
@@ -190,6 +210,7 @@ export async function createResource(name: ResourceName, request: Request, conte
     }
     return created;
   });
+  invalidateResourceCache(name, context);
   return dataResponse(record, { status: 201 });
 }
 
@@ -230,6 +251,7 @@ export async function updateResource(name: ResourceName, id: string, request: Re
     return updated;
   });
   if (!record) throw new AppError("NOT_FOUND", `${name} record not found`);
+  invalidateResourceCache(name, context);
   return dataResponse(record);
 }
 
@@ -247,5 +269,18 @@ export async function deleteResource(name: ResourceName, id: string, context: Ap
     return result.rows[0];
   });
   if (!deleted) throw new AppError("NOT_FOUND", `${name} record not found`);
+  invalidateResourceCache(name, context);
   return new Response(null, { status: 204 });
+}
+
+function invalidateResourceCache(name: ResourceName, context: ApiContext) {
+  if (["products", "categories", "variants", "dining-tables", "promotions", "brands"].includes(name)) {
+    void cacheDel(
+      RedisKeys.catalog(context.organizationId, context.branchId),
+      RedisKeys.categories(context.organizationId),
+      RedisKeys.tables(context.organizationId, context.branchId),
+      `tenant:${context.organizationId}:resource:${name}`,
+      `tenant:${context.organizationId}:branch:${context.branchId}:resource:${name}`
+    );
+  }
 }

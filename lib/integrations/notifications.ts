@@ -6,7 +6,9 @@ import { providerRequest, requireProviderConfig } from "./http";
 export async function sendWhatsApp(to: string, message: string) {
   const env = getServerEnv();
   const config = requireProviderConfig("Fonnte", { token: env.WHATSAPP_ACCESS_TOKEN });
-  const body = new URLSearchParams({ target: to, message, countryCode: "62" });
+  let target = to.replace(/[^0-9]/g, "");
+  if (target.startsWith("0")) target = `62${target.slice(1)}`;
+  const body = new URLSearchParams({ target, message, countryCode: "62" });
   let response: Response;
   try {
     response = await fetch("https://api.fonnte.com/send", {
