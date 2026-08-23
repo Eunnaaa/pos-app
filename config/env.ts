@@ -3,10 +3,12 @@ import { z } from "zod";
 
 const optionalUrl = z.preprocess((value) => {
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
+  let trimmed = value.trim();
   if (!trimmed || trimmed === "..." || trimmed.includes("your_") || trimmed.includes("your-") || trimmed.startsWith("<")) {
     return undefined;
   }
+  const cleanPart = trimmed.split(/\s+/)[0];
+  if (cleanPart) trimmed = cleanPart;
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol === "http:" || parsed.protocol === "https:") {

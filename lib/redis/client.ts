@@ -15,11 +15,18 @@ export function getRedisClient(): Redis | null {
     const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
     const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 
-    if (url && token && (url.startsWith("http://") || url.startsWith("https://"))) {
-      redisInstance = new Redis({
-        url,
-        token,
-      });
+    if (url && token) {
+      // If trailing words/spaces were accidentally pasted in .env, take only the clean URL part
+      const cleanUrl = url.split(/\s+/)[0];
+      if (cleanUrl) {
+        const parsed = new URL(cleanUrl);
+        if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+          redisInstance = new Redis({
+            url: cleanUrl,
+            token,
+          });
+        }
+      }
     }
   } catch (error) {
     console.warn("[Redis] Failed to initialize Redis client:", error);
