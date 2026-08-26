@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiFetch } from "@/lib/client"
+import { subscribeToTable } from "@/lib/client/realtime"
 import { useOrganization } from "@/components/kasir/organization-provider"
 
 type Sale = {
@@ -80,35 +81,54 @@ export function SalesPage() {
       ? activeGlobalBranch?.name || "Cabang Aktif"
       : organization?.branches.find((b) => b.id === selectedBranchId)?.name || "Cabang Terpilih"
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      let url = `/api/v1/sales?q=${encodeURIComponent(search)}&limit=100`
-      if (!isCashier) {
-        if (selectedBranchId === "all") {
-          url += `&allBranches=true`
-        } else if (selectedBranchId === "active") {
-          if (activeGlobalBranch?.id) {
-            url += `&branchId=${activeGlobalBranch.id}`
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true)
+      try {
+        let url = `/api/v1/sales?q=${encodeURIComponent(search)}&limit=100`
+        if (!isCashier) {
+          if (selectedBranchId === "all") {
+            url += `&allBranches=true`
+          } else if (selectedBranchId === "active") {
+            if (activeGlobalBranch?.id) {
+              url += `&branchId=${activeGlobalBranch.id}`
+            }
+          } else {
+            url += `&branchId=${selectedBranchId}`
           }
-        } else {
-          url += `&branchId=${selectedBranchId}`
         }
-      }
 
-      const res = await apiFetch<Sale[]>(url)
-      setData(res.data)
-    } catch (caught) {
-      showError(caught instanceof Error ? caught.message : "Gagal mengambil transaksi")
-    } finally {
-      setLoading(false)
-    }
-  }, [search, selectedBranchId, activeGlobalBranch?.id, isCashier])
+        const res = await apiFetch<Sale[]>(url)
+        setData(res.data)
+      } catch (caught) {
+        if (!silent) {
+          showError(caught instanceof Error ? caught.message : "Gagal mengambil transaksi")
+        }
+      } finally {
+        if (!silent) setLoading(false)
+      }
+    },
+    [search, selectedBranchId, activeGlobalBranch?.id, isCashier]
+  )
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 250)
+    const timer = window.setTimeout(() => void load(false), 250)
     return () => window.clearTimeout(timer)
   }, [load])
+
+  const orgId = organization?.id
+  useEffect(() => {
+    if (!orgId) return
+    const unsub1 = subscribeToTable("sales_orders", orgId, () => void load(true))
+    const unsub2 = subscribeToTable("cash_register_sessions", orgId, () => void load(true))
+    const refresh = () => void load(false)
+    window.addEventListener("kedai-ku-context-change", refresh)
+    return () => {
+      unsub1?.()
+      unsub2?.()
+      window.removeEventListener("kedai-ku-context-change", refresh)
+    }
+  }, [orgId, load])
 
   async function showDetail(id: string) {
     try {

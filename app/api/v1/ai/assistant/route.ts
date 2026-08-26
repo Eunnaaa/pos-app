@@ -3,6 +3,7 @@ import { getServerEnv } from "@/config/env";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { askAi } from "@/lib/integrations";
 import { customerReport, financeReport, inventoryReport, purchaseReport, salesReport } from "@/lib/services/reporting";
+import { assertFeatureEnabled } from "@/lib/services/subscription";
 import { parseJson } from "@/lib/server";
 
 const schema = z.object({
@@ -195,7 +196,8 @@ Aturan:
 - Pertanyaan lanjutan harus memakai konteks percakapan dan laporan terbaru`;
 
 export const POST = apiHandler(async (request) => {
-  const context = await requireApiContext(request, "reports:read");
+  const context = await requireApiContext(request, "dashboard:read");
+  await assertFeatureEnabled(context.organizationId, "aiAdvisor", "Fitur AI Assistant");
   const input = await parseJson(request, schema);
   const history = input.history.reduce<typeof input.history>((messages, message) => {
     if (messages.reduce((total, item) => total + item.content.length, 0) + message.content.length <= 12_000) messages.push(message);

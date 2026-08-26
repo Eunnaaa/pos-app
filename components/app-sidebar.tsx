@@ -10,16 +10,21 @@ import {
   CalendarDays,
   ChefHat,
   ContactRound,
+  Crown,
   FileBarChart,
   Landmark,
   LayoutDashboard,
+  Megaphone,
   PackageSearch,
   Percent,
   QrCode,
   ReceiptText,
   Settings,
+  ShieldAlert,
+  ShieldCheck,
   ShoppingCart,
   Store,
+  TicketPercent,
   Truck,
   UserRoundCog,
   UsersRound,
@@ -27,6 +32,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
+import { isSuperAdminEmail } from "@/lib/super-admin"
 import {
   Sidebar,
   SidebarContent,
@@ -40,10 +46,13 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Link, usePathname } from "@/i18n/navigation"
+import { useSearchParams } from "next/navigation"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const t = useTranslations("Sidebar")
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentTab = searchParams.get("tab") || "overview"
   const { data: session } = useSession()
   const { organization } = useOrganization()
   const isOwner = !organization || organization.role === "owner"
@@ -68,6 +77,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     "/dashboard/reports": "reports:read",
     "/dashboard/ai": "dashboard:read",
     "/dashboard/cashiers": "users:manage",
+    "/dashboard/subscription": "dashboard:read",
+    "/dashboard/admin": "settings:manage",
     "/dashboard/settings": "settings:manage",
   }
 
@@ -109,14 +120,51 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         [t("laporan"), "/dashboard/reports", FileBarChart],
         [t("aiInsights"), "/dashboard/ai", BrainCircuit],
         [t("cashier"), "/dashboard/cashiers", UsersRound],
+        [t("langganan"), "/dashboard/subscription", Crown],
+        [t("masterAdmin"), "/dashboard/admin", ShieldCheck],
         [t("pengaturan"), "/dashboard/settings", Settings],
       ],
     },
   ]
 
-  const visibleGroups = groups.map((group) => ({ ...group, items: group.items.filter(([, href]) => allowed.has("all") || allowed.has(itemPermission[href] || "")) })).filter((group) => group.items.length)
+  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
+
+  const superAdminGroups: { label: string; items: [string, string, LucideIcon][] }[] = [
+    {
+      label: "Platform Master Control",
+      items: [
+        ["Platform Overview", "/dashboard/admin?tab=overview", LayoutDashboard],
+        ["Tenant & Merchant", "/dashboard/admin?tab=tenants", Building2],
+        ["Midtrans Invoices", "/dashboard/admin?tab=invoices", ReceiptText],
+        ["Broadcast Pengumuman", "/dashboard/admin?tab=broadcast", Megaphone],
+        ["Kupon Promo & Diskon", "/dashboard/admin?tab=promos", TicketPercent],
+        ["Audit Log Keamanan", "/dashboard/admin?tab=audit", ShieldAlert],
+        ["Server & Database", "/dashboard/admin?tab=health", ShieldCheck],
+        ["Pengaturan Platform", "/dashboard/admin?tab=settings", Settings],
+      ],
+    },
+  ]
+
+  const visibleGroups = isSuperAdmin
+    ? superAdminGroups
+    : groups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter(([, href]) => {
+            if (href === "/dashboard/admin") {
+              return false
+            }
+            return allowed.has("all") || allowed.has(itemPermission[href] || "")
+          }),
+        }))
+        .filter((group) => group.items.length)
+
   const userData = session?.user
-    ? { name: session.user.name || t("user"), email: session.user.email, avatar: session.user.image || "" }
+    ? {
+        name: isSuperAdmin ? "Platform Super Admin" : session.user.name || t("user"),
+        email: session.user.email,
+        avatar: session.user.image || "",
+      }
     : { name: t("user"), email: "", avatar: "" }
 
   return (
@@ -125,13 +173,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild size="lg" className="h-14 data-[slot=sidebar-menu-button]:!p-2">
-              <Link href="/dashboard">
+              <Link href={isSuperAdmin ? "/dashboard/admin?tab=overview" : "/dashboard"}>
                 <span className="flex size-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-                  <Store className="size-5" />
+                  {isSuperAdmin ? <ShieldCheck className="size-5" /> : <Store className="size-5" />}
                 </span>
                 <span className="grid flex-1 text-left leading-tight">
-                  <span className="truncate text-base font-bold tracking-tight">{t("appName")}</span>
-                  <span className="truncate text-xs text-muted-foreground">{t("appTagline")}</span>
+                  <span className="truncate text-base font-bold tracking-tight">
+                    {isSuperAdmin ? "Kedai-Ku Master" : t("appName")}
+                  </span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {isSuperAdmin ? "Super Admin Portal" : t("appTagline")}
+                  </span>
                 </span>
               </Link>
             </SidebarMenuButton>
@@ -145,9 +197,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map(([title, href, Icon]) => {
-                  const active = href === "/dashboard" ? pathname === href : pathname.startsWith(href)
+                  const active = isSuperAdmin
+                    ? href.includes(`tab=${currentTab}`) || (href.endsWith("tab=overview") && currentTab === "overview")
+                    : href === "/dashboard"
+                      ? pathname === href
+                      : pathname.startsWith(href)
+
                   return (
-                    <SidebarMenuItem key={href}>
+                    <SidebarMenuItem key={`${title}-${href}`}>
                       <SidebarMenuButton asChild tooltip={title} isActive={active}>
                         <Link href={href}>
                           <Icon />

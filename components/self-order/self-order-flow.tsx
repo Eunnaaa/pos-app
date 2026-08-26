@@ -11,6 +11,7 @@ import {
   Minus,
   Plus,
   Printer,
+  QrCode,
   ShoppingCart,
   Sparkles,
   Trash2,
@@ -77,6 +78,17 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const cart = useSelfOrderCart(token);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const urlOrderId = sp.get("order_id") || sp.get("orderId");
+      if (urlOrderId) {
+        setActiveOrderId(urlOrderId);
+        setStep("tracking");
+      }
+    }
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -827,7 +839,36 @@ function PaymentView(props: {
   const t = useTranslations("SelfOrder");
   const [method, setMethod] = useState<"qris" | "e_wallet">("qris");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [error, setError] = useState("");
+  const [branchQrisModal, setBranchQrisModal] = useState<{
+    qrString?: string;
+    qrImageUrl?: string;
+    accountName?: string;
+    instructions?: string;
+    amount?: number;
+    orderNumber?: string;
+    orderId: string;
+  } | null>(null);
+
+  async function handleConfirmPaymentClick() {
+    if (!branchQrisModal?.orderId) return;
+    const orderId = branchQrisModal.orderId;
+    setConfirmingPayment(true);
+    try {
+      await selfOrderFetch(`/api/v1/self-order/orders/${orderId}?token=${encodeURIComponent(token)}`, {
+        method: "POST",
+        token,
+      });
+      showSuccess("🎉 Pembayaran Berhasil Dikonfirmasi & Pesanan Dikirim ke Dapur!");
+      setBranchQrisModal(null);
+      onPaid(orderId);
+    } catch (e) {
+      showError(e instanceof SelfOrderApiError ? e.message : "Gagal mengonfirmasi pembayaran");
+    } finally {
+      setConfirmingPayment(false);
+    }
+  }
 
   async function submit() {
     setSubmitting(true);
@@ -855,7 +896,18 @@ function PaymentView(props: {
         },
       );
       const orderId = create.data.order.id;
-      const charge = await selfOrderFetch<{ invoiceUrl: string | null; externalId: string }>(
+      const charge = await selfOrderFetch<{
+        invoiceUrl: string | null;
+        externalId: string;
+        branchQris?: {
+          qrString?: string;
+          qrImageUrl?: string;
+          accountName?: string;
+          instructions?: string;
+          amount?: number;
+          orderNumber?: string;
+        } | null;
+      }>(
         "/api/v1/self-order/payments",
         {
           method: "POST",
@@ -863,7 +915,16 @@ function PaymentView(props: {
           body: JSON.stringify({ token, orderId, paymentMethods: method === "qris" ? ["QRIS"] : ["OVO", "DANA", "SHOPEEPAY"] }),
         },
       );
-      if (charge.data.invoiceUrl) {
+      if (method === "qris") {
+        if (charge.data.branchQris) {
+          setBranchQrisModal({
+            ...charge.data.branchQris,
+            orderId,
+          });
+        } else {
+          onPaid(orderId);
+        }
+      } else if (charge.data.invoiceUrl) {
         window.location.href = charge.data.invoiceUrl;
       } else {
         onPaid(orderId);
@@ -877,6 +938,35 @@ function PaymentView(props: {
     }
   }
 
+  // Auto-check QRIS payment settlement while modal is open
+  useEffect(() => {
+    if (!branchQrisModal?.orderId) return;
+    const orderId = branchQrisModal.orderId;
+    let active = true;
+
+    const interval = setInterval(async () => {
+      if (!active) return;
+      try {
+        const res = await selfOrderFetch<{ order: { status: string } }>(
+          `/api/v1/self-order/orders/${orderId}?token=${encodeURIComponent(token)}`
+        );
+        if (!active) return;
+        if (res.data?.order?.status === "paid") {
+          showSuccess("🎉 Pembayaran QRIS Berhasil Diverifikasi!");
+          setBranchQrisModal(null);
+          onPaid(orderId);
+        }
+      } catch {
+        // Ignore polling error
+      }
+    }, 2500);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [branchQrisModal?.orderId, token, onPaid]);
+
   return (
     <div className="mx-auto max-w-xl space-y-5 bg-card border rounded-3xl p-5 shadow-sm">
       <Button variant="ghost" size="sm" onClick={onBack} className="rounded-xl h-8 px-2.5 text-xs text-muted-foreground">
@@ -885,7 +975,7 @@ function PaymentView(props: {
 
       <div className="space-y-1">
         <h1 className="text-xl font-bold text-foreground">{t("paymentTitle")}</h1>
-        <p className="text-xs text-muted-foreground">Pilih metode pembayaran Payment Gateway otomatis via Midtrans.</p>
+        <p className="text-xs text-muted-foreground">Pilih metode pembayaran mandiri QRIS atau E-Wallet.</p>
       </div>
 
       {/* Customer Info (Optional for Loyalty & WhatsApp E-Receipt) */}
@@ -987,8 +1077,90 @@ function PaymentView(props: {
       </Button>
 
       <p className="text-[10px] text-center text-muted-foreground">
-        🔒 Transaksi aman &amp; terenkripsi via Midtrans Payment Gateway.
+        🔒 Transaksi aman &amp; otomatis terverifikasi sistem.
       </p>
+
+      {/* Branch Dynamic QRIS Modal Dialog */}
+      <Dialog open={branchQrisModal !== null} onOpenChange={(open) => !open && setBranchQrisModal(null)}>
+        <DialogContent className="sm:max-w-sm rounded-3xl p-0 overflow-hidden border-border">
+          <DialogHeader className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white text-left space-y-1">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-base font-bold text-white flex items-center gap-2">
+                <QrCode className="size-5" /> Pembayaran QRIS
+              </DialogTitle>
+              <Badge className="bg-white/20 text-white border-0 text-[10px] uppercase">
+                {branchQrisModal?.orderNumber}
+              </Badge>
+            </div>
+            <DialogDescription className="text-emerald-100 text-xs">
+              {branchQrisModal?.accountName || "Kedai-Ku"} • Pesanan Meja
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="p-5 space-y-4 text-center">
+            <div className="flex flex-col items-center mx-auto max-w-[260px] rounded-2xl bg-white p-3.5 shadow-md border-2 border-emerald-500/30 text-black">
+              <div className="w-full flex items-center justify-between pb-1.5 border-b border-gray-100 mb-1.5">
+                <span className="font-black text-xs text-red-600">QRIS</span>
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  ✨ Nominal Terkunci
+                </span>
+              </div>
+
+              <div className="size-52 flex items-center justify-center p-1 bg-white">
+                {branchQrisModal?.qrImageUrl ? (
+                  <img
+                    src={branchQrisModal.qrImageUrl}
+                    alt="QRIS Pembayaran"
+                    className="size-full object-contain"
+                  />
+                ) : (
+                  <Loader2 className="size-8 animate-spin text-emerald-600" />
+                )}
+              </div>
+
+              <div className="w-full text-center pt-1.5 border-t border-gray-100 mt-1">
+                <p className="text-[11px] font-bold text-gray-900 truncate">{branchQrisModal?.accountName}</p>
+                <p className="text-[12px] font-extrabold text-emerald-600 mt-0.5">
+                  Total: {rupiah(branchQrisModal?.amount || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-muted/40 border text-left text-xs space-y-1">
+              <p className="font-bold text-[11px] text-foreground">📌 Petunjuk Pembayaran:</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Scan QRIS di atas via m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, DANA, ShopeePay). <strong>Nominal {rupiah(branchQrisModal?.amount || 0)} otomatis terkunci.</strong>
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-1">
+              <Button
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-10 text-xs gap-1.5"
+                disabled={confirmingPayment}
+                onClick={handleConfirmPaymentClick}
+              >
+                {confirmingPayment ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" /> Mengonfirmasi Pembayaran...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="size-4" /> Saya Sudah Bayar
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                className="w-full rounded-xl h-9 text-xs"
+                disabled={confirmingPayment}
+                onClick={() => setBranchQrisModal(null)}
+              >
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

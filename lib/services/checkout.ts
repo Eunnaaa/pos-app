@@ -20,6 +20,7 @@ import {
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
 import { assertPeriodOpen, AppError } from "@/lib/server";
+import { assertCanCreateOrder } from "./subscription";
 import { postStockMovement } from "./stock-ledger";
 import { postSaleToLedger } from "./ledger";
 import { exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
@@ -85,6 +86,7 @@ export function checkoutContextFromApi(context: ApiContext): CheckoutContext {
 }
 
 export async function checkout(input: CheckoutInput, context: CheckoutContext) {
+  await assertCanCreateOrder(context.organizationId);
   const result = await db.transaction(async (tx) => {
     if (input.channel === "pos") {
       await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });

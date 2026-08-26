@@ -7,7 +7,9 @@ import {
   Loader2,
   Pencil,
   Plus,
+  QrCode,
   Search,
+  Trash2,
   Warehouse,
 } from "lucide-react"
 import { useOrganization } from "@/components/kasir/organization-provider"
@@ -19,9 +21,44 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
-type BranchDetail = { id: string; name: string; code: string; phone?: string; email?: string; address?: string; city?: string; province?: string; postal_code?: string; is_active: boolean }
-const emptyForm = { name: "", code: "", city: "", phone: "", address: "" }
+type BranchDetail = {
+  id: string
+  name: string
+  code: string
+  phone?: string
+  email?: string
+  address?: string
+  city?: string
+  province?: string
+  postal_code?: string
+  is_active: boolean
+  qrisImageUrl?: string | null
+  qrisAccountName?: string | null
+  qrisInstructions?: string | null
+  metadata?: Record<string, unknown>
+}
+
+const emptyForm = {
+  name: "",
+  code: "",
+  city: "",
+  phone: "",
+  address: "",
+  qrisImageUrl: "",
+  qrisAccountName: "",
+  qrisInstructions: "",
+  midtransServerKey: "",
+  midtransClientKey: "",
+  paymentMode: "inherit" as "inherit" | "branch_midtrans" | "manual_qris",
+}
 
 export function BranchesPage() {
   const { organization, refresh } = useOrganization()
@@ -35,18 +72,41 @@ export function BranchesPage() {
     try {
       const response = await apiFetch<BranchDetail>(`/api/v1/resources/branches/${id}`)
       const branch = response.data
+      const meta = (branch.metadata || {}) as Record<string, unknown>
       setForm({
         name: branch.name || "",
         code: branch.code || "",
         city: branch.city || "",
         phone: branch.phone || "",
         address: branch.address || "",
+        qrisImageUrl: (branch.qrisImageUrl || meta.qrisImageUrl || "") as string,
+        qrisAccountName: (branch.qrisAccountName || meta.qrisAccountName || "") as string,
+        qrisInstructions: (branch.qrisInstructions || meta.qrisInstructions || "") as string,
+        midtransServerKey: (meta.midtransServerKey || "") as string,
+        midtransClientKey: (meta.midtransClientKey || "") as string,
+        paymentMode: ((meta.paymentMode as "inherit" | "branch_midtrans" | "manual_qris") || "inherit"),
       })
       setEditingId(id)
       setOpen(true)
     } catch (error) {
       showError(error instanceof Error ? error.message : "Gagal memuat detail cabang")
     }
+  }
+
+  function handleBranchQrisUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 2 * 1024 * 1024) {
+      showError("Ukuran foto QRIS maksimal 2MB")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      setForm((prev) => ({ ...prev, qrisImageUrl: result }))
+      showSuccess("Foto QRIS cabang berhasil dimuat!")
+    }
+    reader.readAsDataURL(file)
   }
 
   async function save(event: React.FormEvent) {
@@ -62,9 +122,15 @@ export function BranchesPage() {
             city: form.city.trim() || undefined,
             phone: form.phone.trim() || undefined,
             address: form.address.trim() || undefined,
+            qrisImageUrl: form.qrisImageUrl || null,
+            qrisAccountName: form.qrisAccountName.trim() || null,
+            qrisInstructions: form.qrisInstructions.trim() || null,
+            midtransServerKey: form.midtransServerKey.trim() || null,
+            midtransClientKey: form.midtransClientKey.trim() || null,
+            paymentMode: form.paymentMode,
           }),
         })
-        showSuccess("Cabang diperbarui")
+        showSuccess("Cabang & Metode Pembayaran diperbarui")
       } else {
         if (!form.code) { showError("Kode cabang wajib diisi"); setSaving(false); return }
         await apiFetch("/api/v1/branches", {
@@ -75,6 +141,12 @@ export function BranchesPage() {
             city: form.city.trim() || undefined,
             phone: form.phone.trim() || undefined,
             address: form.address.trim() || undefined,
+            qrisImageUrl: form.qrisImageUrl || null,
+            qrisAccountName: form.qrisAccountName.trim() || null,
+            qrisInstructions: form.qrisInstructions.trim() || null,
+            midtransServerKey: form.midtransServerKey.trim() || null,
+            midtransClientKey: form.midtransClientKey.trim() || null,
+            paymentMode: form.paymentMode,
           }),
         })
         showSuccess(`Cabang ${form.name} ditambahkan`)
@@ -295,90 +367,240 @@ export function BranchesPage() {
 
       {/* Add / Edit Branch Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-0 rounded-2xl overflow-hidden gap-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0 bg-background text-left">
             <DialogTitle className="flex items-center gap-2 text-lg font-bold">
               {editingId ? <Pencil className="size-5 text-emerald-600" /> : <Plus className="size-5 text-emerald-600" />}{" "}
               {editingId ? "Edit Detail Cabang" : "Tambah Cabang Baru"}
             </DialogTitle>
-            {!editingId && (
-              <DialogDescription className="text-xs">
-                Gudang default dan mesin kasir untuk cabang ini akan dibuat secara otomatis.
-              </DialogDescription>
-            )}
+            <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+              {editingId
+                ? "Perbarui profil cabang dan foto QRIS pembayaran khusus cabang ini."
+                : "Lengkapi data cabang baru serta konfigurasi QRIS kasir untuk cabang ini."}
+            </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={save} className="space-y-4 pt-2">
-            <div className="space-y-2">
-              <Label htmlFor="branch-name" className="text-xs font-semibold">Nama Cabang</Label>
-              <Input
-                id="branch-name"
-                value={form.name}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
-                placeholder="Contoh: Cabang Dago Bandung"
-                required
-                minLength={2}
-                className="h-10 text-sm rounded-xl"
-              />
-            </div>
+          <form onSubmit={save} className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                {/* Left Column: Detail Informasi Cabang */}
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 pb-1 border-b">
+                    <Building2 className="size-4 text-emerald-600" />
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">Informasi Utama Cabang</h4>
+                  </div>
 
-            {!editingId && (
-              <div className="space-y-2">
-                <Label htmlFor="branch-code" className="text-xs font-semibold">Kode Cabang</Label>
-                <Input
-                  id="branch-code"
-                  value={form.code}
-                  onChange={(event) => setForm({ ...form, code: event.target.value })}
-                  placeholder="Contoh: DAGO-01"
-                  required
-                  pattern="[A-Za-z0-9_-]+"
-                  maxLength={20}
-                  className="h-10 text-sm rounded-xl"
-                />
+                  <div className="space-y-2">
+                    <Label htmlFor="branch-name" className="text-xs font-semibold">Nama Cabang</Label>
+                    <Input
+                      id="branch-name"
+                      value={form.name}
+                      onChange={(event) => setForm({ ...form, name: event.target.value })}
+                      placeholder="Contoh: Cabang Dago Bandung"
+                      required
+                      minLength={2}
+                      className="h-10 text-sm rounded-xl"
+                    />
+                  </div>
+
+                  {!editingId && (
+                    <div className="space-y-2">
+                      <Label htmlFor="branch-code" className="text-xs font-semibold">Kode Cabang</Label>
+                      <Input
+                        id="branch-code"
+                        value={form.code}
+                        onChange={(event) => setForm({ ...form, code: event.target.value })}
+                        placeholder="Contoh: DAGO-01"
+                        required
+                        pattern="[A-Za-z0-9_-]+"
+                        maxLength={20}
+                        className="h-10 text-sm rounded-xl"
+                      />
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="branch-city" className="text-xs font-semibold">Kota</Label>
+                      <Input
+                        id="branch-city"
+                        value={form.city}
+                        onChange={(event) => setForm({ ...form, city: event.target.value })}
+                        placeholder="Contoh: Bandung"
+                        className="h-10 text-sm rounded-xl"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="branch-phone" className="text-xs font-semibold">Nomor Telepon</Label>
+                      <Input
+                        id="branch-phone"
+                        value={form.phone}
+                        onChange={(event) => setForm({ ...form, phone: event.target.value })}
+                        placeholder="Contoh: 022-1234567"
+                        className="h-10 text-sm rounded-xl"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="branch-address" className="text-xs font-semibold">Alamat Lengkap</Label>
+                    <Input
+                      id="branch-address"
+                      value={form.address}
+                      onChange={(event) => setForm({ ...form, address: event.target.value })}
+                      placeholder="Contoh: Jl. Ir. H. Juanda No. 10"
+                      className="h-10 text-sm rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                {/* Right Column: Konfigurasi Pembayaran & QRIS Cabang */}
+                <div className="space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                  <div className="flex items-center justify-between pb-1 border-b border-emerald-500/20">
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                      <QrCode className="size-4 text-emerald-600" />
+                      <span>Pembayaran &amp; QRIS Cabang</span>
+                    </div>
+                    <Badge variant="outline" className="text-[10px] bg-background">
+                      {form.paymentMode === "branch_midtrans"
+                        ? "Midtrans Khusus Cabang"
+                        : form.paymentMode === "manual_qris"
+                        ? "QRIS Manual Cabang"
+                        : "Otomatis Midtrans Toko"}
+                    </Badge>
+                  </div>
+
+                  {/* Mode Selector */}
+                  <div className="space-y-1.5">
+                    <Label className="text-[11px] font-semibold">Integrasi Gateway Pembayaran (Self-Order &amp; POS)</Label>
+                    <Select
+                      value={form.paymentMode}
+                      onValueChange={(val: "inherit" | "branch_midtrans" | "manual_qris") =>
+                        setForm({ ...form, paymentMode: val })
+                      }
+                    >
+                      <SelectTrigger className="h-9 text-xs rounded-xl bg-background">
+                        <SelectValue placeholder="Pilih Mode Pembayaran Cabang" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="inherit">⚡ Otomatis Ikuti Midtrans Toko Utama (Disarankan)</SelectItem>
+                        <SelectItem value="branch_midtrans">🏢 Akun Midtrans Khusus Cabang Ini (Kredensial Terpisah)</SelectItem>
+                        <SelectItem value="manual_qris">📸 QRIS Manual Toko / Upload Foto QRIS</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Branch Midtrans Credentials */}
+                  {form.paymentMode === "branch_midtrans" && (
+                    <div className="space-y-2.5 p-3 rounded-xl bg-background border border-emerald-500/30">
+                      <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                        <span>🔑 Kredensial Midtrans Khusus Cabang {form.name || ""}</span>
+                      </div>
+                      <div>
+                        <Label htmlFor="branch-midtrans-server" className="text-[10px] font-semibold">
+                          Server Key Midtrans Cabang
+                        </Label>
+                        <Input
+                          id="branch-midtrans-server"
+                          type="password"
+                          value={form.midtransServerKey}
+                          onChange={(e) => setForm({ ...form, midtransServerKey: e.target.value })}
+                          placeholder="SB-Mid-server-xxxx... atau Mid-server-xxxx..."
+                          className="h-8 text-xs font-mono rounded-lg mt-0.5"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="branch-midtrans-client" className="text-[10px] font-semibold">
+                          Client Key Midtrans Cabang (Opsional)
+                        </Label>
+                        <Input
+                          id="branch-midtrans-client"
+                          value={form.midtransClientKey}
+                          onChange={(e) => setForm({ ...form, midtransClientKey: e.target.value })}
+                          placeholder="SB-Mid-client-xxxx..."
+                          className="h-8 text-xs font-mono rounded-lg mt-0.5"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Upload QRIS Section */}
+                  <div className="flex flex-col sm:flex-row items-center gap-4">
+                    {form.qrisImageUrl ? (
+                      <div className="relative group shrink-0">
+                        <img
+                          src={form.qrisImageUrl}
+                          alt="QRIS Cabang"
+                          className="size-28 object-contain rounded-xl border bg-white p-1.5 shadow-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="size-6 absolute -top-2 -right-2 rounded-full shadow-xs"
+                          onClick={() => setForm({ ...form, qrisImageUrl: "" })}
+                        >
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-500/30 hover:border-emerald-600 rounded-xl p-4 cursor-pointer bg-background w-full sm:w-32 h-28 text-center shrink-0 transition-colors">
+                        <QrCode className="size-6 text-emerald-600 mb-1" />
+                        <span className="text-[11px] font-bold text-foreground">Upload QRIS</span>
+                        <span className="text-[9px] text-muted-foreground mt-0.5">PNG, JPG (Maks 2MB)</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleBranchQrisUpload}
+                        />
+                      </label>
+                    )}
+
+                    <div className="flex-1 space-y-2.5 w-full">
+                      <div>
+                        <Label htmlFor="branch-qris-acc" className="text-[11px] font-semibold">
+                          Nama Akun / Merchant QRIS
+                        </Label>
+                        <Input
+                          id="branch-qris-acc"
+                          value={form.qrisAccountName}
+                          onChange={(e) => setForm({ ...form, qrisAccountName: e.target.value })}
+                          placeholder="Contoh: BLANQ DAGO BANDUNG"
+                          className="h-8 text-xs rounded-xl mt-0.5"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="branch-qris-inst" className="text-[11px] font-semibold">
+                          Petunjuk Pembayaran Pelanggan
+                        </Label>
+                        <Input
+                          id="branch-qris-inst"
+                          value={form.qrisInstructions}
+                          onChange={(e) => setForm({ ...form, qrisInstructions: e.target.value })}
+                          placeholder="Contoh: Scan QRIS via BCA / GoPay / ShopeePay"
+                          className="h-8 text-xs rounded-xl mt-0.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-background/80 p-3 border text-[11px] text-muted-foreground leading-relaxed">
+                    💡 <strong>Otomatis &amp; Real-Time:</strong> Jika Midtrans aktif, nominal pembayaran Self-Order Meja &amp; Langganan otomatis terkunci secara presisi dan terverifikasi instan tanpa perlu approval manual.
+                  </div>
+                </div>
               </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="branch-city" className="text-xs font-semibold">Kota</Label>
-              <Input
-                id="branch-city"
-                value={form.city}
-                onChange={(event) => setForm({ ...form, city: event.target.value })}
-                placeholder="Contoh: Bandung"
-                className="h-10 text-sm rounded-xl"
-              />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="branch-phone" className="text-xs font-semibold">Nomor Telepon</Label>
-              <Input
-                id="branch-phone"
-                value={form.phone}
-                onChange={(event) => setForm({ ...form, phone: event.target.value })}
-                placeholder="Contoh: 022-1234567"
-                className="h-10 text-sm rounded-xl"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="branch-address" className="text-xs font-semibold">Alamat Lengkap</Label>
-              <Input
-                id="branch-address"
-                value={form.address}
-                onChange={(event) => setForm({ ...form, address: event.target.value })}
-                placeholder="Contoh: Jl. Ir. H. Juanda No. 10"
-                className="h-10 text-sm rounded-xl"
-              />
-            </div>
-
-            <DialogFooter className="pt-2">
+            <DialogFooter className="px-6 py-3.5 border-t bg-muted/20 shrink-0 flex items-center justify-end gap-2">
               <Button type="button" variant="outline" className="rounded-xl h-9" onClick={() => setOpen(false)}>
                 Batal
               </Button>
               <Button type="submit" className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-9 font-semibold" disabled={saving}>
                 {saving ? (
                   <>
-                    <Loader2 className="size-4 animate-spin" /> Menyimpan...
+                    <Loader2 className="size-4 animate-spin mr-1" /> Menyimpan...
                   </>
                 ) : editingId ? (
                   "Simpan Perubahan"

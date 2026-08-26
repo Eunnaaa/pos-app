@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrganization } from "@/components/kasir/organization-provider"
+import { useSession } from "@/lib/auth-client"
+import { isSuperAdminEmail } from "@/lib/super-admin"
 import { AccountTab } from "./settings/account-tab"
 import { BusinessTab } from "./settings/business-tab"
 import { BranchesTab } from "./settings/branches-tab"
 import { BusinessesTab } from "./settings/businesses-tab"
-import { BillingTab } from "./settings/billing-tab"
 import { NotificationsTab } from "./settings/notifications-tab"
 
 export function SettingsPage() {
@@ -21,19 +22,30 @@ export function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
+  const { data: session } = useSession()
+  const { organization } = useOrganization()
   const [activeTab, setActiveTab] = useState(() => {
-    if (tabParam && ["account", "business", "branches", "businesses", "billing", "notifications"].includes(tabParam)) {
+    if (tabParam && ["account", "business", "branches", "businesses", "notifications"].includes(tabParam)) {
       return tabParam
     }
     return "account"
   })
-  const { organization } = useOrganization()
 
   useEffect(() => {
-    if (tabParam && ["account", "business", "branches", "businesses", "billing", "notifications"].includes(tabParam)) {
+    if (tabParam === "billing") {
+      router.replace("/dashboard/subscription")
+      return
+    }
+    if (tabParam && ["account", "business", "branches", "businesses", "notifications"].includes(tabParam)) {
       setActiveTab(tabParam)
     }
-  }, [tabParam])
+  }, [tabParam, router])
+
+  useEffect(() => {
+    if (!organization && isSuperAdminEmail(session?.user?.email)) {
+      router.replace("/dashboard/admin?tab=settings")
+    }
+  }, [organization, session, router])
 
   if (!organization) return null
 
@@ -110,7 +122,6 @@ export function SettingsPage() {
           {isOwner && <TabsTrigger value="business"><Store className="size-4" /> {t("tabBusiness")}</TabsTrigger>}
           {isOwner && <TabsTrigger value="branches"><Landmark className="size-4" /> {t("tabBranches")}</TabsTrigger>}
           <TabsTrigger value="businesses"><Building2 className="size-4" /> {t("tabBusinesses")}</TabsTrigger>
-          <TabsTrigger value="billing"><CreditCard className="size-4" /> {t("tabBilling")}</TabsTrigger>
           <TabsTrigger value="notifications"><Bell className="size-4" /> {t("tabNotifications")}</TabsTrigger>
         </TabsList>
 
@@ -129,9 +140,6 @@ export function SettingsPage() {
         )}
         <TabsContent value="businesses" className="mt-6">
           <BusinessesTab />
-        </TabsContent>
-        <TabsContent value="billing" className="mt-6">
-          <BillingTab />
         </TabsContent>
         <TabsContent value="notifications" className="mt-6">
           <NotificationsTab />

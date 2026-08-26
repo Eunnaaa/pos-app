@@ -12,7 +12,9 @@ import {
   type ApiEnvelope,
   type UserOrganization,
 } from "@/lib/client"
-import { useRouter } from "@/i18n/navigation"
+import { authClient, useSession } from "@/lib/auth-client"
+import { isSuperAdminEmail } from "@/lib/super-admin"
+import { useRouter, usePathname } from "@/i18n/navigation"
 import { showError } from "@/lib/toast-handler"
 
 type OrganizationContextValue = {
@@ -29,27 +31,61 @@ type OrganizationContextValue = {
 
 const OrganizationContext = createContext<OrganizationContextValue | null>(null)
 
-export function OrganizationProvider({ children }: { children: React.ReactNode }) {
+const defaultSuperAdminValue: OrganizationContextValue = {
+  organizations: [],
+  organization: undefined,
+  branch: undefined,
+  warehouse: undefined,
+  loading: false,
+  refresh: async () => {},
+  selectOrganization: () => {},
+  selectBranch: () => {},
+  selectAllBranches: () => {},
+}
+
+export function OrganizationProvider({
+  children,
+  isSuperAdmin = false,
+}: {
+  children: React.ReactNode
+  isSuperAdmin?: boolean
+}) {
   const t = useTranslations("OrganizationProvider")
   const router = useRouter()
+  const pathname = usePathname()
+  const { data: session } = useSession()
+  const isExplicitAdminRoute = pathname.includes("/admin")
+  const checkSuperAdmin = isSuperAdmin || isSuperAdminEmail(session?.user?.email) || isExplicitAdminRoute
+
   const [organizations, setOrganizations] = useState<UserOrganization[]>([])
   const [organizationId, setOrganizationId] = useState<string>()
   const [branchId, setBranchId] = useState<string>()
   const [warehouseId, setWarehouseId] = useState<string>()
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!checkSuperAdmin)
   const [noOrganization, setNoOrganization] = useState(false)
 
   const refresh = useCallback(async () => {
+    if (checkSuperAdmin) return
+
     setLoading(true)
     try {
       const response = await fetch("/api/v1/me/organizations", { credentials: "include", cache: "no-store" })
       if (response.status === 401) { router.replace("/sign-in"); return }
       if (!response.ok) throw new Error(t("fetchFailed"))
-      const payload = await response.json() as ApiEnvelope<UserOrganization[]>
+      const payload = await response.json() as ApiEnvelope<UserOrganization[]> & { meta?: { isSuperAdmin?: boolean } }
+
+      if (payload.meta?.isSuperAdmin) {
+        setNoOrganization(false)
+        setLoading(false)
+        return
+      }
+
       if (!payload.data.length) {
-        // User tersi tapi belum punya organisasi. Jangan render children (mereka
-        // memanggil API tenant dengan org id yang basi dan menghasilkan 403 berulang).
-        // Biarkan redirect ke onboarding jalan.
+        if (checkSuperAdmin || pathname.includes("/admin")) {
+          setNoOrganization(false)
+          setLoading(false)
+          return
+        }
         setNoOrganization(true)
         router.replace("/onboarding")
         setLoading(false)
@@ -70,9 +106,13 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     } catch (caught) {
       showError(caught instanceof Error ? caught.message : t("fetchFailed"))
     } finally { setLoading(false) }
-  }, [router, t])
+  }, [checkSuperAdmin, router, t])
 
-  useEffect(() => { void refresh() }, [refresh])
+  useEffect(() => {
+    if (!checkSuperAdmin) {
+      void refresh()
+    }
+  }, [checkSuperAdmin, refresh])
 
   const organization = organizations.find((item) => item.id === organizationId)
   const branch = organization?.branches.find((item) => item.id === branchId)
@@ -102,6 +142,10 @@ export function OrganizationProvider({ children }: { children: React.ReactNode }
     persistActiveContext({ organizationId: organization.id })
     setBranchId(undefined); setWarehouseId(undefined)
     window.dispatchEvent(new Event("kedai-ku-context-change"))
+  }
+
+  if (checkSuperAdmin) {
+    return <OrganizationContext.Provider value={defaultSuperAdminValue}>{children}</OrganizationContext.Provider>
   }
 
   const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }

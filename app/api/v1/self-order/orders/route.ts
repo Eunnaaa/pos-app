@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { apiHandler, dataResponse } from "@/lib/api";
-import { withIdempotency } from "@/lib/api/idempotent";
+import { apiHandler, dataResponse, withIdempotency } from "@/lib/api";
 import { parseJson } from "@/lib/server";
 import { requireSelfOrderContext } from "@/lib/server/self-order-context";
 import { createSelfOrder } from "@/lib/services/self-order";
+import { assertFeatureEnabled } from "@/lib/services/subscription";
 
 const itemSchema = z.object({
   variantId: z.string().uuid(),
@@ -22,6 +22,7 @@ const schema = z.object({
 export const POST = apiHandler(async (request) => {
   const input = await parseJson(request, schema);
   const context = await requireSelfOrderContext(request);
+  await assertFeatureEnabled(context.organizationId, "selfOrderQR", "Fitur Self Order QR Meja");
   if (input.token !== context.tokenId && input.token.length > 0) {
     const verify = await requireSelfOrderContext(request);
     // token di body harus resolve ke context yang sama

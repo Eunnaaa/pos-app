@@ -55,6 +55,7 @@ export const branches = pgTable(
     postalCode: text("postal_code"),
     timezone: text("timezone").default("Asia/Jakarta").notNull(),
     isActive: boolean("is_active").default(true).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, JsonValue>>().default({}),
     ...timestamps(),
   },
   (table) => [

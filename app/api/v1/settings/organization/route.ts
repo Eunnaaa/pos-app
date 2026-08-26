@@ -19,11 +19,14 @@ const updateSchema = z.object({
   phone: phoneSchema,
   email: emailSchema,
   address: addressSchema,
-  logoUrl: urlSchema,
+  logoUrl: z.string().trim().max(2000000).nullable().optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   defaultCurrency: z.string().trim().max(10).optional(),
   timezone: z.string().trim().max(100).optional(),
   locale: z.string().trim().max(20).optional(),
+  qrisImageUrl: z.string().trim().max(2000000).nullable().optional(),
+  qrisAccountName: z.string().trim().max(100).nullable().optional(),
+  qrisInstructions: z.string().trim().max(500).nullable().optional(),
 });
 
 const updateKeys = ["name", "slug", "legalName", "taxId", "phone", "email", "address", "logoUrl", "description", "defaultCurrency", "timezone", "locale"] as const;
@@ -32,6 +35,9 @@ export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "settings:manage");
   const [org] = await db.select().from(organizations).where(eq(organizations.id, context.organizationId)).limit(1);
   if (!org) throw new AppError("NOT_FOUND", "Organization not found");
+
+  const meta = (org.metadata || {}) as Record<string, unknown>;
+
   return dataResponse({
     id: org.id,
     name: org.name,
@@ -46,6 +52,9 @@ export const GET = apiHandler(async (request) => {
     defaultCurrency: org.defaultCurrency,
     timezone: org.timezone,
     locale: org.locale,
+    qrisImageUrl: typeof meta.qrisImageUrl === "string" ? meta.qrisImageUrl : null,
+    qrisAccountName: typeof meta.qrisAccountName === "string" ? meta.qrisAccountName : null,
+    qrisInstructions: typeof meta.qrisInstructions === "string" ? meta.qrisInstructions : null,
   });
 });
 
@@ -57,13 +66,31 @@ export const PATCH = apiHandler(async (request) => {
   // Normalize slug to lowercase so conflict feedback is consistent with other unique keys.
   if (input.slug !== undefined) input.slug = input.slug.toLowerCase();
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const [existingOrg] = await db.select().from(organizations).where(eq(organizations.id, context.organizationId)).limit(1);
+  if (!existingOrg) throw new AppError("NOT_FOUND", "Organization not found");
+
+  const currentMeta = (existingOrg.metadata || {}) as Record<string, unknown>;
+  const updatedMeta = {
+    ...currentMeta,
+    ...(input.qrisImageUrl !== undefined ? { qrisImageUrl: input.qrisImageUrl } : {}),
+    ...(input.qrisAccountName !== undefined ? { qrisAccountName: input.qrisAccountName } : {}),
+    ...(input.qrisInstructions !== undefined ? { qrisInstructions: input.qrisInstructions } : {}),
+  };
+
+  const updates: Record<string, unknown> = {
+    updatedAt: new Date(),
+    metadata: updatedMeta,
+  };
+
   for (const key of updateKeys) {
     if (input[key] !== undefined) updates[key] = input[key] === null ? null : input[key];
   }
 
   const [updated] = await db.update(organizations).set(updates).where(eq(organizations.id, context.organizationId)).returning();
   if (!updated) throw new AppError("NOT_FOUND", "Organization not found");
+
+  const newMeta = (updated.metadata || {}) as Record<string, unknown>;
+
   return dataResponse({
     id: updated.id,
     name: updated.name,
@@ -78,6 +105,9 @@ export const PATCH = apiHandler(async (request) => {
     defaultCurrency: updated.defaultCurrency,
     timezone: updated.timezone,
     locale: updated.locale,
+    qrisImageUrl: typeof newMeta.qrisImageUrl === "string" ? newMeta.qrisImageUrl : null,
+    qrisAccountName: typeof newMeta.qrisAccountName === "string" ? newMeta.qrisAccountName : null,
+    qrisInstructions: typeof newMeta.qrisInstructions === "string" ? newMeta.qrisInstructions : null,
   });
 });
 

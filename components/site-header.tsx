@@ -22,8 +22,12 @@ import { useOrganization } from "@/components/kasir/organization-provider"
 import { LanguageToggle } from "@/components/language-toggle"
 import { showSuccess } from "@/lib/toast-handler"
 
+import { useSession } from "@/lib/auth-client"
+import { isSuperAdminEmail } from "@/lib/super-admin"
+
 const titles: Record<string, string> = {
   dashboard: "Dashboard",
+  admin: "Platform Master Admin",
   pos: "Kasir / POS",
   sales: "Transaksi Penjualan",
   products: "Manajemen Produk",
@@ -42,14 +46,36 @@ const titles: Record<string, string> = {
   branches: "Cabang & Gudang",
   reports: "Laporan Bisnis",
   ai: "AI Insights",
+  subscription: "Langganan & Paket",
   settings: "Pengaturan",
 }
+
+import { ShieldAlert } from "lucide-react"
 
 export function SiteHeader() {
   const pathname = usePathname()
   const t = useTranslations("Header")
+  const { data: session } = useSession()
+  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
   const { organization, branch, selectBranch, selectAllBranches } = useOrganization()
   const [online, setOnline] = useState(true)
+  const [impersonating, setImpersonating] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setImpersonating(sessionStorage.getItem("kedai-ku-impersonating"))
+    }
+  }, [pathname])
+
+  function exitImpersonation() {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("kedai-ku-impersonating")
+      localStorage.removeItem("kedai-ku-organization-id")
+      localStorage.removeItem("kedai-ku-branch-id")
+      window.location.href = "/dashboard/admin?tab=tenants"
+    }
+  }
+
   useEffect(() => {
     const update = () => setOnline(navigator.onLine)
     update()
@@ -64,7 +90,24 @@ export function SiteHeader() {
   const title = titles[segment] || "Kedai-Ku"
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <>
+      {impersonating && (
+        <div className="sticky top-0 z-40 bg-amber-500 text-slate-950 px-4 py-2 text-xs font-semibold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <ShieldAlert className="size-4 shrink-0 text-slate-950" />
+            <span>Mode Inspeksi: Anda sedang melihat toko <strong>{impersonating}</strong></span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 text-[11px] bg-slate-950 text-white hover:bg-slate-900 border-none font-bold shadow-xs ml-2 shrink-0"
+            onClick={exitImpersonation}
+          >
+            Keluar Inspeksi & Kembali ke Admin
+          </Button>
+        </div>
+      )}
+      <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="flex w-full items-center gap-2 px-4 lg:px-6">
         <SidebarTrigger className="-ml-1" />
         <Separator orientation="vertical" className="mx-1 data-[orientation=vertical]:h-5" />
@@ -75,33 +118,36 @@ export function SiteHeader() {
         <Badge variant="outline" className={`hidden gap-1.5 md:flex ${online ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"}`}>
           <Wifi className="size-3" /> {online ? t("online") : t("offline")}
         </Badge>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
-              <Building2 className="mr-1.5 size-4 text-muted-foreground" />
-              <span className="truncate">{branch?.name || t("allBranches")}</span>
-              <ChevronsUpDown className="size-4 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>{organization?.name || t("selectBranch")}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => selectAllBranches()}>
-              <Building2 className="mr-2 size-4 text-muted-foreground" />
-              {t("allBranches")}{!branch ? " ✓" : ""}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {organization?.branches.map((item) => (
-              <DropdownMenuItem key={item.id} onClick={() => { selectBranch(item.id); showSuccess("Cabang diganti") }}>
-                {item.name}{item.id === branch?.id ? " ✓" : ""}
+        {!isSuperAdmin && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
+                <Building2 className="mr-1.5 size-4 text-muted-foreground" />
+                <span className="truncate">{branch?.name || t("allBranches")}</span>
+                <ChevronsUpDown className="size-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>{organization?.name || t("selectBranch")}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => selectAllBranches()}>
+                <Building2 className="mr-2 size-4 text-muted-foreground" />
+                {t("allBranches")}{!branch ? " ✓" : ""}
               </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <DropdownMenuSeparator />
+              {organization?.branches.map((item) => (
+                <DropdownMenuItem key={item.id} onClick={() => { selectBranch(item.id); showSuccess("Cabang diganti") }}>
+                  {item.name}{item.id === branch?.id ? " ✓" : ""}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
         <LanguageToggle />
-        <NotificationBell />
+        {!isSuperAdmin && <NotificationBell />}
         <ThemeToggle />
       </div>
     </header>
+    </>
   )
 }

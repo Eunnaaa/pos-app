@@ -125,7 +125,13 @@ export async function publishEvent(channel: string, message: unknown): Promise<v
   if (!client) return;
 
   try {
-    await client.publish(channel, typeof message === "string" ? message : JSON.stringify(message));
+    const payload =
+      typeof message === "string"
+        ? message
+        : JSON.stringify(message, (_key, value) =>
+            typeof value === "bigint" ? value.toString() : value,
+          );
+    await client.publish(channel, payload);
   } catch (error) {
     console.warn(`[Redis] Publish event failed for channel "${channel}":`, error);
   }

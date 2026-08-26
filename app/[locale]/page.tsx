@@ -13,16 +13,15 @@ import {
   ShieldCheck,
   ShoppingCart,
   Star,
-  Store,
   UsersRound,
   WifiOff,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { LandingNavbar } from "@/components/landing/landing-navbar"
 import { DemoCard } from "@/components/landing/demo-card"
-import { LanguageToggle } from "@/components/language-toggle"
+import { PricingSection } from "@/components/landing/pricing-section"
 
 const features = [
   [ShoppingCart, "featurePos", "featurePosDesc"],
@@ -71,25 +70,8 @@ export default async function Home({
 
   return (
     <main className="min-h-screen overflow-hidden bg-background">
+      <LandingNavbar />
       <div className="absolute inset-x-0 top-0 -z-10 h-[680px] bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_38%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.10),transparent_32%)]" />
-      <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20">
-            <Store className="size-5" />
-          </span>
-          <span className="text-xl font-bold tracking-tight" suppressHydrationWarning>Kedai-Ku</span>
-        </Link>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <LanguageToggle />
-          <Button variant="ghost" asChild>
-            <Link href="/sign-in">{t("signIn")}</Link>
-          </Button>
-          <Button className="bg-emerald-600 hover:bg-emerald-700" asChild>
-            <Link href="/sign-up">{t("getStarted")}</Link>
-          </Button>
-        </div>
-      </nav>
 
       <section className="mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24">
         <div>
@@ -101,13 +83,10 @@ export default async function Home({
           </h1>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground">{t("heroDesc")}</p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" className="h-12 bg-emerald-600 px-7 text-base hover:bg-emerald-700" asChild>
+            <Button size="lg" className="h-12 bg-emerald-600 px-7 text-base hover:bg-emerald-700 shadow-lg shadow-emerald-600/25" asChild>
               <Link href="/sign-up">
-                {t("ctaTry")} <ArrowRight />
+                {t("ctaTry")} <ArrowRight className="ml-1" />
               </Link>
-            </Button>
-            <Button size="lg" variant="outline" className="h-12 px-7 text-base" asChild>
-              <Link href="/dashboard">{t("ctaDemo")}</Link>
             </Button>
           </div>
           <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
@@ -126,7 +105,7 @@ export default async function Home({
       </section>
 
       {/* Features Section */}
-      <section className="border-y bg-muted/30">
+      <section id="fitur" className="border-y bg-muted/30 scroll-mt-20">
         <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-emerald-600">{t("sectionLabel")}</p>
@@ -150,7 +129,7 @@ export default async function Home({
       </section>
 
       {/* Owner Reviews / Testimonials Section */}
-      <section className="py-20 bg-background border-b">
+      <section id="testimoni" className="py-20 bg-background border-b scroll-mt-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="mx-auto max-w-2xl text-center">
             <p className="text-sm font-semibold uppercase tracking-widest text-emerald-600">
@@ -224,6 +203,9 @@ export default async function Home({
           </div>
         </div>
       </section>
+
+      {/* Pricing & Subscription Section */}
+      <PricingSection />
 
       {/* CTA Section */}
       <section className="mx-auto max-w-5xl px-4 py-20 text-center sm:px-6">

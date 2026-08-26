@@ -11,7 +11,7 @@ const schema = z.object({ orderId: z.string().uuid() });
 
 export const GET = apiHandler(async (request) => {
   const url = new URL(request.url);
-  const orderId = schema.parse({ orderId: url.pathname.split("/").at(-2)! }).orderId;
+  const orderId = schema.parse({ orderId: url.pathname.split("/").filter(Boolean).at(-1)! }).orderId;
   const context = await requireSelfOrderContext(request);
 
   // Resolve tableId dari order pertama (parent if ada)

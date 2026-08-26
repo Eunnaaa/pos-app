@@ -1,9 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
+import QRCode from "qrcode";
 import { db } from "@/db";
 import {
+  branches,
   categories,
   diningTables,
   organizations,
+  platformSettings,
   productVariants,
   products,
   qrOrderTokens,
@@ -17,7 +20,16 @@ import {
 import { AppError } from "@/lib/server";
 import { transformImageUrl } from "@/lib/integrations/storage";
 import { checkout, type CheckoutContext, type CheckoutInput } from "./checkout";
-import { createMidtransPayment, createXenditPayment, type XenditPaymentMethod } from "@/lib/integrations/payments";
+import {
+  checkMidtransTransactionStatus,
+  createMidtransPayment,
+  createMidtransQRISCharge,
+  createXenditPayment,
+  type XenditPaymentMethod,
+} from "@/lib/integrations/payments";
+import { confirmOrderPayment } from "@/lib/services/order-confirmation";
+import { injectAmountToQris } from "@/lib/qris";
+import { decodeQrisFromDataUrl } from "@/lib/qris-server";
 import { getServerEnv } from "@/config/env";
 
 export type SelfOrderMenuItem = {
@@ -290,6 +302,8 @@ export async function createXenditCharge(orderId: string, options?: { customerNa
       orderNumber: salesOrders.orderNumber,
       totalAmount: salesOrders.totalAmount,
       organizationId: salesOrders.organizationId,
+      branchId: salesOrders.branchId,
+      tableId: salesOrders.tableId,
     })
     .from(salesOrders)
     .where(eq(salesOrders.id, orderId))
@@ -297,26 +311,184 @@ export async function createXenditCharge(orderId: string, options?: { customerNa
   if (!order) throw new AppError("NOT_FOUND", "Order tidak ditemukan");
   if (!order.totalAmount) throw new AppError("CONFLICT", "Order tidak memiliki total");
 
+  const [tokenRow] = order.tableId
+    ? await db
+        .select({ token: qrOrderTokens.token })
+        .from(qrOrderTokens)
+        .where(and(eq(qrOrderTokens.tableId, order.tableId), eq(qrOrderTokens.isActive, true)))
+        .limit(1)
+    : [null];
+  const orderToken = tokenRow?.token;
+
   const [org] = await db
-    .select({ slug: organizations.slug })
+    .select({ slug: organizations.slug, name: organizations.name, metadata: organizations.metadata })
     .from(organizations)
     .where(eq(organizations.id, order.organizationId))
     .limit(1);
 
-  const env = getServerEnv();
+  // 1. Resolve Branch QRIS or fallback to Organization QRIS
+  let branchQris: {
+    qrString?: string;
+    qrImageUrl?: string;
+    accountName?: string;
+    instructions?: string;
+    amount?: number;
+    orderNumber?: string;
+  } | null = null;
 
-  if (env.MIDTRANS_SERVER_KEY) {
-    const result = await createMidtransPayment({
-      reference: order.orderNumber,
-      amount: Number(order.totalAmount),
-      customerName: options?.customerName || "Guest",
-      description: `Self-order ${order.orderNumber}`,
-      organizationSlug: org?.slug,
+  let baseQrisPayload = "";
+  let baseQrisImageUrl = "";
+  let qrisAccountName = "";
+  let qrisInstructions = "";
+  let bMeta: Record<string, unknown> = {};
+
+  if (order.branchId) {
+    const [branchRow] = await db
+      .select({
+        id: branches.id,
+        name: branches.name,
+        metadata: branches.metadata,
+      })
+      .from(branches)
+      .where(eq(branches.id, order.branchId))
+      .limit(1);
+
+    bMeta = (branchRow?.metadata as Record<string, unknown>) || {};
+    baseQrisImageUrl = String(bMeta.qrisImageUrl || "");
+    baseQrisPayload = String(bMeta.qrisPayload || "");
+    qrisAccountName = String(bMeta.qrisAccountName || branchRow?.name || "");
+    qrisInstructions = String(bMeta.qrisInstructions || "");
+
+    if ((!baseQrisPayload || !baseQrisPayload.startsWith("000201")) && baseQrisImageUrl) {
+      const decoded = decodeQrisFromDataUrl(baseQrisImageUrl);
+      if (decoded && decoded.startsWith("000201")) {
+        baseQrisPayload = decoded;
+      }
+    }
+  }
+
+  // Fallback to Org metadata if branch has no QRIS
+  if (!baseQrisPayload && !baseQrisImageUrl && org) {
+    const orgMeta = (org.metadata as Record<string, unknown>) || {};
+    baseQrisImageUrl = String(orgMeta.qrisImageUrl || "");
+    baseQrisPayload = String(orgMeta.qrisPayload || "");
+    qrisAccountName = String(orgMeta.qrisAccountName || org.name || "Kedai-Ku");
+    qrisInstructions = String(orgMeta.qrisInstructions || "");
+    if ((!baseQrisPayload || !baseQrisPayload.startsWith("000201")) && baseQrisImageUrl) {
+      const decoded = decodeQrisFromDataUrl(baseQrisImageUrl);
+      if (decoded && decoded.startsWith("000201")) {
+        baseQrisPayload = decoded;
+      }
+    }
+  }
+
+  // Fallback to Platform general QRIS if branch and org have no QRIS
+  if (!baseQrisPayload && !baseQrisImageUrl) {
+    const [platformConfigRow] = await db
+      .select()
+      .from(platformSettings)
+      .where(eq(platformSettings.key, "general_config"))
+      .limit(1);
+    const pConfig = (platformConfigRow?.value as Record<string, unknown>) || {};
+    baseQrisImageUrl = String(pConfig.customQrisImageUrl || "");
+    baseQrisPayload = String(pConfig.customQrisPayload || "");
+    qrisAccountName = String(pConfig.qrisAccountName || org?.name || "Garzy Store");
+    qrisInstructions = String(pConfig.qrisInstructions || "");
+    if ((!baseQrisPayload || !baseQrisPayload.startsWith("000201")) && baseQrisImageUrl) {
+      const decoded = decodeQrisFromDataUrl(baseQrisImageUrl);
+      if (decoded && decoded.startsWith("000201")) {
+        baseQrisPayload = decoded;
+      }
+    }
+  }
+
+  // Always generate dynamic branch QRIS with exact order total locked
+  const orderAmt = Number(order.totalAmount);
+  let rawPayload = baseQrisPayload;
+  if (!rawPayload || !rawPayload.startsWith("000201")) {
+    const cleanName = (qrisAccountName || org?.name || "Garzy Store").slice(0, 25).toUpperCase();
+    const nameLen = cleanName.length.toString().padStart(2, "0");
+    rawPayload = `00020101021126510011ID.DANA.WWW0118936009153123456789021012345678905204581253033605802ID59${nameLen}${cleanName}6007JAKARTA6105123406304`;
+  }
+  const dynamicQris = injectAmountToQris(rawPayload, orderAmt);
+  let dynamicQrImg = "";
+  try {
+    dynamicQrImg = await QRCode.toDataURL(dynamicQris, {
+      width: 400,
+      margin: 1,
+      color: { dark: "#000000", light: "#ffffff" },
+      errorCorrectionLevel: "M",
     });
-    return {
-      invoiceUrl: result.paymentUrl ?? null,
-      externalId: result.externalId,
-    };
+  } catch {
+    dynamicQrImg = baseQrisImageUrl;
+  }
+
+  branchQris = {
+    qrString: dynamicQris,
+    qrImageUrl: dynamicQrImg,
+    accountName: qrisAccountName || org?.name || "Garzy Store",
+    instructions: qrisInstructions || "Scan QRIS di atas via m-Banking atau e-Wallet dan selesaikan pembayaran.",
+    amount: orderAmt,
+    orderNumber: order.orderNumber,
+  };
+
+  const env = getServerEnv();
+  const branchMidtransKey = String(bMeta.midtransServerKey || "").trim();
+  const activeMidtransKey = branchMidtransKey || env.MIDTRANS_SERVER_KEY?.trim() || "";
+
+  if (activeMidtransKey) {
+    try {
+      if (orderAmt >= 1000) {
+        const midtransQris = await createMidtransQRISCharge({
+          orderId: order.orderNumber,
+          amount: orderAmt,
+          description: `Self-order ${order.orderNumber}`,
+          customerName: options?.customerName || "Customer",
+          serverKey: activeMidtransKey,
+        });
+
+        if (midtransQris.qrString) {
+          branchQris = {
+            qrString: midtransQris.qrString,
+            qrImageUrl: midtransQris.qrImageUrl || dynamicQrImg,
+            accountName: qrisAccountName || org?.name || "Midtrans QRIS",
+            instructions: "Scan QRIS di atas via m-Banking atau e-Wallet. Pembayaran otomatis diverifikasi sistem dan diteruskan ke dapur.",
+            amount: orderAmt,
+            orderNumber: order.orderNumber,
+          };
+        }
+      }
+
+      let snapPaymentUrl: string | null = null;
+      if (orderAmt >= 1000) {
+        try {
+          const snapResult = await createMidtransPayment({
+            reference: order.orderNumber,
+            amount: orderAmt,
+            customerName: options?.customerName || "Guest",
+            description: `Self-order ${order.orderNumber}`,
+            organizationSlug: org?.slug,
+            serverKey: activeMidtransKey,
+            successRedirectUrl: env.BETTER_AUTH_URL && orderToken ? `${env.BETTER_AUTH_URL}/order/${orderToken}?order_id=${order.id}` : undefined,
+          });
+          snapPaymentUrl = snapResult.paymentUrl ?? null;
+        } catch {
+          // Snap optional
+        }
+      }
+
+      return {
+        invoiceUrl: snapPaymentUrl,
+        externalId: order.orderNumber,
+        branchQris,
+      };
+    } catch {
+      return {
+        invoiceUrl: null,
+        externalId: order.orderNumber,
+        branchQris,
+      };
+    }
   }
 
   const result = await createXenditPayment({
@@ -331,6 +503,7 @@ export async function createXenditCharge(orderId: string, options?: { customerNa
   return {
     invoiceUrl: result.paymentUrl ?? null,
     externalId: result.externalId,
+    branchQris,
   };
 }
 
@@ -338,6 +511,8 @@ export async function getOrderStatus(orderId: string) {
   const [order] = await db
     .select({
       id: salesOrders.id,
+      organizationId: salesOrders.organizationId,
+      branchId: salesOrders.branchId,
       orderNumber: salesOrders.orderNumber,
       status: salesOrders.status,
       totalAmount: salesOrders.totalAmount,
@@ -349,6 +524,42 @@ export async function getOrderStatus(orderId: string) {
     .where(eq(salesOrders.id, orderId))
     .limit(1);
   if (!order) throw new AppError("NOT_FOUND", "Order tidak ditemukan");
+
+  // If order is pending, check live Midtrans transaction status!
+  if (order.status === "pending") {
+    let branchServerKey: string | undefined;
+    if (order.branchId) {
+      const [branchRow] = await db
+        .select({ metadata: branches.metadata })
+        .from(branches)
+        .where(eq(branches.id, order.branchId))
+        .limit(1);
+      const bMeta = (branchRow?.metadata as Record<string, unknown>) || {};
+      if (bMeta.midtransServerKey) branchServerKey = String(bMeta.midtransServerKey).trim();
+    }
+
+    const check = await checkMidtransTransactionStatus(order.orderNumber, branchServerKey);
+    if (check.status === "settled") {
+      await db.transaction(async (tx) => {
+        await tx
+          .update(salesPayments)
+          .set({
+            status: "settled",
+            paidAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(and(eq(salesPayments.orderId, order.id), inArray(salesPayments.status, ["authorized", "pending"])));
+
+        await confirmOrderPayment(tx, {
+          organizationId: order.organizationId,
+          orderId: order.id,
+          actorUserId: null,
+        });
+      });
+
+      order.status = "paid";
+    }
+  }
 
   const [ticket] = await db
     .select({

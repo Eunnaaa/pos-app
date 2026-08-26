@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { apiHandler, requireApiContext } from "@/lib/api";
 import { exportProductsAsJSON, exportProductsAsCSV } from "@/lib/services/product-bulk";
+import { assertFeatureEnabled } from "@/lib/services/subscription";
 
 const querySchema = z.object({
   productIds: z.string().optional(),
@@ -9,6 +10,7 @@ const querySchema = z.object({
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "sales:read");
+  await assertFeatureEnabled(context.organizationId, "exportReports", "Fitur Export Data");
   const url = new URL(request.url);
   const query = querySchema.parse(Object.fromEntries(url.searchParams));
 

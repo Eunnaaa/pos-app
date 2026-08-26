@@ -5,6 +5,7 @@ import { branches, memberBranches, tenantMembers, user } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { auth } from "@/lib/auth";
 import { AppError, logger, parseJson } from "@/lib/server";
+import { assertCanCreateMember } from "@/lib/services/subscription";
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(150),
@@ -38,6 +39,7 @@ export const GET = apiHandler(async (request) => {
 export const POST = apiHandler(async (request) => {
   const context = await requireApiContext(request, "users:manage");
   if (context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Only owner can create cashiers");
+  await assertCanCreateMember(context.organizationId);
   const input = await parseJson(request, createSchema);
   if (input.branchIds.length > 0) {
     const validBranches = await db

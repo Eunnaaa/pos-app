@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import QRCode from "qrcode"
 import {
   Banknote,
   Barcode,
@@ -31,6 +32,7 @@ import {
   type ReceiptData,
 } from "@/lib/services/escpos-printer"
 import { listOfflineMutations, syncOfflineMutations } from "@/lib/offline/queue"
+import { injectAmountToQris } from "@/lib/qris"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -130,6 +132,82 @@ export function PosScreen() {
   const [offlineCount, setOfflineCount] = useState(0)
   const [isOnline, setIsOnline] = useState(true)
   const [syncingOffline, setSyncingOffline] = useState(false)
+  const [storeQris, setStoreQris] = useState<{
+    qrisImageUrl?: string
+    qrisPayload?: string
+    qrisAccountName?: string
+    qrisInstructions?: string
+  } | null>(null)
+  const [dynamicStoreQrisUrl, setDynamicStoreQrisUrl] = useState<string>("")
+
+  useEffect(() => {
+    async function loadActiveQris() {
+      try {
+        let branchQris: {
+          qrisImageUrl?: string
+          qrisPayload?: string
+          qrisAccountName?: string
+          qrisInstructions?: string
+        } | null = null
+
+        // 1. Check branch-specific QRIS if active branch is selected
+        if (branch?.id) {
+          const bRes = await apiFetch<{
+            qrisImageUrl?: string | null
+            qrisAccountName?: string | null
+            qrisInstructions?: string | null
+            metadata?: { qrisImageUrl?: string; qrisPayload?: string; qrisAccountName?: string; qrisInstructions?: string }
+          }>(`/api/v1/resources/branches/${branch.id}`)
+          const bMeta = bRes.data?.metadata || {}
+          const img = bRes.data?.qrisImageUrl || bMeta.qrisImageUrl
+          const payload = bMeta.qrisPayload
+          if (img || payload) {
+            branchQris = {
+              qrisImageUrl: img,
+              qrisPayload: payload,
+              qrisAccountName: bRes.data?.qrisAccountName || bMeta.qrisAccountName || undefined,
+              qrisInstructions: bRes.data?.qrisInstructions || bMeta.qrisInstructions || undefined,
+            }
+          }
+        }
+
+        // 2. If branch has QRIS, prioritize it
+        if (branchQris?.qrisImageUrl || branchQris?.qrisPayload) {
+          setStoreQris(branchQris)
+          return
+        }
+
+        // 3. Fallback to Organization general QRIS
+        if (organization?.id) {
+          const orgRes = await apiFetch<{
+            qrisImageUrl?: string | null
+            qrisPayload?: string | null
+            qrisAccountName?: string | null
+            qrisInstructions?: string | null
+            metadata?: { qrisImageUrl?: string; qrisPayload?: string; qrisAccountName?: string; qrisInstructions?: string }
+          }>("/api/v1/settings/organization")
+          const orgMeta = orgRes.data?.metadata || {}
+          const img = orgRes.data?.qrisImageUrl || orgMeta.qrisImageUrl
+          const payload = orgRes.data?.qrisPayload || orgMeta.qrisPayload
+          if (img || payload) {
+            setStoreQris({
+              qrisImageUrl: img,
+              qrisPayload: payload,
+              qrisAccountName: orgRes.data?.qrisAccountName || orgMeta.qrisAccountName || undefined,
+              qrisInstructions: orgRes.data?.qrisInstructions || orgMeta.qrisInstructions || undefined,
+            })
+            return
+          }
+        }
+
+        setStoreQris(null)
+      } catch {
+        // Ignore load failure
+      }
+    }
+
+    void loadActiveQris()
+  }, [branch?.id, organization?.id])
 
   const refreshOfflineCount = useCallback(async () => {
     try {
@@ -430,6 +508,36 @@ export function PosScreen() {
   const cash = Number(cashAmount.replaceAll(/\D/g, "")) || 0
   const loading = productResource.loading || variantResource.loading || balanceResource.loading
 
+  // Automatically generate dynamic locked QRIS amount whenever cashier selects QRIS payment
+  useEffect(() => {
+    if (!storeQris || paymentMethod !== "QRIS" || total <= 0) {
+      setDynamicStoreQrisUrl("")
+      return
+    }
+
+    const basePayload = storeQris.qrisPayload
+    if (basePayload && basePayload.startsWith("000201")) {
+      try {
+        const dyn = injectAmountToQris(basePayload, total)
+        QRCode.toDataURL(dyn, {
+          width: 360,
+          margin: 1,
+          color: { dark: "#000000", light: "#ffffff" },
+          errorCorrectionLevel: "M",
+        })
+          .then(setDynamicStoreQrisUrl)
+          .catch(() => {
+            setDynamicStoreQrisUrl(storeQris.qrisImageUrl || "")
+          })
+        return
+      } catch {
+        // Fallback
+      }
+    }
+
+    setDynamicStoreQrisUrl(storeQris.qrisImageUrl || "")
+  }, [storeQris, paymentMethod, total])
+
   const initEqualSplits = useCallback((count: number, orderTotal: number) => {
     const base = Math.floor(orderTotal / count)
     const remainder = orderTotal - base * count
@@ -698,7 +806,381 @@ export function PosScreen() {
   }
 
   if (paymentOpen) {
-    return <div className="flex min-h-[calc(100vh-4rem)] flex-col bg-muted/30 p-4 md:p-6"><div className="mx-auto w-full max-w-5xl"><Button variant="ghost" className="mb-4" onClick={() => setPaymentOpen(false)}><ChevronLeft /> Kembali ke keranjang</Button><div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]"><Card><CardContent className="p-6"><h2 className="text-xl font-bold">Pilih metode pembayaran</h2><p className="mt-1 text-sm text-muted-foreground">Transaksi akan disimpan ke database dan stok langsung berkurang.</p><div className="mt-6 grid grid-cols-2 gap-3">{paymentMethods.map(([name, , Icon]) => <Button key={name} variant={paymentMethod === name ? "default" : "outline"} className={`h-24 flex-col gap-2 ${paymentMethod === name ? "bg-emerald-600 hover:bg-emerald-700" : ""}`} onClick={() => selectPaymentMethod(name)}><Icon className="size-6" />{name}</Button>)}</div>{paymentMethod === "Tunai" && <div className="mt-6 space-y-3"><Label>Uang diterima</Label><Input value={cashAmount} onChange={(event) => setCashAmount(event.target.value)} placeholder="Rp 0" className="h-14 text-xl font-semibold" /><div className="grid grid-cols-4 gap-2"><Button type="button" variant="secondary" size="sm" className="col-span-4 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 font-semibold" onClick={() => setCashAmount(String(total))}>Uang Pas ({rupiah(total)})</Button>{[50000, 100000, 150000, 200000].map((amount) => <Button key={amount} type="button" variant="outline" size="sm" onClick={() => setCashAmount(String(amount))}>{amount / 1000}rb</Button>)}</div></div>}{paymentMethod === "Split Bill" && <div className="mt-6 space-y-5 rounded-xl border bg-card p-4 sm:p-5 shadow-xs"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-semibold text-foreground">Mode Split Bill</h3><p className="text-xs text-muted-foreground">Bagi pembayaran rata per orang atau alokasi nominal custom.</p></div><div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-xs font-medium"><button type="button" className={`rounded-md px-3 py-1.5 transition ${splitMode === "equal" ? "bg-background shadow-xs font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => { setSplitMode("equal"); initEqualSplits(splitCount, total) }}>Bagi Rata</button><button type="button" className={`rounded-md px-3 py-1.5 transition ${splitMode === "custom" ? "bg-background shadow-xs font-semibold text-foreground" : "text-muted-foreground hover:text-foreground"}`} onClick={() => setSplitMode("custom")}>Nominal Custom</button></div></div>{splitMode === "equal" && <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3"><span className="text-sm font-medium">Jumlah Orang / Bagian:</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="icon" className="size-8" onClick={() => { const next = Math.max(2, splitCount - 1); setSplitCount(next); initEqualSplits(next, total) }}><Minus className="size-3" /></Button><span className="w-8 text-center text-base font-bold">{splitCount}</span><Button type="button" variant="outline" size="icon" className="size-8" onClick={() => { const next = Math.min(20, splitCount + 1); setSplitCount(next); initEqualSplits(next, total) }}><Plus className="size-3" /></Button></div></div>}<div className="space-y-3">{splitPayments.map((item, index) => { const itemCashChange = item.method === "cash" && (item.cashTendered ?? 0) > item.amount ? (item.cashTendered! - item.amount) : 0; return <div key={item.id} className="rounded-lg border bg-background p-3 space-y-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{item.label || `Pembayaran #${index + 1}`}</span>{splitMode === "custom" && splitPayments.length > 1 && <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" onClick={() => removeSplitPayment(item.id)}><Trash2 className="size-3.5" /></Button>}</div><div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><Label className="text-xs">Metode Bayar</Label><Select value={item.method} onValueChange={(val: "cash" | "qris" | "debit") => updateSplitPayment(item.id, { method: val })}><SelectTrigger className="h-10 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Tunai (Cash)</SelectItem><SelectItem value="qris">QRIS</SelectItem><SelectItem value="debit">Kartu (Debit/Kredit)</SelectItem></SelectContent></Select></div><div><Label className="text-xs">Nominal Tagihan (Rp)</Label><Input type="number" min="0" className="h-10 text-sm font-semibold" value={item.amount || ""} disabled={splitMode === "equal"} onChange={(e) => updateSplitPayment(item.id, { amount: Number(e.target.value) || 0 })} /></div></div>{item.method === "cash" && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-dashed"><div><Label className="text-xs text-muted-foreground">Uang Diterima (Opsional)</Label><Input type="number" placeholder={`Rp ${item.amount.toLocaleString("id-ID")}`} className="h-9 text-xs" value={item.cashTendered || ""} onChange={(e) => updateSplitPayment(item.id, { cashTendered: Number(e.target.value) || 0 })} /></div>{itemCashChange > 0 && <div className="flex flex-col justify-center rounded bg-emerald-50 px-3 py-1 text-xs text-emerald-700 font-medium"><span>Kembalian Slot Ini:</span><strong className="text-sm">{rupiah(itemCashChange)}</strong></div>}</div>}</div> })}</div>{splitMode === "custom" && <Button type="button" variant="outline" className="w-full border-dashed" onClick={addCustomSplitPayment}><Plus className="mr-2 size-4" /> Tambah Pembayaran Split</Button>}<div className={`rounded-xl p-4 border ${splitTotalPaid >= total ? "bg-emerald-50/70 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-900" : "bg-amber-50/70 border-amber-200 dark:bg-amber-950/40 dark:border-amber-900"}`}><div className="flex justify-between text-xs font-medium text-muted-foreground mb-1"><span>Total Tagihan Order</span><span>{rupiah(total)}</span></div><div className="flex justify-between text-sm font-semibold mb-1"><span>Total Teralokasi Split</span><span>{rupiah(splitTotalPaid)}</span></div><Separator className="my-2" />{splitRemaining > 0 ? <div className="flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400"><span>Sisa Belum Terbayar</span><span>{rupiah(splitRemaining)}</span></div> : <div className="flex justify-between text-sm font-bold text-emerald-700 dark:text-emerald-400"><span>Status Pembayaran</span><span>LUNAS ✓ {totalCashChange > 0 ? `(Kembalian ${rupiah(totalCashChange)})` : ""}</span></div>}</div></div>}</CardContent></Card><Card className="h-fit"><CardContent className="p-6"><h3 className="font-semibold">Ringkasan pembayaran</h3><div className="mt-5 space-y-3 text-sm"><div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{rupiah(subtotal)}</span></div>{discountAmount > 0 && <div className="flex justify-between text-rose-600"><span>Diskon</span><span>-{rupiah(discountAmount)}</span></div>}<div className="flex justify-between"><span className="text-muted-foreground">Pajak</span><span>{rupiah(tax)}</span></div><Separator /><div className="flex justify-between text-xl font-bold"><span>Total</span><span className="text-emerald-600">{rupiah(total)}</span></div>{paymentMethod === "Tunai" && cash >= total && <div className="flex justify-between rounded-lg bg-emerald-50 p-3 font-medium text-emerald-700"><span>Kembalian</span><span>{rupiah(cash - total)}</span></div>}{paymentMethod === "Split Bill" && splitTotalPaid >= total && <div className="flex justify-between rounded-lg bg-emerald-50 p-3 font-medium text-emerald-700"><span>Split Status</span><span>LUNAS</span></div>}</div><Button className="mt-6 h-14 w-full bg-emerald-600 text-base hover:bg-emerald-700" onClick={() => void submitOrder("paid")} disabled={submitting || (paymentMethod === "Split Bill" && splitTotalPaid < total)}>{submitting ? <Loader2 className="animate-spin" /> : <ReceiptText />} Bayar {rupiah(total)}</Button></CardContent></Card></div></div></div>
+    return (
+      <div className="flex min-h-[calc(100vh-4rem)] flex-col bg-muted/30 p-4 md:p-6">
+        <div className="mx-auto w-full max-w-5xl">
+          <Button variant="ghost" className="mb-4" onClick={() => setPaymentOpen(false)}>
+            <ChevronLeft /> Kembali ke keranjang
+          </Button>
+          <div className="grid gap-5 lg:grid-cols-[1fr_0.8fr]">
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="text-xl font-bold">Pilih metode pembayaran</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Transaksi akan disimpan ke database dan stok langsung berkurang.
+                </p>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  {paymentMethods.map(([name, , Icon]) => (
+                    <Button
+                      key={name}
+                      variant={paymentMethod === name ? "default" : "outline"}
+                      className={`h-24 flex-col gap-2 ${
+                        paymentMethod === name ? "bg-emerald-600 hover:bg-emerald-700" : ""
+                      }`}
+                      onClick={() => selectPaymentMethod(name)}
+                    >
+                      <Icon className="size-6" />
+                      {name}
+                    </Button>
+                  ))}
+                </div>
+
+                {/* Cash Tender Input */}
+                {paymentMethod === "Tunai" && (
+                  <div className="mt-6 space-y-3">
+                    <Label>Uang diterima</Label>
+                    <Input
+                      value={cashAmount}
+                      onChange={(event) => setCashAmount(event.target.value)}
+                      placeholder="Rp 0"
+                      className="h-14 text-xl font-semibold"
+                    />
+                    <div className="grid grid-cols-4 gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        className="col-span-4 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-300 font-semibold"
+                        onClick={() => setCashAmount(String(total))}
+                      >
+                        Uang Pas ({rupiah(total)})
+                      </Button>
+                      {[50000, 100000, 150000, 200000].map((amount) => (
+                        <Button
+                          key={amount}
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCashAmount(String(amount))}
+                        >
+                          {amount / 1000}rb
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Store QRIS Display Box */}
+                {paymentMethod === "QRIS" && (
+                  <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border-2 border-emerald-500/30 bg-emerald-500/5 p-5 text-center space-y-3">
+                    <div className="flex items-center justify-between w-full pb-2 border-b border-border/60">
+                      <div className="flex items-center gap-1.5 font-bold text-sm text-foreground">
+                        <QrCode className="size-4 text-emerald-600" />
+                        <span>QRIS Pembayaran Kasir</span>
+                      </div>
+                      <Badge className="bg-emerald-600 text-white font-mono text-[11px]">
+                        Tagihan: {rupiah(total)}
+                      </Badge>
+                    </div>
+
+                    {dynamicStoreQrisUrl || storeQris?.qrisImageUrl ? (
+                      <div className="flex flex-col items-center rounded-2xl bg-white p-3.5 shadow-sm border border-emerald-500/20 max-w-[240px] mx-auto text-black">
+                        <div className="w-full flex items-center justify-between pb-1 border-b border-gray-100 mb-1">
+                          <span className="font-black text-[11px] text-red-600">QRIS</span>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                            ✨ Nominal Terkunci
+                          </span>
+                        </div>
+                        <img
+                          src={dynamicStoreQrisUrl || storeQris?.qrisImageUrl}
+                          alt="QRIS Toko"
+                          className="size-48 object-contain"
+                        />
+                        <div className="w-full text-center pt-1.5 border-t border-gray-100 mt-1">
+                          <p className="text-[11px] font-bold text-gray-900 truncate">
+                            {storeQris?.qrisAccountName || organization?.name || "Toko Kedai-Ku"}
+                          </p>
+                          <p className="text-[11px] font-extrabold text-emerald-600 mt-0.5">
+                            Total: {rupiah(total)}
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-6 px-4 space-y-2 rounded-xl bg-muted/40 border border-dashed border-border w-full">
+                        <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                          <QrCode className="size-6" />
+                        </div>
+                        <p className="font-bold text-xs text-foreground">Scan QRIS Fisik / Akrilik Toko</p>
+                        <p className="text-[10px] text-muted-foreground max-w-xs">
+                          Arahkan pelanggan scan stiker QRIS di meja kasir. (Atau upload foto QRIS di menu Pengaturan Bisnis agar tampil otomatis di layar ini).
+                        </p>
+                      </div>
+                    )}
+
+                    {storeQris?.qrisInstructions ? (
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {storeQris.qrisInstructions}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Minta pelanggan scan QRIS dengan aplikasi m-Banking atau e-Wallet apapun, lalu klik tombol Bayar di bawah setelah berhasil.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Split Bill UI */}
+                {paymentMethod === "Split Bill" && (
+                  <div className="mt-6 space-y-5 rounded-xl border bg-card p-4 sm:p-5 shadow-xs">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="font-semibold text-foreground">Mode Split Bill</h3>
+                        <p className="text-xs text-muted-foreground">
+                          Bagi pembayaran rata per orang atau alokasi nominal custom.
+                        </p>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-xs font-medium">
+                        <button
+                          type="button"
+                          className={`rounded-md px-3 py-1.5 transition ${
+                            splitMode === "equal"
+                              ? "bg-background shadow-xs font-semibold text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          onClick={() => {
+                            setSplitMode("equal")
+                            initEqualSplits(splitCount, total)
+                          }}
+                        >
+                          Bagi Rata
+                        </button>
+                        <button
+                          type="button"
+                          className={`rounded-md px-3 py-1.5 transition ${
+                            splitMode === "custom"
+                              ? "bg-background shadow-xs font-semibold text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          onClick={() => setSplitMode("custom")}
+                        >
+                          Nominal Custom
+                        </button>
+                      </div>
+                    </div>
+                    {splitMode === "equal" && (
+                      <div className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                        <span className="text-sm font-medium">Jumlah Orang / Bagian:</span>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => {
+                              const next = Math.max(2, splitCount - 1)
+                              setSplitCount(next)
+                              initEqualSplits(next, total)
+                            }}
+                          >
+                            <Minus className="size-3" />
+                          </Button>
+                          <span className="w-8 text-center text-base font-bold">{splitCount}</span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="size-8"
+                            onClick={() => {
+                              const next = Math.min(20, splitCount + 1)
+                              setSplitCount(next)
+                              initEqualSplits(next, total)
+                            }}
+                          >
+                            <Plus className="size-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-3">
+                      {splitPayments.map((item, index) => {
+                        const itemCashChange =
+                          item.method === "cash" && (item.cashTendered ?? 0) > item.amount
+                            ? item.cashTendered! - item.amount
+                            : 0
+                        return (
+                          <div key={item.id} className="rounded-lg border bg-background p-3 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                {item.label || `Pembayaran #${index + 1}`}
+                              </span>
+                              {splitMode === "custom" && splitPayments.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-7 text-destructive"
+                                  onClick={() => removeSplitPayment(item.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </Button>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div>
+                                <Label className="text-xs">Metode Bayar</Label>
+                                <Select
+                                  value={item.method}
+                                  onValueChange={(val: "cash" | "qris" | "debit") =>
+                                    updateSplitPayment(item.id, { method: val })
+                                  }
+                                >
+                                  <SelectTrigger className="h-10 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="cash">Tunai (Cash)</SelectItem>
+                                    <SelectItem value="qris">QRIS</SelectItem>
+                                    <SelectItem value="debit">Kartu (Debit/Kredit)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div>
+                                <Label className="text-xs">Nominal Tagihan (Rp)</Label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  className="h-10 text-sm font-semibold"
+                                  value={item.amount || ""}
+                                  disabled={splitMode === "equal"}
+                                  onChange={(e) =>
+                                    updateSplitPayment(item.id, { amount: Number(e.target.value) || 0 })
+                                  }
+                                />
+                              </div>
+                            </div>
+                            {item.method === "cash" && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-dashed">
+                                <div>
+                                  <Label className="text-xs text-muted-foreground">Uang Diterima (Opsional)</Label>
+                                  <Input
+                                    type="number"
+                                    placeholder={`Rp ${item.amount.toLocaleString("id-ID")}`}
+                                    className="h-9 text-xs"
+                                    value={item.cashTendered || ""}
+                                    onChange={(e) =>
+                                      updateSplitPayment(item.id, {
+                                        cashTendered: Number(e.target.value) || 0,
+                                      })
+                                    }
+                                  />
+                                </div>
+                                {itemCashChange > 0 && (
+                                  <div className="flex flex-col justify-center rounded bg-emerald-50 px-3 py-1 text-xs text-emerald-700 font-medium">
+                                    <span>Kembalian Slot Ini:</span>
+                                    <strong className="text-sm">{rupiah(itemCashChange)}</strong>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                    {splitMode === "custom" && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-dashed"
+                        onClick={addCustomSplitPayment}
+                      >
+                        <Plus className="mr-2 size-4" /> Tambah Pembayaran Split
+                      </Button>
+                    )}
+                    <div
+                      className={`rounded-xl p-4 border ${
+                        splitTotalPaid >= total
+                          ? "bg-emerald-50/70 border-emerald-200 dark:bg-emerald-950/40 dark:border-emerald-900"
+                          : "bg-amber-50/70 border-amber-200 dark:bg-amber-950/40 dark:border-amber-900"
+                      }`}
+                    >
+                      <div className="flex justify-between text-xs font-medium text-muted-foreground mb-1">
+                        <span>Total Tagihan Order</span>
+                        <span>{rupiah(total)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-semibold mb-1">
+                        <span>Total Teralokasi Split</span>
+                        <span>{rupiah(splitTotalPaid)}</span>
+                      </div>
+                      <Separator className="my-2" />
+                      {splitRemaining > 0 ? (
+                        <div className="flex justify-between text-sm font-bold text-amber-700 dark:text-amber-400">
+                          <span>Sisa Belum Terbayar</span>
+                          <span>{rupiah(splitRemaining)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                          <span>Status Pembayaran</span>
+                          <span>
+                            LUNAS ✓{" "}
+                            {totalCashChange > 0 ? `(Kembalian ${rupiah(totalCashChange)})` : ""}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="h-fit">
+              <CardContent className="p-6">
+                <h3 className="font-semibold">Ringkasan pembayaran</h3>
+                <div className="mt-5 space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{rupiah(subtotal)}</span>
+                  </div>
+                  {discountAmount > 0 && (
+                    <div className="flex justify-between text-rose-600">
+                      <span>Diskon</span>
+                      <span>-{rupiah(discountAmount)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pajak</span>
+                    <span>{rupiah(tax)}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between text-xl font-bold">
+                    <span>Total</span>
+                    <span className="text-emerald-600">{rupiah(total)}</span>
+                  </div>
+                  {paymentMethod === "Tunai" && cash >= total && (
+                    <div className="flex justify-between rounded-lg bg-emerald-50 p-3 font-medium text-emerald-700">
+                      <span>Kembalian</span>
+                      <span>{rupiah(cash - total)}</span>
+                    </div>
+                  )}
+                  {paymentMethod === "Split Bill" && splitTotalPaid >= total && (
+                    <div className="flex justify-between rounded-lg bg-emerald-50 p-3 font-medium text-emerald-700">
+                      <span>Split Status</span>
+                      <span>LUNAS</span>
+                    </div>
+                  )}
+                </div>
+                <Button
+                  className="mt-6 h-14 w-full bg-emerald-600 text-base hover:bg-emerald-700"
+                  onClick={() => void submitOrder("paid")}
+                  disabled={submitting || (paymentMethod === "Split Bill" && splitTotalPaid < total)}
+                >
+                  {submitting ? <Loader2 className="animate-spin" /> : <ReceiptText />} Bayar {rupiah(total)}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   const heldDialog = (

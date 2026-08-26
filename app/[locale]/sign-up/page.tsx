@@ -61,20 +61,22 @@ export default function SignUpPage() {
   async function social() {
     setError(""); setLoading(true)
     try {
+      const callbackURL = typeof window !== "undefined" ? `${window.location.origin}/dashboard` : "/dashboard"
       const result = await signIn.social({
         provider: "google",
-        callbackURL: "/dashboard",
+        callbackURL,
       })
       if (result && "error" in result && result.error) {
-        setError(result.error.message || t("googleError"))
+        setError(result.error.message || "Google Sign-In belum dikonfigurasi di server. Silakan daftar menggunakan Email dan Password.")
         setLoading(false)
       }
     } catch (caught) {
       if (caught instanceof TypeError && caught.message.includes("Load failed")) {
+        setError("Koneksi ke server gagal. Pastikan server dev aktif.")
         setLoading(false)
         return
       }
-      console.error("Social sign-up error:", caught)
+      setError("Google Sign-In memerlukan GOOGLE_CLIENT_ID di file .env. Silakan daftar dengan Email & Password.")
       setLoading(false)
     }
   }

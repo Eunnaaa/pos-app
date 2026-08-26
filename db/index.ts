@@ -12,7 +12,8 @@ export const pool =
     connectionString: env.DATABASE_URL,
     max: env.DB_POOL_MAX,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+    keepAlive: true,
     ssl: env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : false,
   });
 

@@ -4,6 +4,10 @@ import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "dashboard:read");
+  const url = new URL(request.url);
+  const daysParam = parseInt(url.searchParams.get("days") || "30", 10);
+  const days = [7, 14, 30, 90].includes(daysParam) ? daysParam : 30;
+
   const [summary, trend, topProducts, lowStock, recentSales] = await Promise.all([
     db.execute(sql`
       select coalesce(sum(total_amount), 0)::text as sales,
@@ -17,16 +21,27 @@ export const GET = apiHandler(async (request) => {
         and occurred_at >= date_trunc('day', now())
     `),
     db.execute(sql`
-      select to_char(date_trunc('day', occurred_at), 'YYYY-MM-DD') as date,
-             sum(total_amount)::text as sales,
-             count(*)::int as orders
-      from sales_orders
-       where organization_id = ${context.organizationId}
-         ${context.branchId ? sql`and branch_id = ${context.branchId}` : sql``}
-         and occurred_at >= now() - interval '30 days'
-        and status in ('paid', 'partially_refunded', 'refunded')
-      group by date_trunc('day', occurred_at)
-      order by date_trunc('day', occurred_at)
+      with date_series as (
+        select (current_date - (n || ' days')::interval)::date as day_date
+        from generate_series(${days - 1}, 0, -1) as n
+      ),
+      daily_sales as (
+        select date_trunc('day', occurred_at)::date as day_date,
+               sum(total_amount) as sales,
+               count(*) as orders
+        from sales_orders
+        where organization_id = ${context.organizationId}
+          ${context.branchId ? sql`and branch_id = ${context.branchId}` : sql``}
+          and occurred_at >= (current_date - (${days - 1} || ' days')::interval)
+          and status in ('paid', 'partially_refunded', 'refunded')
+        group by date_trunc('day', occurred_at)::date
+      )
+      select to_char(ds_series.day_date, 'YYYY-MM-DD') as date,
+             coalesce(ds.sales, 0)::text as sales,
+             coalesce(ds.orders, 0)::int as orders
+      from date_series ds_series
+      left join daily_sales ds on ds.day_date = ds_series.day_date
+      order by ds_series.day_date asc
     `),
     db.execute(sql`
        select soi.item_name as name, sum(soi.quantity)::text as quantity, sum(soi.total_amount)::text as sales

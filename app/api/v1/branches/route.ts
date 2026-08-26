@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branches, cashRegisters, warehouses } from "@/db/schema";
+import { branches, cashRegisters, warehouses, type JsonValue } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { decodeQrisFromDataUrl } from "@/lib/qris-server";
 import { AppError, parseJson } from "@/lib/server";
+import { assertCanCreateBranch } from "@/lib/services/subscription";
 
 const createSchema = z.object({
   name: z.string().trim().min(2).max(150),
@@ -15,16 +17,37 @@ const createSchema = z.object({
   province: z.string().trim().max(150).optional(),
   postalCode: z.string().trim().max(20).optional(),
   timezone: z.string().trim().max(100).optional(),
+  qrisImageUrl: z.string().trim().max(2000000).nullable().optional(),
+  qrisAccountName: z.string().trim().max(100).nullable().optional(),
+  qrisInstructions: z.string().trim().max(500).nullable().optional(),
+  midtransServerKey: z.string().trim().max(200).nullable().optional(),
+  midtransClientKey: z.string().trim().max(200).nullable().optional(),
+  midtransMerchantId: z.string().trim().max(100).nullable().optional(),
+  paymentMode: z.enum(["inherit", "branch_midtrans", "manual_qris"]).optional(),
 });
 
 export const POST = apiHandler(async (request) => {
   const context = await requireApiContext(request, "branches:manage");
   if (context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Only owner can manage branches");
+  await assertCanCreateBranch(context.organizationId);
   const input = await parseJson(request, createSchema);
 
   const result = await db.transaction(async (tx) => {
     const [existing] = (await tx.execute<{ code: string }>(sql`select code from branches where organization_id = ${context.organizationId} and lower(code) = lower(${input.code}) limit 1`)).rows;
     if (existing) throw new AppError("CONFLICT", `Kode cabang "${input.code}" sudah dipakai`, { details: { code: input.code } });
+
+    const branchMeta: Record<string, JsonValue> = {};
+    if (input.qrisImageUrl) {
+      branchMeta.qrisImageUrl = input.qrisImageUrl;
+      const decoded = decodeQrisFromDataUrl(input.qrisImageUrl);
+      if (decoded) branchMeta.qrisPayload = decoded;
+    }
+    if (input.qrisAccountName) branchMeta.qrisAccountName = input.qrisAccountName;
+    if (input.qrisInstructions) branchMeta.qrisInstructions = input.qrisInstructions;
+    if (input.midtransServerKey) branchMeta.midtransServerKey = input.midtransServerKey;
+    if (input.midtransClientKey) branchMeta.midtransClientKey = input.midtransClientKey;
+    if (input.midtransMerchantId) branchMeta.midtransMerchantId = input.midtransMerchantId;
+    if (input.paymentMode) branchMeta.paymentMode = input.paymentMode;
 
     const [branch] = await tx.insert(branches).values({
       organizationId: context.organizationId,
@@ -37,6 +60,7 @@ export const POST = apiHandler(async (request) => {
       province: input.province,
       postalCode: input.postalCode,
       timezone: input.timezone,
+      metadata: branchMeta,
     }).returning();
 
     const [warehouse] = await tx.insert(warehouses).values({

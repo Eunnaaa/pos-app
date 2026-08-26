@@ -8,7 +8,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https: wss:",
+  `connect-src 'self' https: wss: ${isProduction ? "" : "http: ws: blob:"}`,
   "media-src 'self' blob: https:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -37,6 +37,17 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   compress: true,
+  allowedDevOrigins: [
+    "192.168.10.167:3000",
+    "192.168.10.167",
+    "localhost:3000",
+    "127.0.0.1:3000",
+    "*.loca.lt",
+    "*.ngrok-free.dev",
+    "*.ngrok-free.app",
+    "guru-convent-unaired.ngrok-free.dev",
+    "guru-convent-unaired.ngrok-free.app",
+  ],
   images: {
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days

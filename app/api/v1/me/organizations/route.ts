@@ -3,9 +3,11 @@ import { db } from "@/db";
 import { branches, organizations, tenantMembers, warehouses } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { requireSession } from "@/lib/server";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
+  const isSuperAdmin = isSuperAdminEmail(session.user.email);
   const memberships = await db
     .select({
        id: organizations.id,
@@ -48,5 +50,5 @@ export const GET = apiHandler(async (request) => {
     return { ...membership, branches: Array.from(branchMap.values()) };
   }));
 
-  return dataResponse(data);
+  return dataResponse(data, {}, { isSuperAdmin });
 });

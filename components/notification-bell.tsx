@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useResource } from "@/hooks/use-resource"
+import { useOrganization } from "@/components/kasir/organization-provider"
+import { useSession } from "@/lib/auth-client"
+import { isSuperAdminEmail } from "@/lib/super-admin"
 
 type Notification = {
   id: string
@@ -27,8 +30,18 @@ const statusColor: Record<string, string> = {
 }
 
 export function NotificationBell() {
-  const notifications = useResource<Notification>("notifications", "limit=20")
+  const { organization } = useOrganization()
+  const { data: session } = useSession()
 
+  if (!organization || isSuperAdminEmail(session?.user?.email)) {
+    return null
+  }
+
+  return <NotificationBellContent />
+}
+
+function NotificationBellContent() {
+  const notifications = useResource<Notification>("notifications", "limit=20")
   const unread = notifications.data.filter((n) => n.status !== "read" && n.status !== "failed")
 
   return (

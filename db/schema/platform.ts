@@ -242,3 +242,54 @@ export const reportSnapshots = pgTable(
   },
   (table) => [index("report_snapshots_org_type_period_idx").on(table.organizationId, table.reportType, table.periodStart)],
 );
+
+export const platformAnnouncements = pgTable(
+  "platform_announcements",
+  {
+    id: idColumn(),
+    title: text("title").notNull(),
+    message: text("message").notNull(),
+    type: text("type").$type<"info" | "warning" | "success" | "promo">().default("info").notNull(),
+    targetPlan: text("target_plan").$type<"all" | "free" | "pro" | "business">().default("all").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).defaultNow().notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    createdBy: text("created_by"),
+    ...timestamps(),
+  },
+  (table) => [index("platform_announcements_active_idx").on(table.isActive, table.startsAt)],
+);
+
+export const promoCodes = pgTable(
+  "promo_codes",
+  {
+    id: idColumn(),
+    code: text("code").notNull(),
+    discountType: text("discount_type").$type<"percentage" | "fixed">().default("percentage").notNull(),
+    discountValue: integer("discount_value").notNull(),
+    applicablePlan: text("applicable_plan").$type<"all" | "pro" | "business">().default("all").notNull(),
+    maxUses: integer("max_uses").default(100).notNull(),
+    usedCount: integer("used_count").default(0).notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    ...timestamps(),
+  },
+  (table) => [
+    uniqueIndex("promo_codes_code_uidx").on(table.code),
+    index("promo_codes_active_idx").on(table.isActive),
+  ],
+);
+
+export const platformSettings = pgTable(
+  "platform_settings",
+  {
+    id: idColumn(),
+    key: text("key").notNull(),
+    value: jsonb("value").$type<JsonValue>().notNull(),
+    ...timestamps(),
+  },
+  (table) => [uniqueIndex("platform_settings_key_uidx").on(table.key)],
+);
+
+
+

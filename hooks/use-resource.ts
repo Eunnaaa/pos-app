@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { apiFetch } from "@/lib/client"
+import { apiFetch, ACTIVE_ORGANIZATION_KEY } from "@/lib/client"
 
 export type ResourceRecord = { id: string }
 
@@ -12,6 +12,11 @@ export function useResource<T extends ResourceRecord = ResourceRecord>(resource:
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const doRefresh = useCallback(async () => {
+    if (typeof window !== "undefined" && !localStorage.getItem(ACTIVE_ORGANIZATION_KEY)) {
+      setLoading(false)
+      setData([])
+      return
+    }
     setLoading(true); setError("")
     try {
       const suffix = query ? `?${query}` : ""

@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { branches } from "@/db/schema";
+import { branches, type JsonValue } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { decodeQrisFromDataUrl } from "@/lib/qris-server";
 import { AppError, parseJson } from "@/lib/server";
 
 const updateSchema = z.object({
@@ -15,6 +16,13 @@ const updateSchema = z.object({
   postalCode: z.string().trim().max(20).optional(),
   timezone: z.string().trim().max(100).optional(),
   isActive: z.boolean().optional(),
+  qrisImageUrl: z.string().trim().max(2000000).nullable().optional(),
+  qrisAccountName: z.string().trim().max(100).nullable().optional(),
+  qrisInstructions: z.string().trim().max(500).nullable().optional(),
+  midtransServerKey: z.string().trim().max(200).nullable().optional(),
+  midtransClientKey: z.string().trim().max(200).nullable().optional(),
+  midtransMerchantId: z.string().trim().max(100).nullable().optional(),
+  paymentMode: z.enum(["inherit", "branch_midtrans", "manual_qris"]).optional(),
 });
 
 export const PATCH = apiHandler(async (request) => {
@@ -23,7 +31,36 @@ export const PATCH = apiHandler(async (request) => {
   const id = z.string().uuid().parse(new URL(request.url).pathname.split("/").filter(Boolean).at(-1));
   const input = await parseJson(request, updateSchema);
 
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const [existingBranch] = await db
+    .select()
+    .from(branches)
+    .where(and(eq(branches.id, id), eq(branches.organizationId, context.organizationId)))
+    .limit(1);
+  if (!existingBranch) throw new AppError("NOT_FOUND", "Branch not found");
+
+  const currentMeta = (existingBranch.metadata || {}) as Record<string, JsonValue>;
+  const updatedMeta: Record<string, JsonValue> = {
+    ...currentMeta,
+    ...(input.qrisImageUrl !== undefined ? { qrisImageUrl: input.qrisImageUrl } : {}),
+    ...(input.qrisAccountName !== undefined ? { qrisAccountName: input.qrisAccountName } : {}),
+    ...(input.qrisInstructions !== undefined ? { qrisInstructions: input.qrisInstructions } : {}),
+    ...(input.midtransServerKey !== undefined ? { midtransServerKey: input.midtransServerKey } : {}),
+    ...(input.midtransClientKey !== undefined ? { midtransClientKey: input.midtransClientKey } : {}),
+    ...(input.midtransMerchantId !== undefined ? { midtransMerchantId: input.midtransMerchantId } : {}),
+    ...(input.paymentMode !== undefined ? { paymentMode: input.paymentMode } : {}),
+  };
+
+  if (input.qrisImageUrl) {
+    const decoded = decodeQrisFromDataUrl(input.qrisImageUrl);
+    if (decoded) updatedMeta.qrisPayload = decoded;
+  } else if (input.qrisImageUrl === null) {
+    delete updatedMeta.qrisPayload;
+  }
+
+  const updates: Record<string, unknown> = {
+    updatedAt: new Date(),
+    metadata: updatedMeta,
+  };
   if (input.name !== undefined) updates.name = input.name;
   if (input.phone !== undefined) updates.phone = input.phone;
   if (input.email !== undefined) updates.email = input.email;
@@ -41,7 +78,13 @@ export const PATCH = apiHandler(async (request) => {
     .returning();
 
   if (!updated) throw new AppError("NOT_FOUND", "Branch not found");
-  return dataResponse(updated);
+  const newMeta = (updated.metadata || {}) as Record<string, unknown>;
+  return dataResponse({
+    ...updated,
+    qrisImageUrl: typeof newMeta.qrisImageUrl === "string" ? newMeta.qrisImageUrl : null,
+    qrisAccountName: typeof newMeta.qrisAccountName === "string" ? newMeta.qrisAccountName : null,
+    qrisInstructions: typeof newMeta.qrisInstructions === "string" ? newMeta.qrisInstructions : null,
+  });
 });
 
 export const DELETE = apiHandler(async (request) => {

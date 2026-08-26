@@ -5,6 +5,7 @@ import { branches, cashRegisters, categories, organizations, tenantMembers, user
 import { apiHandler, dataResponse } from "@/lib/api";
 import { parseJson, requireSession } from "@/lib/server";
 import { DEFAULT_CATEGORIES } from "@/lib/services/categories";
+import { sendWelcomeEmail } from "@/lib/integrations/notifications";
 
 const schema = z.object({
   businessName: z.string().min(2).max(150),
@@ -35,5 +36,11 @@ export const POST = apiHandler(async (request) => {
     }
     return { organization, branch, warehouse };
   });
+
+  // Send Welcome Letter Email asynchronously
+  if (session.user.email) {
+    void sendWelcomeEmail(session.user.email, session.user.name || "Owner", input.businessName);
+  }
+
   return dataResponse(result, { status: 201 });
 });

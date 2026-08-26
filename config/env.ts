@@ -78,5 +78,14 @@ export function getTrustedOrigins(env = getServerEnv()): string[] {
   const configured = env.TRUSTED_ORIGINS?.split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
-  return Array.from(new Set([env.BETTER_AUTH_URL, ...(configured ?? [])]));
+  const origins = new Set([env.BETTER_AUTH_URL, ...(configured ?? [])]);
+  if (env.NODE_ENV !== "production") {
+    origins.add("http://localhost:3000");
+    origins.add("http://127.0.0.1:3000");
+    origins.add("http://192.168.10.167:3000");
+    origins.add("https://guru-convent-unaired.ngrok-free.dev");
+    origins.add("https://guru-convent-unaired.ngrok-free.app");
+    origins.add("https://kedaiku-pos.loca.lt");
+  }
+  return Array.from(origins);
 }

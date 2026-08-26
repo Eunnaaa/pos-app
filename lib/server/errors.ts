@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 export type ErrorCode =
   | "BAD_REQUEST"
   | "UNAUTHENTICATED"
+  | "PAYMENT_REQUIRED"
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
@@ -15,6 +16,7 @@ export type ErrorCode =
 const statusByCode: Record<ErrorCode, number> = {
   BAD_REQUEST: 400,
   UNAUTHENTICATED: 401,
+  PAYMENT_REQUIRED: 402,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,

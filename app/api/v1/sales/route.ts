@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { getOrganizationPlan } from "@/lib/services/subscription";
 import { parseSearchParams } from "@/lib/server";
 
 const querySchema = z.object({
@@ -50,6 +51,14 @@ export const GET = apiHandler(async (request) => {
 
   const branchFilter = targetBranchId ? sql`and so.branch_id = ${targetBranchId}` : sql``;
 
+  const planSummary = await getOrganizationPlan(context.organizationId);
+  let historyDateFilter = sql``;
+  if (planSummary.plan.limits.historyDays < 3650) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - planSummary.plan.limits.historyDays);
+    historyDateFilter = sql`and so.occurred_at >= ${cutoff.toISOString()}`;
+  }
+
   const result = await db.execute(sql`
     select so.id, so.order_number, so.status, so.channel, so.subtotal_amount::text,
            so.discount_amount::text, so.tax_amount::text, so.total_amount::text,
@@ -61,11 +70,12 @@ export const GET = apiHandler(async (request) => {
     from sales_orders so
     left join branches b on b.id = so.branch_id
     left join customers c on c.id = so.customer_id
-    left join sales_payments sp on sp.order_id = so.id
     left join sales_order_items soi on soi.order_id = so.id
+    left join sales_payments sp on sp.order_id = so.id
     where so.organization_id = ${context.organizationId}
       ${branchFilter}
       ${cashierSessionFilter}
+      ${historyDateFilter}
       and (so.order_number ilike ${search} or coalesce(c.name, '') ilike ${search})
     group by so.id, b.id, b.name, c.id, c.name
     order by so.occurred_at desc

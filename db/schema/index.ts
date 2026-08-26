@@ -10,4 +10,5 @@ export * from "./platform";
 export * from "./purchases";
 export * from "./sales";
 export * from "./self-order";
+export * from "./subscriptions";
 export * from "./tenancy";

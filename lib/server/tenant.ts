@@ -1,8 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { db, type Database } from "@/db";
-import { memberBranches, tenantMembers, type TenantRole } from "@/db/schema";
+import { memberBranches, tenantMembers, user, type TenantRole } from "@/db/schema";
 import { AppError } from "./errors";
 import { type Permission, requirePermission } from "./rbac";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export type TenantContext = {
   organizationId: string;
@@ -24,7 +25,22 @@ export async function resolveTenantContext(
       eq(tenantMembers.isActive, true),
     ),
   });
-  if (!member) throw new AppError("FORBIDDEN", "No active membership for this organization");
+
+  if (!member) {
+    const userRow = await database.query.user.findFirst({
+      where: eq(user.id, userId),
+    });
+    if (isSuperAdminEmail(userRow?.email)) {
+      return {
+        organizationId,
+        memberId: `super-admin-${userId}`,
+        role: "owner",
+        permissions: ["all"],
+        branchIds: [],
+      };
+    }
+    throw new AppError("FORBIDDEN", "No active membership for this organization");
+  }
 
   const branchRows = await database
     .select({ branchId: memberBranches.branchId })
