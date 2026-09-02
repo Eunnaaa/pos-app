@@ -3,8 +3,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { branches, type JsonValue } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { decodeQrisFromDataUrl } from "@/lib/qris-server";
-import { AppError, parseJson } from "@/lib/server";
+import { assertSafeQrisDataUrl, decodeQrisFromDataUrl } from "@/lib/qris-server";
+import { AppError, encryptSecret, isEncryptedSecret, parseJson } from "@/lib/server";
 
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(150).optional(),
@@ -39,18 +39,27 @@ export const PATCH = apiHandler(async (request) => {
   if (!existingBranch) throw new AppError("NOT_FOUND", "Branch not found");
 
   const currentMeta = (existingBranch.metadata || {}) as Record<string, JsonValue>;
+  const storedServerKey = typeof currentMeta.midtransServerKey === "string" && currentMeta.midtransServerKey
+    ? (isEncryptedSecret(currentMeta.midtransServerKey) ? currentMeta.midtransServerKey : encryptSecret(currentMeta.midtransServerKey))
+    : currentMeta.midtransServerKey;
+  const storedClientKey = typeof currentMeta.midtransClientKey === "string" && currentMeta.midtransClientKey
+    ? (isEncryptedSecret(currentMeta.midtransClientKey) ? currentMeta.midtransClientKey : encryptSecret(currentMeta.midtransClientKey))
+    : currentMeta.midtransClientKey;
   const updatedMeta: Record<string, JsonValue> = {
     ...currentMeta,
+    ...(storedServerKey !== undefined ? { midtransServerKey: storedServerKey } : {}),
+    ...(storedClientKey !== undefined ? { midtransClientKey: storedClientKey } : {}),
     ...(input.qrisImageUrl !== undefined ? { qrisImageUrl: input.qrisImageUrl } : {}),
     ...(input.qrisAccountName !== undefined ? { qrisAccountName: input.qrisAccountName } : {}),
     ...(input.qrisInstructions !== undefined ? { qrisInstructions: input.qrisInstructions } : {}),
-    ...(input.midtransServerKey !== undefined ? { midtransServerKey: input.midtransServerKey } : {}),
-    ...(input.midtransClientKey !== undefined ? { midtransClientKey: input.midtransClientKey } : {}),
+    ...(input.midtransServerKey !== undefined ? { midtransServerKey: input.midtransServerKey ? encryptSecret(input.midtransServerKey) : null } : {}),
+    ...(input.midtransClientKey !== undefined ? { midtransClientKey: input.midtransClientKey ? encryptSecret(input.midtransClientKey) : null } : {}),
     ...(input.midtransMerchantId !== undefined ? { midtransMerchantId: input.midtransMerchantId } : {}),
     ...(input.paymentMode !== undefined ? { paymentMode: input.paymentMode } : {}),
   };
 
   if (input.qrisImageUrl) {
+    assertSafeQrisDataUrl(input.qrisImageUrl);
     const decoded = decodeQrisFromDataUrl(input.qrisImageUrl);
     if (decoded) updatedMeta.qrisPayload = decoded;
   } else if (input.qrisImageUrl === null) {
@@ -79,8 +88,12 @@ export const PATCH = apiHandler(async (request) => {
 
   if (!updated) throw new AppError("NOT_FOUND", "Branch not found");
   const newMeta = (updated.metadata || {}) as Record<string, unknown>;
+  const safeMeta = { ...newMeta };
+  delete safeMeta.midtransServerKey;
+  delete safeMeta.midtransClientKey;
   return dataResponse({
     ...updated,
+    metadata: safeMeta,
     qrisImageUrl: typeof newMeta.qrisImageUrl === "string" ? newMeta.qrisImageUrl : null,
     qrisAccountName: typeof newMeta.qrisAccountName === "string" ? newMeta.qrisAccountName : null,
     qrisInstructions: typeof newMeta.qrisInstructions === "string" ? newMeta.qrisInstructions : null,

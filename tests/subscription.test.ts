@@ -34,7 +34,7 @@ void test("Subscription Plans: Pro Tier unlocks unlimited transactions and recip
   assert.equal(pro.priceYearly, 79000);
   assert.equal(pro.limits.maxMonthlyOrders, Infinity);
   assert.equal(pro.limits.maxProducts, Infinity);
-  assert.equal(pro.limits.maxBranches, 1);
+  assert.equal(pro.limits.maxBranches, 5);
   assert.equal(pro.limits.maxMembers, Infinity);
   assert.equal(pro.features.recipeBOM, true);
   assert.equal(pro.features.exportReports, true);
@@ -48,7 +48,7 @@ void test("Subscription Plans: Business Tier unlocks multi-branch management", (
   assert.equal(business.id, "business");
   assert.equal(business.priceMonthly, 249000);
   assert.equal(business.priceYearly, 199000);
-  assert.equal(business.limits.maxBranches, 5);
+  assert.equal(business.limits.maxBranches, 20);
   assert.equal(business.limits.maxWarehouses, 10);
   assert.equal(business.features.multiBranchTransfer, true);
 });

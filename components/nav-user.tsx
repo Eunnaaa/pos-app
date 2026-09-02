@@ -39,7 +39,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { isSuperAdminEmail } from "@/lib/super-admin"
+import { useOrganization } from "@/components/kasir/organization-provider"
 
 export function NavUser({
   user,
@@ -54,7 +54,7 @@ export function NavUser({
   const router = useRouter()
   const t = useTranslations("NavUser")
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const isSuperAdmin = isSuperAdminEmail(user.email)
+  const { isSuperAdmin } = useOrganization()
 
   const handleSignOut = async () => {
     setIsSigningOut(true)

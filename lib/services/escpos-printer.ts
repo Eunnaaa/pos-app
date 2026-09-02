@@ -217,10 +217,15 @@ class EscPosBuilder {
   }
 
   text(str: string): this {
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(str);
-    for (const b of bytes) {
-      this.buffer.push(b);
+    // Most inexpensive ESC/POS printers use a single-byte code page and render
+    // arbitrary UTF-8 as mojibake. Indonesian receipt text is ASCII-compatible;
+    // normalize accents and replace unsupported/control characters explicitly.
+    const printable = str
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7e]/g, "?");
+    for (let index = 0; index < printable.length; index += 1) {
+      this.buffer.push(printable.charCodeAt(index));
     }
     return this;
   }
@@ -237,15 +242,37 @@ class EscPosBuilder {
 
   twoColumn(left: string, right: string, bold = false): this {
     if (bold) this.bold(true);
-    const spaceCount = this.cols - (left.length + right.length);
+    const safeLeft = left.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "?");
+    const safeRight = right.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7e]/g, "?").slice(-this.cols);
+    const spaceCount = this.cols - (safeLeft.length + safeRight.length);
     if (spaceCount < 1) {
-      const trimmedLeft = left.slice(0, Math.max(1, this.cols - right.length - 2)) + "..";
-      const spaces = Math.max(1, this.cols - (trimmedLeft.length + right.length));
-      this.line(trimmedLeft + " ".repeat(spaces) + right);
+      const availableLeft = this.cols - safeRight.length - 1;
+      if (availableLeft >= 3) {
+        const trimmedLeft = `${safeLeft.slice(0, availableLeft - 2)}..`;
+        this.line(`${trimmedLeft} ${safeRight}`);
+      } else {
+        this.line(safeLeft.slice(0, this.cols));
+        this.line(safeRight.padStart(this.cols));
+      }
     } else {
-      this.line(left + " ".repeat(spaceCount) + right);
+      this.line(safeLeft + " ".repeat(spaceCount) + safeRight);
     }
     if (bold) this.bold(false);
+    return this;
+  }
+
+  qrCode(value: string): this {
+    const normalized = value.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 512);
+    const bytes = new TextEncoder().encode(normalized);
+    const storeLength = bytes.length + 3;
+
+    // ESC/POS QR model 2, module size 5, error correction M.
+    this.buffer.push(0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
+    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x05);
+    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31);
+    this.buffer.push(0x1d, 0x28, 0x6b, storeLength & 0xff, (storeLength >> 8) & 0xff, 0x31, 0x50, 0x30);
+    this.buffer.push(...bytes);
+    this.buffer.push(0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30);
     return this;
   }
 
@@ -347,14 +374,18 @@ export function buildReceiptEscPos(data: ReceiptData, width: PrinterWidth = 58):
   // 6. Verification / Footer
   if (data.verificationCode) {
     builder.divider("-");
-    builder.align("center").line(`Kode Verifikasi: ${data.verificationCode}`);
+    builder
+      .align("center")
+      .line("Verifikasi transaksi:")
+      .qrCode(data.verificationCode)
+      .line(data.verificationCode);
   }
 
   builder
     .feed(1)
     .align("center")
     .line(data.footerMessage || "Terima kasih atas kunjungan Anda!")
-    .line("Semoga harimu menyenangkan 😊")
+    .line("Semoga harimu menyenangkan!")
     .feed(3)
     .cut();
 

@@ -1,13 +1,13 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { branches, organizations, tenantMembers, warehouses } from "@/db/schema";
+import { branches, memberBranches, organizations, tenantMembers, warehouses } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { requireSession } from "@/lib/server";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  const isSuperAdmin = isSuperAdminEmail(session.user.email);
+  const isSuperAdmin = isSuperAdminUser(session.user);
   const memberships = await db
     .select({
        id: organizations.id,
@@ -21,6 +21,10 @@ export const GET = apiHandler(async (request) => {
     .where(and(eq(tenantMembers.userId, session.user.id), eq(tenantMembers.isActive, true), eq(organizations.isActive, true)));
 
   const data = await Promise.all(memberships.map(async (membership) => {
+    const assignedBranches = membership.role === "cashier"
+      ? await db.select({ branchId: memberBranches.branchId }).from(memberBranches).where(eq(memberBranches.tenantMemberId, membership.memberId))
+      : [];
+    const assignedBranchIds = assignedBranches.map(({ branchId }) => branchId);
     const branchRows = await db
       .select({
         id: branches.id,
@@ -32,7 +36,11 @@ export const GET = apiHandler(async (request) => {
       })
       .from(branches)
       .leftJoin(warehouses, and(eq(warehouses.branchId, branches.id), eq(warehouses.isActive, true)))
-      .where(and(eq(branches.organizationId, membership.id), eq(branches.isActive, true)));
+      .where(and(
+        eq(branches.organizationId, membership.id),
+        eq(branches.isActive, true),
+        ...(assignedBranchIds.length ? [inArray(branches.id, assignedBranchIds)] : []),
+      ));
 
     const branchMap = new Map<string, {
       id: string;
@@ -47,7 +55,11 @@ export const GET = apiHandler(async (request) => {
       }
       branchMap.set(row.id, branch);
     }
-    return { ...membership, branches: Array.from(branchMap.values()) };
+    return {
+      ...membership,
+      canAccessAllBranches: membership.role === "owner" || assignedBranchIds.length === 0,
+      branches: Array.from(branchMap.values()),
+    };
   }));
 
   return dataResponse(data, {}, { isSuperAdmin });

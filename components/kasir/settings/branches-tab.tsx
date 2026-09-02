@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Loader2, MapPin, Pencil, Plus, QrCode, Store, Trash2, Warehouse } from "lucide-react"
+import { useEffect, useState } from "react"
+import { AlertTriangle, CheckCircle2, Copy, Loader2, MapPin, Pencil, Plus, QrCode, RefreshCw, ShieldCheck, Smartphone, Store, Trash2, Warehouse } from "lucide-react"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { apiFetch } from "@/lib/client"
 import { showError, showSuccess } from "@/lib/toast-handler"
@@ -30,6 +30,30 @@ type BranchDetail = {
   metadata?: Record<string, unknown>
 }
 
+type PaymentDevice = {
+  id: string
+  branchId: string
+  name: string
+  deviceKey: string
+  merchantAccountId: string
+  allowedPackages: string[]
+  isActive: boolean
+  lastSeenAt?: string | null
+}
+
+type DeviceCredential = PaymentDevice & { signingSecret: string; warning: string }
+
+type PaymentEvent = {
+  id: string
+  eventId: string
+  branchId: string
+  amount: string
+  senderName?: string | null
+  occurredAt: string
+  status: "unmatched" | "ambiguous"
+  candidateCount: number
+}
+
 const emptyForm = {
   name: "",
   code: "",
@@ -49,6 +73,112 @@ export function BranchesTab() {
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<string>()
+  const [devices, setDevices] = useState<PaymentDevice[]>([])
+  const [deviceOpen, setDeviceOpen] = useState(false)
+  const [deviceSaving, setDeviceSaving] = useState(false)
+  const [deviceForm, setDeviceForm] = useState({ branchId: "", name: "", merchantAccountId: "" })
+  const [deviceCredential, setDeviceCredential] = useState<DeviceCredential | null>(null)
+  const [directQrisEnabled, setDirectQrisEnabled] = useState(false)
+  const [paymentEvents, setPaymentEvents] = useState<PaymentEvent[]>([])
+  const [eventsLoading, setEventsLoading] = useState(false)
+  const [resolutionOrderIds, setResolutionOrderIds] = useState<Record<string, string>>({})
+  const [resolvingEventId, setResolvingEventId] = useState<string>()
+
+  async function loadDevices() {
+    if (organization?.role !== "owner") return
+    try {
+      const response = await apiFetch<PaymentDevice[]>("/api/v1/integrations/qris/devices")
+      setDevices(response.data)
+    } catch {
+      // Device setup is optional until QRIS_PUSH_SECRET and its migration are configured.
+    }
+  }
+
+  async function loadDirectQrisStatus() {
+    if (organization?.role !== "owner") return false
+    try {
+      const response = await apiFetch<{ enabled: boolean }>("/api/v1/integrations/qris/status")
+      setDirectQrisEnabled(response.data.enabled)
+      return response.data.enabled
+    } catch {
+      setDirectQrisEnabled(false)
+      return false
+    }
+  }
+
+  async function loadPaymentEvents() {
+    if (organization?.role !== "owner") return
+    setEventsLoading(true)
+    try {
+      const [unmatched, ambiguous] = await Promise.all([
+        apiFetch<PaymentEvent[]>("/api/v1/integrations/qris/events?status=unmatched"),
+        apiFetch<PaymentEvent[]>("/api/v1/integrations/qris/events?status=ambiguous"),
+      ])
+      setPaymentEvents([...unmatched.data, ...ambiguous.data].sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()))
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Gagal memuat event rekonsiliasi QRIS")
+    } finally {
+      setEventsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    // Payment relay was removed; DOKU/Midtrans webhooks handle reconciliation.
+  }, [])
+
+  async function resolvePaymentEvent(eventId: string) {
+    const orderId = resolutionOrderIds[eventId]?.trim()
+    if (!orderId) return showError("Masukkan ID order yang cocok")
+    setResolvingEventId(eventId)
+    try {
+      await apiFetch(`/api/v1/integrations/qris/events/${eventId}/resolve`, {
+        method: "POST",
+        body: JSON.stringify({ orderId }),
+      })
+      setResolutionOrderIds((current) => ({ ...current, [eventId]: "" }))
+      await loadPaymentEvents()
+      showSuccess("Event QRIS berhasil dicocokkan dan order telah dilunasi")
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Event QRIS gagal dicocokkan")
+    } finally {
+      setResolvingEventId(undefined)
+    }
+  }
+
+  function openDeviceRegistration(branchId: string, branchName: string) {
+    setDeviceCredential(null)
+    setDeviceForm({ branchId, name: `Relay ${branchName}`, merchantAccountId: "" })
+    setDeviceOpen(true)
+  }
+
+  async function registerDevice(event: React.FormEvent) {
+    event.preventDefault()
+    setDeviceSaving(true)
+    try {
+      const response = await apiFetch<DeviceCredential>("/api/v1/integrations/qris/devices", {
+        method: "POST",
+        body: JSON.stringify(deviceForm),
+      })
+      setDeviceCredential(response.data)
+      await loadDevices()
+      showSuccess("Perangkat relay QRIS berhasil dibuat")
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Gagal membuat perangkat relay QRIS")
+    } finally {
+      setDeviceSaving(false)
+    }
+  }
+
+  async function revokeDevice(device: PaymentDevice) {
+    if (!confirm(`Nonaktifkan perangkat ${device.name}?`)) return
+    try {
+      await apiFetch(`/api/v1/integrations/qris/devices/${device.id}`, { method: "DELETE" })
+      await loadDevices()
+      showSuccess("Perangkat relay dinonaktifkan")
+    } catch (error) {
+      showError(error instanceof Error ? error.message : "Gagal menonaktifkan perangkat")
+    }
+  }
 
   async function loadBranchDetail(id: string) {
     try {
@@ -76,6 +206,10 @@ export function BranchesTab() {
   function handleBranchQrisUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      showError("Format foto QRIS harus PNG atau JPG")
+      return
+    }
     if (file.size > 2 * 1024 * 1024) {
       showError("Ukuran foto QRIS maksimal 2MB")
       return
@@ -204,6 +338,149 @@ export function BranchesTab() {
         </CardContent>
       </Card>
 
+      {false && isOwner && directQrisEnabled && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-emerald-600" /> Rekonsiliasi QRIS Otomatis</CardTitle>
+            <p className="text-sm text-muted-foreground">Hubungkan satu perangkat relay notifikasi merchant untuk setiap cabang. Secret tidak pernah ditampilkan kembali setelah registrasi.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {branches.map((branch) => {
+              const device = devices.find((item) => item.branchId === branch.id && item.isActive)
+              return (
+                <div key={branch.id} className="flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{branch.name}</p>
+                    {device ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge className="bg-emerald-600">Relay aktif</Badge>
+                        <span>{device.name}</span>
+                        <span>•</span>
+                        <span>{device.lastSeenAt ? `Terakhir aktif ${new Date(device.lastSeenAt).toLocaleString("id-ID")}` : "Belum menerima event"}</span>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-xs text-amber-700">Belum ada relay aktif; pembayaran QRIS tidak akan diselesaikan otomatis.</p>
+                    )}
+                  </div>
+                  {device ? (
+                    <Button variant="outline" size="sm" className="text-destructive" onClick={() => void revokeDevice(device)}>Nonaktifkan</Button>
+                  ) : (
+                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => openDeviceRegistration(branch.id, branch.name)}>
+                      <Smartphone className="size-4" /> Hubungkan Relay
+                    </Button>
+                  )}
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      {false && isOwner && directQrisEnabled && (
+        <Card>
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <AlertTriangle className="size-5 text-amber-600" /> Event QRIS perlu tindakan
+              </CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Cocokkan dana masuk yang tidak menemukan tepat satu order berdasarkan cabang, nominal, dan jendela waktu.
+              </p>
+            </div>
+            <Button type="button" variant="outline" size="icon" className="size-11 shrink-0" aria-label="Muat ulang event QRIS" onClick={() => void loadPaymentEvents()} disabled={eventsLoading}>
+              <RefreshCw className={`size-4 ${eventsLoading ? "animate-spin" : ""}`} />
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {eventsLoading && !paymentEvents.length ? (
+              <div className="flex min-h-24 items-center justify-center"><Loader2 className="size-5 animate-spin" /></div>
+            ) : !paymentEvents.length ? (
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+                <CheckCircle2 className="size-5 shrink-0" /> Tidak ada event pembayaran yang perlu direkonsiliasi.
+              </div>
+            ) : paymentEvents.map((event) => {
+              const branchName = branches.find((branch) => branch.id === event.branchId)?.name || "Cabang tidak dikenal"
+              return (
+                <div key={event.id} className="space-y-3 rounded-xl border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900 dark:bg-amber-950/20">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="border-amber-400 text-amber-800 dark:text-amber-200">{event.status}</Badge>
+                        <span className="font-semibold">Rp {Number(event.amount).toLocaleString("id-ID")}</span>
+                        <span className="text-xs text-muted-foreground">{branchName}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(event.occurredAt).toLocaleString("id-ID")} • {event.senderName || "Pengirim tidak diketahui"} • {event.candidateCount} kandidat
+                      </p>
+                    </div>
+                    <code className="text-[10px] text-muted-foreground">{event.eventId}</code>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <div className="flex-1">
+                      <Label htmlFor={`resolve-order-${event.id}`} className="sr-only">ID order untuk event {event.eventId}</Label>
+                      <Input
+                        id={`resolve-order-${event.id}`}
+                        value={resolutionOrderIds[event.id] || ""}
+                        onChange={(input) => setResolutionOrderIds((current) => ({ ...current, [event.id]: input.target.value }))}
+                        placeholder="Tempel UUID order yang sesuai"
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                    <Button type="button" className="min-h-11 bg-emerald-600 hover:bg-emerald-700" onClick={() => void resolvePaymentEvent(event.id)} disabled={resolvingEventId === event.id || !resolutionOrderIds[event.id]?.trim()}>
+                      {resolvingEventId === event.id && <Loader2 className="size-4 animate-spin" />} Cocokkan &amp; Lunasi
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={false} onOpenChange={setDeviceOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Hubungkan Relay QRIS</DialogTitle>
+            <DialogDescription>Credential berikut digunakan aplikasi relay Android untuk menandatangani setiap notifikasi pembayaran.</DialogDescription>
+          </DialogHeader>
+          {deviceCredential ? (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">{deviceCredential.warning}</div>
+              {[
+                ["Device Key", deviceCredential.deviceKey],
+                ["Signing Secret", deviceCredential.signingSecret],
+              ].map(([label, value]) => (
+                <div key={label} className="space-y-1.5">
+                  <Label>{label}</Label>
+                  <div className="flex gap-2">
+                    <Input readOnly value={value} className="font-mono text-xs" />
+                    <Button type="button" variant="outline" size="icon" onClick={() => void navigator.clipboard.writeText(value)}><Copy className="size-4" /></Button>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">Webhook: <code>/api/v1/integrations/qris-push/webhook</code></p>
+              <Button className="w-full" onClick={() => setDeviceOpen(false)}>Saya sudah menyimpan credential</Button>
+            </div>
+          ) : (
+            <form onSubmit={registerDevice} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="relay-name">Nama perangkat</Label>
+                <Input id="relay-name" value={deviceForm.name} onChange={(event) => setDeviceForm({ ...deviceForm, name: event.target.value })} required minLength={2} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="merchant-account-id">ID akun merchant</Label>
+                <Input id="merchant-account-id" value={deviceForm.merchantAccountId} onChange={(event) => setDeviceForm({ ...deviceForm, merchantAccountId: event.target.value })} placeholder="Contoh: MID-BCA-CABANG-01" required minLength={3} />
+                <p className="text-xs text-muted-foreground">Gunakan ID unik dari akun/aplikasi merchant yang menerima QRIS cabang ini.</p>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setDeviceOpen(false)}>Batal</Button>
+                <Button type="submit" disabled={deviceSaving} className="bg-emerald-600 hover:bg-emerald-700">{deviceSaving && <Loader2 className="size-4 animate-spin" />} Buat Credential</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-0 rounded-2xl overflow-hidden gap-0">
           <DialogHeader className="px-6 py-4 border-b shrink-0 bg-background text-left">
@@ -301,7 +578,7 @@ export function BranchesTab() {
                         <span className="text-[9px] text-muted-foreground mt-0.5">PNG, JPG (Maks 2MB)</span>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/png,image/jpeg"
                           className="hidden"
                           onChange={handleBranchQrisUpload}
                         />

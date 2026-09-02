@@ -13,11 +13,11 @@ import {
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, requireSession } from "@/lib/server";
 import { PLANS } from "@/config/plans";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Master Admin platform yang berhak mengakses metrik ini");
   }
 

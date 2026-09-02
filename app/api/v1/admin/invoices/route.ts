@@ -3,11 +3,11 @@ import { db } from "@/db";
 import { organizations, subscriptionInvoices } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, requireSession } from "@/lib/server";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Master Admin platform yang dapat melihat riwayat tagihan platform");
   }
 

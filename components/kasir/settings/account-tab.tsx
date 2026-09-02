@@ -159,7 +159,7 @@ export function AccountTab() {
         password: totpPassword,
       })
       if (error) throw new Error(error.message || t("enable2faFailed"))
-      if (data?.totpURI) {
+      if (data?.method === "totp" && data.totpURI) {
         const qr = await QRCode.toDataURL(data.totpURI)
         setQrCodeUrl(qr)
         setTotpSecret(data.totpURI.split("secret=")[1]?.split("&")[0] || "")

@@ -6,6 +6,7 @@
  *
  * To activate: `npm install @sentry/nextjs` and set `SENTRY_DSN` in .env
  */
+import { scrubSentryEvent } from "@/lib/observability/scrub";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
@@ -28,20 +29,10 @@ export async function register() {
       tracesSampleRate: 0.1,
       profilesSampleRate: 0.1,
       environment: process.env.NODE_ENV,
-      beforeSend(event: Record<string, unknown>) {
-        const request = event.request as { headers?: Record<string, string> } | undefined;
-        if (request?.headers) {
-          const headers = { ...request.headers };
-          for (const key of Object.keys(headers)) {
-            const lower = key.toLowerCase();
-            if (["authorization", "cookie", "x-api-key"].includes(lower)) {
-              headers[key] = "[redacted]";
-            }
-          }
-          request.headers = headers;
-        }
-        return event;
-      },
+      sendDefaultPii: false,
+      dataCollection: { userInfo: false, httpBodies: [] },
+      beforeSend: scrubSentryEvent,
+      beforeBreadcrumb: scrubSentryEvent,
     });
     console.log("[sentry] initialized");
   } catch {

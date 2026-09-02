@@ -30,6 +30,9 @@ export async function generateMetadata({
     title: { default: t("title"), template: t("titleTemplate") },
     description: t("description"),
     applicationName: "Kedai-Ku",
+    manifest: "/manifest.webmanifest",
+    icons: { apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }] },
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "Kedai-Ku" },
   }
 }
 

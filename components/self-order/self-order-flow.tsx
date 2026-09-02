@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  AlertCircle,
   Bell,
   ChefHat,
   CheckCircle2,
@@ -51,6 +52,9 @@ type MenuData = {
 };
 
 const rupiah = (n: number) => `Rp ${n.toLocaleString("id-ID")}`;
+const pendingOrderStorageKey = (token: string) => `kedai-ku-self-order-pending:${token}`;
+const checkoutKeyStorageKey = (token: string) => `kedai-ku-self-order-checkout-key:${token}`;
+const chargeKeyStorageKey = (token: string, orderId: string) => `kedai-ku-self-order-charge-key:${token}:${orderId}`;
 
 export type SelfOrderVariant = "mobile" | "kiosk";
 
@@ -83,12 +87,15 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
     if (typeof window !== "undefined") {
       const sp = new URLSearchParams(window.location.search);
       const urlOrderId = sp.get("order_id") || sp.get("orderId");
-      if (urlOrderId) {
+      const pendingOrderId = localStorage.getItem(pendingOrderStorageKey(token));
+      if (pendingOrderId) {
+        setStep("payment");
+      } else if (urlOrderId) {
         setActiveOrderId(urlOrderId);
         setStep("tracking");
       }
     }
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     void (async () => {
@@ -527,7 +534,8 @@ function MenuView(props: {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-6 w-6 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200/60 rounded p-0"
+                        className="size-11 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200/60 rounded-lg p-0"
+                        aria-label={`Kurangi ${p.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onQuickRemove(p);
@@ -541,7 +549,8 @@ function MenuView(props: {
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-6 w-6 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200/60 rounded p-0"
+                        className="size-11 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200/60 rounded-lg p-0"
+                        aria-label={`Tambah ${p.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           onQuickAdd(p);
@@ -667,11 +676,11 @@ function ProductDetail(props: {
 
       <div className="flex items-center justify-between pt-2 border-t gap-3">
         <div className="flex items-center gap-2 rounded-xl border bg-muted/40 p-1">
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
+          <Button variant="ghost" size="icon" className="size-11 rounded-lg" aria-label="Kurangi jumlah" onClick={() => setQuantity(Math.max(1, quantity - 1))}>
             <Minus className="h-4 w-4" />
           </Button>
           <span className="min-w-8 text-center text-sm font-bold text-foreground">{quantity}</span>
-          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => setQuantity(quantity + 1)}>
+          <Button variant="ghost" size="icon" className="size-11 rounded-lg" aria-label="Tambah jumlah" onClick={() => setQuantity(quantity + 1)}>
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -775,14 +784,14 @@ function CartView(props: {
                 <div className="flex flex-col items-end gap-2 shrink-0">
                   <span className="font-extrabold text-sm text-foreground">{rupiah(i.price * i.quantity)}</span>
                   <div className="flex items-center gap-1.5 border rounded-lg p-0.5 bg-muted/30">
-                    <Button variant="ghost" size="icon" className="h-6 w-6 rounded" onClick={() => onChangeQty(i.variantId, i.notes, i.quantity - 1)}>
+                    <Button variant="ghost" size="icon" className="size-11 rounded-lg" aria-label={`Kurangi ${i.name}`} onClick={() => onChangeQty(i.variantId, i.notes, i.quantity - 1)}>
                       <Minus className="h-3 w-3" />
                     </Button>
                     <span className="min-w-6 text-center text-xs font-bold">{i.quantity}</span>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 rounded" onClick={() => onChangeQty(i.variantId, i.notes, i.quantity + 1)}>
+                    <Button variant="ghost" size="icon" className="size-11 rounded-lg" aria-label={`Tambah ${i.name}`} onClick={() => onChangeQty(i.variantId, i.notes, i.quantity + 1)}>
                       <Plus className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 rounded text-rose-600" onClick={() => onRemove(i.variantId, i.notes)}>
+                    <Button variant="ghost" size="icon" className="size-11 rounded-lg text-rose-600" aria-label={`Hapus ${i.name}`} onClick={() => onRemove(i.variantId, i.notes)}>
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </div>
@@ -794,7 +803,7 @@ function CartView(props: {
           <Separator />
 
           <div className="flex items-center justify-between text-foreground pt-1">
-            <span className="text-base font-bold">{t("total")}</span>
+            <span className="text-base font-bold">Estimasi subtotal</span>
             <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{rupiah(totalAmount)}</span>
           </div>
 
@@ -839,98 +848,160 @@ function PaymentView(props: {
   const t = useTranslations("SelfOrder");
   const [method, setMethod] = useState<"qris" | "e_wallet">("qris");
   const [submitting, setSubmitting] = useState(false);
-  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [error, setError] = useState("");
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const [branchQrisModal, setBranchQrisModal] = useState<{
     qrString?: string;
     qrImageUrl?: string;
+    invoiceUrl?: string | null;
     accountName?: string;
     instructions?: string;
     amount?: number;
     orderNumber?: string;
+    expiresAt: string;
     orderId: string;
   } | null>(null);
 
-  async function handleConfirmPaymentClick() {
-    if (!branchQrisModal?.orderId) return;
-    const orderId = branchQrisModal.orderId;
-    setConfirmingPayment(true);
+  function persistPendingOrder(orderId: string) {
+    localStorage.setItem(pendingOrderStorageKey(token), orderId);
+    setPendingOrderId(orderId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("order_id", orderId);
+    window.history.replaceState({}, "", url);
+  }
+
+  function completePayment(orderId: string) {
+    localStorage.removeItem(pendingOrderStorageKey(token));
+    localStorage.removeItem(checkoutKeyStorageKey(token));
+    localStorage.removeItem(chargeKeyStorageKey(token, orderId));
+    setPendingOrderId(null);
+    const url = new URL(window.location.href);
+    url.searchParams.set("order_id", orderId);
+    window.history.replaceState({}, "", url);
+    onPaid(orderId);
+  }
+
+  async function checkPaymentStatus() {
+    if (!branchQrisModal) return;
+    setCheckingPayment(true);
     try {
-      await selfOrderFetch(`/api/v1/self-order/orders/${orderId}?token=${encodeURIComponent(token)}`, {
-        method: "POST",
-        token,
-      });
-      showSuccess("🎉 Pembayaran Berhasil Dikonfirmasi & Pesanan Dikirim ke Dapur!");
-      setBranchQrisModal(null);
-      onPaid(orderId);
-    } catch (e) {
-      showError(e instanceof SelfOrderApiError ? e.message : "Gagal mengonfirmasi pembayaran");
+      const res = await selfOrderFetch<{ order: { status: string } }>(
+        `/api/v1/self-order/orders/${branchQrisModal.orderId}?token=${encodeURIComponent(token)}`,
+      );
+      if (["paid", "confirmed", "completed"].includes(res.data.order.status)) {
+        showSuccess("🎉 Pembayaran QRIS berhasil diverifikasi!");
+        completePayment(branchQrisModal.orderId);
+        setBranchQrisModal(null);
+      } else {
+        showInfo("Pembayaran belum diterima. Silakan tunggu beberapa saat lalu cek kembali.");
+      }
+    } catch (caught) {
+      showError(caught instanceof Error ? caught.message : "Status pembayaran belum dapat diperiksa");
     } finally {
-      setConfirmingPayment(false);
+      setCheckingPayment(false);
     }
   }
+
+  async function loadPayment(orderId: string) {
+    const chargeStorageKey = chargeKeyStorageKey(token, orderId);
+    const chargeKey = localStorage.getItem(chargeStorageKey) || crypto.randomUUID();
+    localStorage.setItem(chargeStorageKey, chargeKey);
+    const charge = await selfOrderFetch<{
+      invoiceUrl: string | null;
+      externalId: string;
+      expiresAt: string;
+      branchQris?: {
+        qrString?: string;
+        qrImageUrl?: string;
+        accountName?: string;
+        instructions?: string;
+        amount?: number;
+        orderNumber?: string;
+      } | null;
+    }>(
+      "/api/v1/self-order/payments",
+      {
+        method: "POST",
+        token,
+        idempotencyKey: chargeKey,
+        body: JSON.stringify({ token, orderId, paymentMethods: ["QRIS"] }),
+      },
+    );
+    if (!charge.data.branchQris) {
+      throw new SelfOrderApiError("QRIS merchant belum dikonfigurasi untuk cabang ini", 409);
+    }
+    if (new Date(charge.data.expiresAt).getTime() <= Date.now()) {
+      localStorage.removeItem(chargeStorageKey);
+      return loadPayment(orderId);
+    }
+    setBranchQrisModal({ ...charge.data.branchQris, invoiceUrl: charge.data.invoiceUrl, expiresAt: charge.data.expiresAt, orderId });
+  }
+
+  function stopUnavailablePayment(orderId?: string) {
+    if (orderId) localStorage.removeItem(pendingOrderStorageKey(token));
+    setPendingOrderId(null);
+  }
+
+  useEffect(() => {
+    const savedOrderId = localStorage.getItem(pendingOrderStorageKey(token));
+    if (!savedOrderId) return;
+    setPendingOrderId(savedOrderId);
+    setSubmitting(true);
+    void loadPayment(savedOrderId)
+      .catch((caught) => {
+        const message = caught instanceof Error ? caught.message : "Pembayaran tertunda gagal dipulihkan";
+        if (message.toLowerCase().includes("menunggu aktivasi")) stopUnavailablePayment(savedOrderId);
+        setError(message);
+        showError(message);
+      })
+      .finally(() => setSubmitting(false));
+    // Recovery only runs when this payment screen mounts for a token.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   async function submit() {
     setSubmitting(true);
     setError("");
     try {
-      const orderMetaNotes = [
-        diningType === "takeaway" ? "[BUNGKUS/TAKEAWAY]" : "[DINE-IN]",
-        customerName.trim() ? `Pemesan: ${customerName.trim()}` : "",
-        customerPhone.trim() ? `WA: ${customerPhone.trim()}` : "",
-      ].filter(Boolean).join(" • ");
+      if (pendingOrderId) {
+        setError("Pembayaran online menunggu aktivasi DOKU atau Midtrans");
+        stopUnavailablePayment(pendingOrderId);
+        return;
+      }
+
+      const checkoutKey = localStorage.getItem(checkoutKeyStorageKey(token)) || crypto.randomUUID();
+      localStorage.setItem(checkoutKeyStorageKey(token), checkoutKey);
+      const orderNote = diningType === "takeaway" ? "[BUNGKUS/TAKEAWAY]" : "[DINE-IN]";
 
       const create = await selfOrderFetch<{ order: { id: string }; payment: { provider: string } }>(
         "/api/v1/self-order/orders",
         {
           method: "POST",
+          idempotencyKey: checkoutKey,
           body: JSON.stringify({
             token,
-            items: items.map((i, idx) => ({
+            items: items.map((i) => ({
               variantId: i.variantId,
               quantity: i.quantity,
-              notes: idx === 0 && orderMetaNotes ? [i.notes, orderMetaNotes].filter(Boolean).join(" | ") : i.notes,
+              notes: i.notes,
             })),
+            notes: orderNote,
+            customerName: customerName.trim() || undefined,
+            customerPhone: customerPhone.trim() || undefined,
             paymentMethod: method,
           }),
         },
       );
       const orderId = create.data.order.id;
-      const charge = await selfOrderFetch<{
-        invoiceUrl: string | null;
-        externalId: string;
-        branchQris?: {
-          qrString?: string;
-          qrImageUrl?: string;
-          accountName?: string;
-          instructions?: string;
-          amount?: number;
-          orderNumber?: string;
-        } | null;
-      }>(
-        "/api/v1/self-order/payments",
-        {
-          method: "POST",
-          token,
-          body: JSON.stringify({ token, orderId, paymentMethods: method === "qris" ? ["QRIS"] : ["OVO", "DANA", "SHOPEEPAY"] }),
-        },
-      );
-      if (method === "qris") {
-        if (charge.data.branchQris) {
-          setBranchQrisModal({
-            ...charge.data.branchQris,
-            orderId,
-          });
-        } else {
-          onPaid(orderId);
-        }
-      } else if (charge.data.invoiceUrl) {
-        window.location.href = charge.data.invoiceUrl;
-      } else {
-        onPaid(orderId);
-      }
+      persistPendingOrder(orderId);
+      await loadPayment(orderId);
     } catch (e) {
-      const message = e instanceof SelfOrderApiError ? e.message : t("failedPayment");
+      // Preserve the server's actionable provider error even if the client
+      // bundle contains a different Error class after a hot reload.
+      const message = e instanceof Error ? e.message : t("failedPayment");
+      if (message.toLowerCase().includes("menunggu aktivasi")) stopUnavailablePayment();
       setError(message);
       showError(message);
     } finally {
@@ -938,14 +1009,33 @@ function PaymentView(props: {
     }
   }
 
-  // Auto-check QRIS payment settlement while modal is open
   useEffect(() => {
-    if (!branchQrisModal?.orderId) return;
-    const orderId = branchQrisModal.orderId;
+    if (!branchQrisModal) {
+      setSecondsLeft(0);
+      return;
+    }
+    const update = () => {
+      const seconds = Math.max(0, Math.ceil((new Date(branchQrisModal.expiresAt).getTime() - Date.now()) / 1000));
+      setSecondsLeft(seconds);
+      if (seconds === 0) {
+        localStorage.removeItem(chargeKeyStorageKey(token, branchQrisModal.orderId));
+        setBranchQrisModal(null);
+        setError("Permintaan QRIS kedaluwarsa. Tekan lanjutkan pembayaran untuk membuat QR baru.");
+      }
+    };
+    update();
+    const interval = window.setInterval(update, 1000);
+    return () => window.clearInterval(interval);
+  }, [branchQrisModal, token]);
+
+  // Keep checking while an order is pending, even if the customer closes the QR modal.
+  useEffect(() => {
+    if (!pendingOrderId) return;
+    const orderId = pendingOrderId;
     let active = true;
 
     const interval = setInterval(async () => {
-      if (!active) return;
+      if (!active || (typeof document !== "undefined" && document.hidden)) return;
       try {
         const res = await selfOrderFetch<{ order: { status: string } }>(
           `/api/v1/self-order/orders/${orderId}?token=${encodeURIComponent(token)}`
@@ -954,18 +1044,18 @@ function PaymentView(props: {
         if (res.data?.order?.status === "paid") {
           showSuccess("🎉 Pembayaran QRIS Berhasil Diverifikasi!");
           setBranchQrisModal(null);
-          onPaid(orderId);
+          completePayment(orderId);
         }
       } catch {
-        // Ignore polling error
+        // Silent poll error
       }
-    }, 2500);
+    }, 4000);
 
     return () => {
       active = false;
       clearInterval(interval);
     };
-  }, [branchQrisModal?.orderId, token, onPaid]);
+  }, [pendingOrderId, token]);
 
   return (
     <div className="mx-auto max-w-xl space-y-5 bg-card border rounded-3xl p-5 shadow-sm">
@@ -989,19 +1079,27 @@ function PaymentView(props: {
           </Badge>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <Input
+          <div className="space-y-1.5">
+            <Label htmlFor="self-order-customer-name" className="sr-only">Nama pemesan</Label>
+            <Input
+            id="self-order-customer-name"
             placeholder="Nama Pemesan (misal: Budi)"
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
             className="h-9 text-xs rounded-xl bg-background shadow-2xs"
-          />
-          <Input
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="self-order-customer-phone" className="sr-only">Nomor WhatsApp</Label>
+            <Input
+            id="self-order-customer-phone"
             placeholder="No. WhatsApp (08...)"
             type="tel"
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
             className="h-9 text-xs rounded-xl bg-background shadow-2xs"
-          />
+            />
+          </div>
         </div>
         <p className="text-[10px] text-muted-foreground">
           ✨ Masukkan no. WhatsApp untuk mengklaim poin loyalitas &amp; struk digital otomatis.
@@ -1012,7 +1110,9 @@ function PaymentView(props: {
       <div className="space-y-2">
         <Label className="text-xs font-bold text-foreground">Metode Pembayaran Mandiri</Label>
         <div className="grid grid-cols-2 gap-3">
-          <div
+          <button
+            type="button"
+            aria-pressed={method === "qris"}
             onClick={() => setMethod("qris")}
             className={cn(
               "cursor-pointer rounded-2xl border p-4 transition-all flex flex-col justify-between gap-3 text-left",
@@ -1026,9 +1126,11 @@ function PaymentView(props: {
               <Badge variant="outline" className="text-[10px] bg-background">Semua Bank</Badge>
             </div>
             <p className="text-[11px] text-muted-foreground leading-tight">BCA, Mandiri, GoPay, OVO, ShopeePay, LinkAja</p>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
+            aria-pressed={method === "e_wallet"}
             onClick={() => setMethod("e_wallet")}
             className={cn(
               "cursor-pointer rounded-2xl border p-4 transition-all flex flex-col justify-between gap-3 text-left",
@@ -1038,11 +1140,11 @@ function PaymentView(props: {
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="font-extrabold text-sm text-foreground">E-Wallet</span>
-              <Badge variant="outline" className="text-[10px] bg-background">Direct App</Badge>
+              <span className="font-extrabold text-sm text-foreground">QRIS via E-Wallet</span>
+              <Badge variant="outline" className="text-[10px] bg-background">Scan QR</Badge>
             </div>
             <p className="text-[11px] text-muted-foreground leading-tight">OVO, DANA, ShopeePay</p>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -1051,7 +1153,7 @@ function PaymentView(props: {
       {/* Total Amount Breakdown */}
       <div className="flex items-center justify-between text-foreground">
         <div className="space-y-0.5">
-          <span className="text-base font-bold">{t("total")}</span>
+          <span className="text-base font-bold">Estimasi subtotal</span>
           <p className="text-[11px] text-muted-foreground">
             {diningType === "takeaway" ? "🥡 Bungkus (Takeaway)" : "🍽️ Makan di Tempat"}
           </p>
@@ -1059,25 +1161,35 @@ function PaymentView(props: {
         <span className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400">{rupiah(totalAmount)}</span>
       </div>
 
-      {error && <p className="text-xs text-rose-600 font-semibold">{error}</p>}
+      {error && (
+        error.toLowerCase().includes("menunggu aktivasi") ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100" role="status">
+            <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <div className="space-y-1 text-xs">
+              <p className="font-bold">Pembayaran online belum tersedia</p>
+              <p className="leading-relaxed">QRIS Self Order akan aktif setelah owner menghubungkan DOKU atau Midtrans. Tidak diperlukan relay atau aplikasi tambahan di perangkat pelanggan.</p>
+            </div>
+          </div>
+        ) : <p className="text-xs font-semibold text-rose-600">{error}</p>
+      )}
 
       <Button
         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl h-12 text-sm shadow-xs gap-2"
         size="lg"
         onClick={submit}
-        disabled={submitting || items.length === 0}
+        disabled={submitting || (!pendingOrderId && items.length === 0)}
       >
         {submitting ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" /> Memproses Pembayaran...
           </>
         ) : (
-          `Bayar Sekarang · ${rupiah(totalAmount)}`
+          pendingOrderId ? "Lanjutkan Pembayaran QRIS" : "Bayar dengan QRIS"
         )}
       </Button>
 
       <p className="text-[10px] text-center text-muted-foreground">
-        🔒 Transaksi aman &amp; otomatis terverifikasi sistem.
+        Total final termasuk pajak dikonfirmasi server sebelum QRIS ditampilkan.
       </p>
 
       {/* Branch Dynamic QRIS Modal Dialog */}
@@ -1134,28 +1246,40 @@ function PaymentView(props: {
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[11px] font-medium text-emerald-800">
+                Status pembayaran diverifikasi otomatis. Halaman ini akan diperbarui setelah dana diterima merchant.
+              </p>
+              <p className="text-xs font-semibold text-foreground" aria-live="polite">
+                Berlaku {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}
+              </p>
               <Button
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-10 text-xs gap-1.5"
-                disabled={confirmingPayment}
-                onClick={handleConfirmPaymentClick}
+                className="w-full rounded-xl h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                onClick={checkPaymentStatus}
+                disabled={checkingPayment}
               >
-                {confirmingPayment ? (
-                  <>
-                    <Loader2 className="size-4 animate-spin" /> Mengonfirmasi Pembayaran...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="size-4" /> Saya Sudah Bayar
-                  </>
-                )}
+                {checkingPayment ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <CheckCircle2 className="size-3.5 mr-1.5" />}
+                Saya Sudah Transfer / Selesai Bayar
               </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="w-full rounded-xl h-9 text-xs" onClick={checkPaymentStatus} disabled={checkingPayment}>
+                  Cek Status
+                </Button>
+                <Button variant="outline" className="w-full rounded-xl h-9 text-xs" onClick={() => {
+                  if (branchQrisModal?.invoiceUrl) {
+                    window.open(branchQrisModal.invoiceUrl, "_blank", "noopener,noreferrer");
+                  } else {
+                    showInfo("Midtrans Snap belum dikonfigurasi. Silakan scan QRIS di atas.");
+                  }
+                }}>
+                  Bayar Online
+                </Button>
+              </div>
               <Button
                 variant="outline"
                 className="w-full rounded-xl h-9 text-xs"
-                disabled={confirmingPayment}
                 onClick={() => setBranchQrisModal(null)}
               >
-                Tutup
+                Tutup, lanjutkan nanti
               </Button>
             </div>
           </div>

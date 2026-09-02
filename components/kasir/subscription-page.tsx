@@ -8,7 +8,6 @@ import {
   Check,
   CheckCircle2,
   Copy,
-  Crown,
   ExternalLink,
   Loader2,
   PackageSearch,
@@ -18,16 +17,14 @@ import {
   Sparkles,
   UsersRound,
   X,
-  Zap,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -108,6 +105,8 @@ interface QRISModalData {
   qrisBankName?: string
   qrisInstructions?: string
   paymentMode?: string
+  provider?: string
+  expiryTime?: string
 }
 
 function rupiah(amount: number) {
@@ -147,7 +146,10 @@ function useTrialCountdown(trialEndsAt: string | null | undefined) {
   const [formatted, setFormatted] = useState<string>("")
 
   useEffect(() => {
-    if (!trialEndsAt) return
+    if (!trialEndsAt) {
+      setFormatted("")
+      return
+    }
 
     function update() {
       const diff = new Date(trialEndsAt!).getTime() - Date.now()
@@ -186,12 +188,14 @@ export function SubscriptionPage() {
   const [upgrading, setUpgrading] = useState<string | null>(null)
   const [billingCycle, setBillingCycle] = useState<"monthly" | "yearly">("monthly")
   const trialCountdown = useTrialCountdown(summary?.trialEndsAt)
+  const subscriptionCountdown = useTrialCountdown(summary?.currentPeriodEnd)
 
   // QRIS Payment Modal State
   const [qrisModal, setQrisModal] = useState<QRISModalData | null>(null)
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("")
   const [isPaidSuccess, setIsPaidSuccess] = useState(false)
   const [isCheckingPayment, setIsCheckingPayment] = useState(false)
+  const paymentCountdown = useTrialCountdown(qrisModal?.expiryTime)
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   const loadData = useCallback(async () => {
@@ -316,6 +320,7 @@ export function SubscriptionPage() {
           qrString?: string
           qrImageUrl?: string
           snapRedirectUrl?: string
+          expiryTime?: string
         }
       }>("/api/v1/subscription", {
         method: "POST",
@@ -323,28 +328,25 @@ export function SubscriptionPage() {
       })
 
       if (res.data.requiresPayment) {
-        const directPaymentUrl = res.data.paymentUrl || res.data.qris?.snapRedirectUrl
-        if (directPaymentUrl) {
-          // DIRECT TO MIDTRANS GATEWAY!
-          window.location.href = directPaymentUrl
-          return
-        }
-
-        if (res.data.qris.qrImageUrl) {
+        const snapUrl = res.data.paymentUrl || res.data.qris?.snapRedirectUrl
+        if (res.data.qris?.qrImageUrl) {
           setQrCodeDataUrl(res.data.qris.qrImageUrl)
         }
+        const isDoku = Boolean(res.data.paymentUrl?.includes("doku") || res.data.paymentMode === "doku")
         setQrisModal({
           invoiceNumber: res.data.invoiceNumber,
           amount: res.data.amount,
           planName: res.data.plan.name,
           billingCycle: res.data.billingCycle,
-          qrString: res.data.qris.qrString,
-          qrImageUrl: res.data.qris.qrImageUrl,
-          snapRedirectUrl: res.data.qris.snapRedirectUrl,
+          qrString: res.data.qris?.qrString,
+          qrImageUrl: res.data.qris?.qrImageUrl,
+          snapRedirectUrl: snapUrl,
           qrisAccountName: res.data.qrisAccountName,
           qrisBankName: res.data.qrisBankName,
           qrisInstructions: res.data.qrisInstructions,
           paymentMode: res.data.paymentMode,
+          provider: isDoku ? "doku" : res.data.paymentMode || "midtrans",
+          expiryTime: res.data.qris?.expiryTime,
         })
       }
     } catch (caught) {
@@ -376,31 +378,6 @@ export function SubscriptionPage() {
     }
   }
 
-  async function handleSimulateDevPayment() {
-    if (!qrisModal) return
-    try {
-      setIsCheckingPayment(true)
-      await apiFetch<{ message: string }>("/api/v1/subscription", {
-        method: "POST",
-        body: JSON.stringify({
-          plan: qrisModal.planName.toLowerCase().includes("business") ? "business" : "pro",
-          billingCycle: qrisModal.billingCycle,
-          directSimulate: true,
-        }),
-      })
-      setIsPaidSuccess(true)
-      showSuccess("⚡ Simulasi Pembayaran Sukses! Paket telah aktif!")
-      await loadData()
-      setTimeout(() => {
-        setQrisModal(null)
-      }, 1500)
-    } catch (caught) {
-      showError(caught instanceof Error ? caught.message : "Gagal simulasi")
-    } finally {
-      setIsCheckingPayment(false)
-    }
-  }
-
   if (loading || !summary) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -412,7 +389,7 @@ export function SubscriptionPage() {
   const isOwner = !organization || organization.role === "owner"
 
   return (
-    <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 max-w-7xl mx-auto w-full">
+    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 w-full">
       {/* Header & Status Banner */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -484,11 +461,22 @@ export function SubscriptionPage() {
             </div>
           </div>
         ) : (
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200">
+          <div className="flex flex-col gap-3 p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200 sm:flex-row sm:items-center">
             <ShieldCheck className="size-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <div className="flex-1 text-sm">
-              Status langganan: <span className="font-bold">{summary.plan.name}</span> aktif.
+              <div>Status langganan: <span className="font-bold">{summary.plan.name}</span> aktif.</div>
+              {summary.currentPeriodEnd && (
+                <div className="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                  Berakhir {new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short" }).format(new Date(summary.currentPeriodEnd))}
+                </div>
+              )}
             </div>
+            {summary.currentPeriodEnd && (
+              <div className="shrink-0 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-center" aria-live="polite">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Sisa masa aktif</div>
+                <div className="font-mono text-sm font-extrabold tracking-tight">{subscriptionCountdown || "Menghitung…"}</div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -764,10 +752,14 @@ export function SubscriptionPage() {
                 </span>
                 <div className="text-left">
                   <DialogTitle className="text-base font-bold text-white leading-none">
-                    Pembayaran QRIS
+                    Pembayaran QRIS & Gateway
                   </DialogTitle>
                   <DialogDescription className="text-[11px] text-emerald-100 mt-1">
-                    Midtrans Core Payment
+                    {qrisModal?.provider === "doku"
+                      ? "DOKU Official Payment Gateway"
+                      : qrisModal?.provider === "midtrans"
+                      ? "Midtrans Official Payment Gateway"
+                      : "Official Payment Gateway"}
                   </DialogDescription>
                 </div>
               </div>
@@ -891,6 +883,11 @@ export function SubscriptionPage() {
                       </span>
                       <span>Menunggu scan & verifikasi pembayaran...</span>
                     </div>
+                    {qrisModal.expiryTime && (
+                      <p className="text-xs font-semibold text-foreground" aria-live="polite">
+                        Berlaku {paymentCountdown || "Menghitung…"}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -924,10 +921,16 @@ export function SubscriptionPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="w-full text-xs text-muted-foreground"
+                          className="w-full text-xs text-muted-foreground hover:text-foreground"
                           onClick={() => window.open(qrisModal.snapRedirectUrl, "_blank")}
+                          title="Buka halaman pembayaran gateway untuk Virtual Account, Kartu Kredit, dll"
                         >
-                          <ExternalLink className="size-3.5 mr-1" /> Web Snap
+                          <ExternalLink className="size-3.5 mr-1" />{" "}
+                          {qrisModal.provider === "doku"
+                            ? "Buka DOKU Checkout"
+                            : qrisModal.provider === "midtrans"
+                            ? "Bayar via Midtrans"
+                            : "Bayar Online"}
                         </Button>
                       ) : (
                         <Button
@@ -941,16 +944,6 @@ export function SubscriptionPage() {
                       )}
                     </div>
 
-                    {/* Instant Simulated Payment for Dev/Testing */}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="w-full text-[11px] text-muted-foreground hover:text-foreground"
-                      onClick={handleSimulateDevPayment}
-                      disabled={isCheckingPayment}
-                    >
-                      <Zap className="size-3 mr-1 text-amber-500" /> Mode Demo: Bayar Instan (Simulasi Testing)
-                    </Button>
                   </div>
                 )}
               </>

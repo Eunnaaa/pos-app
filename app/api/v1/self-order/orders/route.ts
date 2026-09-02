@@ -16,6 +16,7 @@ const schema = z.object({
   items: z.array(itemSchema).min(1).max(100),
   notes: z.string().max(2_000).optional(),
   customerName: z.string().max(150).optional(),
+  customerPhone: z.string().trim().min(8).max(24).optional(),
   paymentMethod: z.enum(["qris", "e_wallet"]),
 });
 
@@ -41,6 +42,7 @@ export const POST = apiHandler(async (request) => {
         items: input.items,
         notes: input.notes,
         customerName: input.customerName,
+        customerPhone: input.customerPhone,
         paymentMethod: input.paymentMethod,
       });
       return dataResponse(result, { status: 201 });

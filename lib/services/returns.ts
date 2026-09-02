@@ -10,7 +10,7 @@ import {
   salesReturns,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { assertPeriodOpen, AppError } from "@/lib/server";
+import { assertBranchAccess, assertPeriodOpen, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 import { postReturnToLedger } from "./ledger";
 import type { Database } from "@/db";
@@ -35,6 +35,7 @@ export async function processSalesReturn(input: z.infer<typeof salesReturnSchema
   return db.transaction(async (tx) => {
     const [order] = await tx.select().from(salesOrders).where(and(eq(salesOrders.id, input.orderId), eq(salesOrders.organizationId, context.organizationId))).limit(1);
     if (!order) throw new AppError("NOT_FOUND", "Sales order not found");
+    assertBranchAccess(context.tenant, order.branchId);
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: order.branchId });
     if (!["paid", "partially_refunded"].includes(order.status)) throw new AppError("CONFLICT", "Order is not refundable");
 

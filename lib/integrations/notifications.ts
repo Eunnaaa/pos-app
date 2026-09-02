@@ -1,13 +1,43 @@
 import "server-only";
 import { getServerEnv } from "@/config/env";
 import { AppError } from "@/lib/server";
+import { logger } from "@/lib/server/logger";
 import { providerRequest, requireProviderConfig } from "./http";
+
+export function escapeEmailHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]!);
+}
+
+function safeEmailHref(value: string): string {
+  let url: URL;
+  try { url = new URL(value); } catch {
+    throw new AppError("VALIDATION_ERROR", "Email action URL is invalid");
+  }
+  if (!(["http:", "https:"] as const).includes(url.protocol as "http:" | "https:")) {
+    throw new AppError("VALIDATION_ERROR", "Email action URL must use HTTP or HTTPS");
+  }
+  return escapeEmailHtml(url.toString());
+}
+
+export function normalizeWhatsAppTarget(to: string): string {
+  let target = to.replace(/[^0-9]/g, "");
+  if (target.startsWith("0")) target = `62${target.slice(1)}`;
+  if (!/^\d{8,15}$/.test(target)) {
+    throw new AppError("VALIDATION_ERROR", "Invalid WhatsApp recipient number");
+  }
+  return target;
+}
 
 export async function sendWhatsApp(to: string, message: string) {
   const env = getServerEnv();
   const config = requireProviderConfig("Fonnte", { token: env.WHATSAPP_ACCESS_TOKEN });
-  let target = to.replace(/[^0-9]/g, "");
-  if (target.startsWith("0")) target = `62${target.slice(1)}`;
+  const target = normalizeWhatsAppTarget(to);
   const body = new URLSearchParams({ target, message, countryCode: "62" });
   let response: Response;
   try {
@@ -44,17 +74,54 @@ export async function sendTelegram(chatId: string, message: string) {
 export async function sendEmail(to: string, subject: string, html: string) {
   const env = getServerEnv();
   const config = requireProviderConfig("Email", { apiUrl: env.EMAIL_API_URL, apiKey: env.EMAIL_API_KEY });
-  return providerRequest("Email", config.apiUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
-    body: JSON.stringify({ to, subject, html }),
-  });
+  const provider = env.EMAIL_PROVIDER;
+  if ((provider === "resend" || provider === "sendgrid") && !env.EMAIL_FROM) {
+    throw new AppError("BAD_REQUEST", "EMAIL_FROM is required for the configured email provider");
+  }
+
+  const payload = provider === "sendgrid"
+    ? {
+        personalizations: [{ to: [{ email: to }] }],
+        from: { email: env.EMAIL_FROM },
+        subject,
+        content: [{ type: "text/html", value: html }],
+      }
+    : provider === "resend"
+      ? { from: env.EMAIL_FROM, to: [to], subject, html }
+      : { to, subject, html };
+
+  let response: Response;
+  try {
+    response = await fetch(config.apiUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    throw new AppError("BAD_REQUEST", "Email provider is unavailable", { details: { provider } });
+  }
+  if (!response.ok) {
+    const code = response.status === 429 ? "RATE_LIMITED" : response.status >= 500 ? "INTERNAL_ERROR" : "BAD_REQUEST";
+    throw new AppError(code, "Email provider rejected the request", {
+      details: { provider, status: response.status },
+    });
+  }
+  // SendGrid commonly returns 202 with an empty body, while Resend returns JSON.
+  const text = await response.text();
+  if (!text) return { accepted: true, status: response.status };
+  try { return JSON.parse(text) as unknown; } catch { return { accepted: true, status: response.status }; }
 }
 
 export async function sendWelcomeEmail(to: string, userName: string, businessName: string) {
   const env = getServerEnv();
   const subject = `Selamat Datang di Kedai-Ku POS, ${userName}! ☕🎉`;
   const baseUrl = env.BETTER_AUTH_URL || "http://localhost:3000";
+  const safeUserName = escapeEmailHtml(userName);
+  const safeBusinessName = escapeEmailHtml(businessName);
+  const safeRecipient = escapeEmailHtml(to);
+  const dashboardUrl = safeEmailHref(`${baseUrl}/dashboard`);
 
   const html = `
     <!DOCTYPE html>
@@ -77,9 +144,9 @@ export async function sendWelcomeEmail(to: string, userName: string, businessNam
           <!-- Main Content -->
           <tr>
             <td style="padding: 36px 32px;">
-              <h2 style="margin: 0 0 12px; font-size: 20px; font-weight: 700; color: #0f172a;">Halo, ${userName}! 👋</h2>
+              <h2 style="margin: 0 0 12px; font-size: 20px; font-weight: 700; color: #0f172a;">Halo, ${safeUserName}! 👋</h2>
               <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #475569;">
-                Selamat! Akun bisnis <strong>${businessName}</strong> Anda telah resmi aktif. Kami sangat senang menyambut Anda di keluarga besar <strong>Kedai-Ku POS</strong>.
+                Selamat! Akun bisnis <strong>${safeBusinessName}</strong> Anda telah resmi aktif. Kami sangat senang menyambut Anda di keluarga besar <strong>Kedai-Ku POS</strong>.
               </p>
 
               <!-- Trial Pro Badge Box -->
@@ -120,7 +187,7 @@ export async function sendWelcomeEmail(to: string, userName: string, businessNam
 
               <!-- Call to Action Button -->
               <div style="text-align: center; margin: 32px 0;">
-                <a href="${baseUrl}/dashboard" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
+                <a href="${dashboardUrl}" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
                   Buka Dashboard Toko Saya &rarr;
                 </a>
               </div>
@@ -135,7 +202,7 @@ export async function sendWelcomeEmail(to: string, userName: string, businessNam
           <tr>
             <td style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 32px; text-align: center; font-size: 12px; color: #94a3b8;">
               <p style="margin: 0 0 6px;">&copy; 2026 Kedai-Ku POS. Dibuat dengan bangga untuk kemajuan UMKM Indonesia.</p>
-              <p style="margin: 0;">Email ini dikirim otomatis ke ${to} sehubungan dengan pendaftaran akun Kedai-Ku Anda.</p>
+              <p style="margin: 0;">Email ini dikirim otomatis ke ${safeRecipient} sehubungan dengan pendaftaran akun Kedai-Ku Anda.</p>
             </td>
           </tr>
         </table>
@@ -148,13 +215,15 @@ export async function sendWelcomeEmail(to: string, userName: string, businessNam
       await sendEmail(to, subject, html);
     }
   } catch (err) {
-    console.warn("Welcome email failed to send:", err);
+    logger.warn("welcome email failed", { errorName: err instanceof Error ? err.name : "unknown" });
   }
 }
 
 export async function sendResetPasswordEmail(to: string, resetUrl: string) {
   const env = getServerEnv();
   const subject = "Permintaan Atur Ulang Kata Sandi — Kedai-Ku POS 🔐";
+  const safeRecipient = escapeEmailHtml(to);
+  const safeResetUrl = safeEmailHref(resetUrl);
 
   const html = `
     <!DOCTYPE html>
@@ -177,11 +246,11 @@ export async function sendResetPasswordEmail(to: string, resetUrl: string) {
             <td style="padding: 36px 32px;">
               <h2 style="margin: 0 0 12px; font-size: 18px; font-weight: 700; color: #0f172a;">Permintaan Reset Kata Sandi</h2>
               <p style="margin: 0 0 20px; font-size: 14px; line-height: 1.6; color: #475569;">
-                Kami menerima permintaan untuk mengatur ulang kata sandi akun Kedai-Ku yang terhubung dengan email <strong>${to}</strong>.
+                Kami menerima permintaan untuk mengatur ulang kata sandi akun Kedai-Ku yang terhubung dengan email <strong>${safeRecipient}</strong>.
               </p>
 
               <div style="text-align: center; margin: 32px 0;">
-                <a href="${resetUrl}" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
+                <a href="${safeResetUrl}" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
                   Atur Ulang Kata Sandi Sekarang &rarr;
                 </a>
               </div>
@@ -194,7 +263,7 @@ export async function sendResetPasswordEmail(to: string, resetUrl: string) {
 
               <p style="margin: 0; font-size: 12px; color: #94a3b8;">
                 Atau salin tautan berikut ke peramban Anda:<br/>
-                <a href="${resetUrl}" style="color: #059669; word-break: break-all;">${resetUrl}</a>
+                <a href="${safeResetUrl}" style="color: #059669; word-break: break-all;">${safeResetUrl}</a>
               </p>
             </td>
           </tr>
@@ -214,7 +283,7 @@ export async function sendResetPasswordEmail(to: string, resetUrl: string) {
       await sendEmail(to, subject, html);
     }
   } catch (err) {
-    console.warn("Reset password email failed to send:", err);
+    logger.warn("reset password email failed", { errorName: err instanceof Error ? err.name : "unknown" });
   }
 }
 
@@ -233,6 +302,11 @@ export async function sendSubscriptionSuccessEmail(
   const env = getServerEnv();
   const subject = `Bukti Pembayaran Langganan ${params.planName} — Kedai-Ku POS 🧾👑`;
   const baseUrl = env.BETTER_AUTH_URL || "http://localhost:3000";
+  const safeUserName = escapeEmailHtml(params.userName);
+  const safeBusinessName = escapeEmailHtml(params.businessName);
+  const safeInvoiceNumber = escapeEmailHtml(params.invoiceNumber);
+  const safePlanName = escapeEmailHtml(params.planName);
+  const dashboardUrl = safeEmailHref(`${baseUrl}/dashboard`);
 
   const formattedAmount = new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -263,20 +337,20 @@ export async function sendSubscriptionSuccessEmail(
 
           <tr>
             <td style="padding: 36px 32px;">
-              <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Terima Kasih, ${params.userName}! 🎉</h2>
+              <h2 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Terima Kasih, ${safeUserName}! 🎉</h2>
               <p style="margin: 0 0 24px; font-size: 14px; line-height: 1.6; color: #475569;">
-                Pembayaran langganan untuk bisnis <strong>${params.businessName}</strong> telah berhasil diverifikasi via <strong>Midtrans QRIS</strong>. Paket Anda kini resmi aktif.
+                Pembayaran langganan untuk bisnis <strong>${safeBusinessName}</strong> telah berhasil diverifikasi via <strong>Midtrans QRIS</strong>. Paket Anda kini resmi aktif.
               </p>
 
               <!-- Invoice Receipt Summary Box -->
               <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 28px; font-size: 13px;">
                 <tr>
                   <td style="padding: 6px 0; color: #64748b;">No. Tagihan:</td>
-                  <td style="padding: 6px 0; text-align: right; font-family: monospace; font-weight: 700; color: #0f172a;">${params.invoiceNumber}</td>
+                  <td style="padding: 6px 0; text-align: right; font-family: monospace; font-weight: 700; color: #0f172a;">${safeInvoiceNumber}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #64748b;">Paket Langganan:</td>
-                  <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #059669;">${params.planName}</td>
+                  <td style="padding: 6px 0; text-align: right; font-weight: 700; color: #059669;">${safePlanName}</td>
                 </tr>
                 <tr>
                   <td style="padding: 6px 0; color: #64748b;">Siklus Tagihan:</td>
@@ -297,7 +371,7 @@ export async function sendSubscriptionSuccessEmail(
               </table>
 
               <div style="text-align: center; margin: 32px 0;">
-                <a href="${baseUrl}/dashboard" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
+                <a href="${dashboardUrl}" style="background-color: #059669; color: #ffffff; padding: 14px 32px; font-size: 14px; font-weight: 700; border-radius: 8px; text-decoration: none; display: inline-block; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.3);">
                   Buka Dashboard Toko Saya &rarr;
                 </a>
               </div>
@@ -323,6 +397,6 @@ export async function sendSubscriptionSuccessEmail(
       await sendEmail(to, subject, html);
     }
   } catch (err) {
-    console.warn("Subscription email failed to send:", err);
+    logger.warn("subscription email failed", { errorName: err instanceof Error ? err.name : "unknown" });
   }
 }

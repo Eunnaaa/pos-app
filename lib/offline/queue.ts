@@ -93,7 +93,9 @@ async function updateMutation(mutation: OfflineMutation): Promise<void> {
 
 export type SyncResult = { synced: number; pending: number; failed: number }
 
-export async function syncOfflineMutations(): Promise<SyncResult> {
+let syncInFlight: Promise<SyncResult> | null = null
+
+async function runOfflineSync(): Promise<SyncResult> {
   const all = await listOfflineMutations()
   const queued = all.filter((mutation) => !mutation.failedPermanently)
   const deadLettered = all.length - queued.length
@@ -138,4 +140,16 @@ export async function syncOfflineMutations(): Promise<SyncResult> {
   }
 
   return { synced, pending: queued.length - synced - failed, failed: deadLettered + failed }
+}
+
+/** Coalesce all callers into one ordered replay. PwaRegister and PosScreen both
+ * listen for the online event, so without this guard one sale could be sent by
+ * both listeners at the same time. The server-side idempotency key remains the
+ * final duplicate protection for ambiguous network failures. */
+export function syncOfflineMutations(): Promise<SyncResult> {
+  if (syncInFlight) return syncInFlight
+  syncInFlight = runOfflineSync().finally(() => {
+    syncInFlight = null
+  })
+  return syncInFlight
 }

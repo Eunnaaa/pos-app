@@ -32,6 +32,9 @@ export async function uploadToSupabaseStorage(bucket: string, path: string, data
 }
 
 export async function getStorageSignedUrl(bucket: string, path: string, expiresInSeconds = 3600): Promise<{ signedUrl: string; expiresIn: number }> {
+  if (!/^[a-zA-Z0-9._-]+$/.test(bucket) || !path || path.split("/").some((part) => part === "" || part === "." || part === "..")) {
+    throw new AppError("VALIDATION_ERROR", "Invalid storage path");
+  }
   const env = getServerEnv();
   const config = requireProviderConfig("Supabase Storage", { url: env.SUPABASE_URL, serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY });
   const safePath = path.split("/").map(encodeURIComponent).join("/");

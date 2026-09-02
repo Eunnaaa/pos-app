@@ -1,7 +1,5 @@
 "use client";
 
-import { authClient } from "@/lib/auth-client";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 import {
   ACTIVE_BRANCH_KEY,
   ACTIVE_ORGANIZATION_KEY,
@@ -15,6 +13,7 @@ export type UserOrganization = {
   name: string;
   slug: string;
   role: string;
+  canAccessAllBranches: boolean;
   branches: {
     id: string;
     name: string;
@@ -30,13 +29,8 @@ export function setInitialOrganization(organization: UserOrganization) {
 }
 
 export async function resolveAuthenticatedDestination(): Promise<"/dashboard" | "/dashboard/admin" | "/onboarding"> {
-  // 1. Check if user is Super Admin
-  const session = await authClient.getSession();
-  if (isSuperAdminEmail(session?.data?.user?.email)) {
-    return "/dashboard/admin";
-  }
-
-  // 2. Otherwise resolve tenant organization
+  // Resolve the destination from a server-authorized response. Never infer
+  // platform privileges from an email address in browser code.
   const response = await fetch("/api/v1/me/organizations", { credentials: "include", cache: "no-store" });
   if (!response.ok) return "/onboarding";
   const payload = await response.json() as ApiEnvelope<UserOrganization[]> & { meta?: { isSuperAdmin?: boolean } };

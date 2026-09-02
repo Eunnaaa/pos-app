@@ -71,6 +71,16 @@ function methodToAccountCode(method: string): string {
   return method === "cash" ? "CASH" : "BANK";
 }
 
+export function isSaleLedgerBalanced(input: {
+  totalAmount: bigint;
+  changeAmount: bigint;
+  payments: ReadonlyArray<{ amount: bigint }>;
+}): boolean {
+  const debits = input.payments.reduce((sum, payment) => sum + payment.amount, 0n);
+  const credits = input.totalAmount + input.changeAmount;
+  return debits === credits;
+}
+
 export async function postSaleToLedger(database: LedgerDB, input: {
   organizationId: string;
   branchId: string;
@@ -81,6 +91,9 @@ export async function postSaleToLedger(database: LedgerDB, input: {
   payments: Array<{ method: string; amount: bigint }>;
   actorUserId: string | null;
 }): Promise<void> {
+  if (!isSaleLedgerBalanced(input)) {
+    throw new Error(`Unbalanced sale ledger input for order ${input.orderNumber}`);
+  }
   const accounts = await ensureDefaultAccounts(input.organizationId, database);
   const income = accounts["SALES-INCOME"];
   const cash = accounts["CASH"];

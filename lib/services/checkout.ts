@@ -63,6 +63,18 @@ export const checkoutSchema = z.object({
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
 
+export type CheckoutQuote = {
+  subtotalAmount: bigint;
+  itemDiscountAmount: bigint;
+  orderDiscountAmount: bigint;
+  promotionDiscountAmount: bigint;
+  discountAmount: bigint;
+  taxAmount: bigint;
+  exclusiveTaxAmount: bigint;
+  serviceChargeAmount: bigint;
+  totalAmount: bigint;
+};
+
 /**
  * Context yang dipakai checkout. Untuk anonymous self-order/kiosk,
  * actorUserId dan IP/UA datang dari self-order context (tanpa auth session).
@@ -83,6 +95,115 @@ export function checkoutContextFromApi(context: ApiContext): CheckoutContext {
     ...(context.userAgent ? { userAgent: context.userAgent } : {}),
     actorUserId: context.session.user.id,
   };
+}
+
+async function calculateCheckout(
+  database: Database,
+  input: CheckoutInput,
+  organizationId: string,
+) {
+  const variants = await database
+    .select({
+      id: productVariants.id,
+      productId: productVariants.productId,
+      sku: productVariants.sku,
+      name: productVariants.name,
+      costAmount: productVariants.costAmount,
+      priceAmount: productVariants.priceAmount,
+      productName: products.name,
+      trackStock: products.trackStock,
+      allowNegativeStock: products.allowNegativeStock,
+      taxRateId: products.taxRateId,
+    })
+    .from(productVariants)
+    .innerJoin(products, eq(products.id, productVariants.productId))
+    .where(and(
+      eq(productVariants.organizationId, organizationId),
+      eq(productVariants.isActive, true),
+      eq(products.isActive, true),
+      inArray(productVariants.id, input.items.map((item) => item.variantId)),
+    ));
+  const byId = new Map(variants.map((variant) => [variant.id, variant]));
+  if (byId.size !== new Set(input.items.map((item) => item.variantId)).size) {
+    throw new AppError("NOT_FOUND", "One or more variants are unavailable");
+  }
+
+  const taxRateIds = [...new Set(variants.map((variant) => variant.taxRateId).filter((id): id is string => Boolean(id)))];
+  const taxRateRows = taxRateIds.length
+    ? await database
+        .select({ id: taxRates.id, rate: taxRates.rate, isInclusive: taxRates.isInclusive })
+        .from(taxRates)
+        .where(and(eq(taxRates.organizationId, organizationId), inArray(taxRates.id, taxRateIds)))
+    : [];
+  const taxRateMap = new Map(taxRateRows.map((row) => [row.id, row]));
+
+  let subtotalAmount = 0n;
+  let costAmount = 0n;
+  let taxAmount = 0n;
+  let exclusiveTaxAmount = 0n;
+  let itemDiscountTotal = 0n;
+  const calculated = input.items.map((item) => {
+    const variant = byId.get(item.variantId)!;
+    const unitPriceAmount = variant.priceAmount;
+    const gross = unitPriceAmount * item.quantity;
+    if (item.discountAmount > gross) {
+      throw new AppError("VALIDATION_ERROR", "Item discount cannot exceed item gross amount");
+    }
+    const itemTotal = gross - item.discountAmount;
+    subtotalAmount += gross;
+    costAmount += variant.costAmount * item.quantity;
+    itemDiscountTotal += item.discountAmount;
+
+    let itemTaxAmount = 0n;
+    const taxRate = variant.taxRateId ? taxRateMap.get(variant.taxRateId) : undefined;
+    if (taxRate) {
+      const rateBps = parseRateToBps(taxRate.rate);
+      if (rateBps > 0n) {
+        if (taxRate.isInclusive) {
+          itemTaxAmount = inclusiveTax(itemTotal, rateBps);
+        } else {
+          itemTaxAmount = exclusiveTax(itemTotal, rateBps);
+          exclusiveTaxAmount += itemTaxAmount;
+        }
+        taxAmount += itemTaxAmount;
+      }
+    }
+    return { item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTaxAmount };
+  });
+
+  if (input.discountAmount > subtotalAmount) {
+    throw new AppError("VALIDATION_ERROR", "Order discount cannot exceed subtotal");
+  }
+
+  const taxableForPromo = subtotalAmount - itemDiscountTotal - input.discountAmount;
+  const { totalDiscount: promoDiscount, records: promoRecords } = await resolvePromotionDiscount(database, {
+    organizationId,
+    taxableAmount: taxableForPromo > 0n ? taxableForPromo : 0n,
+    promotionCode: input.promotionCode,
+    voucherCode: input.voucherCode,
+    customerId: input.customerId,
+  });
+  const totalDiscountAmount = input.discountAmount + promoDiscount;
+  const totalAmount = subtotalAmount - itemDiscountTotal - totalDiscountAmount + input.serviceChargeAmount + exclusiveTaxAmount;
+
+  const quote: CheckoutQuote = {
+    subtotalAmount,
+    itemDiscountAmount: itemDiscountTotal,
+    orderDiscountAmount: input.discountAmount,
+    promotionDiscountAmount: promoDiscount,
+    discountAmount: itemDiscountTotal + totalDiscountAmount,
+    taxAmount,
+    exclusiveTaxAmount,
+    serviceChargeAmount: input.serviceChargeAmount,
+    totalAmount,
+  };
+
+  return { calculated, costAmount, promoRecords, totalDiscountAmount, quote };
+}
+
+export async function quoteCheckout(input: CheckoutInput, context: CheckoutContext): Promise<CheckoutQuote> {
+  const { quote } = await calculateCheckout(db, input, context.organizationId);
+  return quote;
 }
 
 export async function checkout(input: CheckoutInput, context: CheckoutContext) {
@@ -118,84 +239,14 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       cashSession = session;
     }
 
-    const variants = await tx
-      .select({
-        id: productVariants.id,
-        productId: productVariants.productId,
-        sku: productVariants.sku,
-        name: productVariants.name,
-        costAmount: productVariants.costAmount,
-        priceAmount: productVariants.priceAmount,
-        productName: products.name,
-        trackStock: products.trackStock,
-        allowNegativeStock: products.allowNegativeStock,
-        taxRateId: products.taxRateId,
-      })
-      .from(productVariants)
-      .innerJoin(products, eq(products.id, productVariants.productId))
-      .where(and(
-        eq(productVariants.organizationId, context.organizationId),
-        eq(productVariants.isActive, true),
-        eq(products.isActive, true),
-        inArray(productVariants.id, input.items.map((item) => item.variantId)),
-      ));
-    const byId = new Map(variants.map((variant) => [variant.id, variant]));
-    if (byId.size !== new Set(input.items.map((item) => item.variantId)).size) throw new AppError("NOT_FOUND", "One or more variants are unavailable");
-
-    // Load tax rates referenced by the variants' products
-    const taxRateIds = [...new Set(variants.map((variant) => variant.taxRateId).filter((id): id is string => Boolean(id)))];
-    const taxRateRows = taxRateIds.length ? await tx.select({ id: taxRates.id, rate: taxRates.rate, isInclusive: taxRates.isInclusive }).from(taxRates).where(and(eq(taxRates.organizationId, context.organizationId), inArray(taxRates.id, taxRateIds))) : [];
-    const taxRateMap = new Map(taxRateRows.map((row) => [row.id, row]));
-
-    let subtotalAmount = 0n;
-    let costAmount = 0n;
-    let taxAmount = 0n; // total tax (inclusive + exclusive) for reporting
-    let exclusiveTaxAmount = 0n; // only exclusive tax, added on top of subtotal
-    let itemDiscountTotal = 0n;
-    const calculated = input.items.map((item) => {
-      const variant = byId.get(item.variantId)!;
-      const unitPriceAmount = variant.priceAmount;
-      const gross = unitPriceAmount * item.quantity;
-      if (item.discountAmount > gross) throw new AppError("VALIDATION_ERROR", "Item discount cannot exceed item gross amount");
-      const itemTotal = gross - item.discountAmount;
-      subtotalAmount += gross;
-      costAmount += variant.costAmount * item.quantity;
-      itemDiscountTotal += item.discountAmount;
-
-      // Compute tax on the discounted amount
-      let itemTaxAmount = 0n;
-      const taxRate = variant.taxRateId ? taxRateMap.get(variant.taxRateId) : undefined;
-      if (taxRate) {
-        const rateBps = parseRateToBps(taxRate.rate);
-        if (rateBps > 0n) {
-          if (taxRate.isInclusive) {
-            itemTaxAmount = inclusiveTax(itemTotal, rateBps);
-          } else {
-            itemTaxAmount = exclusiveTax(itemTotal, rateBps);
-            exclusiveTaxAmount += itemTaxAmount;
-          }
-          taxAmount += itemTaxAmount;
-        }
-      }
-      return { item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTaxAmount };
-    });
-
-    if (input.discountAmount > subtotalAmount) throw new AppError("VALIDATION_ERROR", "Order discount cannot exceed subtotal");
-
-    // Resolve promotion/voucher discounts on the taxable amount (subtotal - item discounts - order discount).
-    const taxableForPromo = subtotalAmount - itemDiscountTotal - input.discountAmount;
-    const { totalDiscount: promoDiscount, records: promoRecords } = await resolvePromotionDiscount(tx as unknown as Database, {
-      organizationId: context.organizationId,
-      taxableAmount: taxableForPromo > 0n ? taxableForPromo : 0n,
-      promotionCode: input.promotionCode,
-      voucherCode: input.voucherCode,
-      customerId: input.customerId,
-    });
-    const totalDiscountAmount = input.discountAmount + promoDiscount;
-
-    // Total = subtotal - item discounts - order/promo discount + service charge + exclusive tax.
-    // Inclusive tax is already embedded in the subtotal; exclusive tax is added on top.
-    const totalAmount = subtotalAmount - itemDiscountTotal - totalDiscountAmount + input.serviceChargeAmount + exclusiveTaxAmount;
+    const {
+      calculated,
+      costAmount,
+      promoRecords,
+      totalDiscountAmount,
+      quote,
+    } = await calculateCheckout(tx as unknown as Database, input, context.organizationId);
+    const { subtotalAmount, taxAmount, totalAmount } = quote;
     const paymentAmount = input.payments.reduce((sum, payment) => sum + payment.amount, 0n);
     const isDeferred = input.payments.some((payment) => payment.method === "pay_later");
     const hasCash = input.payments.some((payment) => payment.method === "cash");
@@ -276,24 +327,27 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
         });
       }
 
-      const ticketId = crypto.randomUUID();
-      const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
-      await tx.insert(kitchenTickets).values({
-        id: ticketId,
-        organizationId: context.organizationId,
-        branchId: input.branchId,
-        orderId,
-        number: ticketNumber,
-        status: "queued",
-        priority: 0,
-      });
-      await tx.insert(kitchenTicketItems).values(orderItems.map((orderItem) => ({
-        organizationId: context.organizationId,
-        ticketId,
-        orderItemId: orderItem.id,
-        status: "queued" as const,
-        notes: orderItem.notes,
-      })));
+      // Only create kitchen tickets for self-order and kiosk orders that are confirmed/paid
+      if (input.channel === "self_order" || input.channel === "kiosk") {
+        const ticketId = crypto.randomUUID();
+        const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
+        await tx.insert(kitchenTickets).values({
+          id: ticketId,
+          organizationId: context.organizationId,
+          branchId: input.branchId,
+          orderId,
+          number: ticketNumber,
+          status: "queued",
+          priority: 0,
+        });
+        await tx.insert(kitchenTicketItems).values(orderItems.map((orderItem) => ({
+          organizationId: context.organizationId,
+          ticketId,
+          orderItemId: orderItem.id,
+          status: "queued" as const,
+          notes: orderItem.notes,
+        })));
+      }
     }
 
     const payments = input.payments.length ? await tx.insert(salesPayments).values(input.payments.map((payment) => {

@@ -96,6 +96,10 @@ export function BranchesPage() {
   function handleBranchQrisUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!["image/png", "image/jpeg"].includes(file.type)) {
+      showError("Format foto QRIS harus PNG atau JPG")
+      return
+    }
     if (file.size > 2 * 1024 * 1024) {
       showError("Ukuran foto QRIS maksimal 2MB")
       return
@@ -125,8 +129,8 @@ export function BranchesPage() {
             qrisImageUrl: form.qrisImageUrl || null,
             qrisAccountName: form.qrisAccountName.trim() || null,
             qrisInstructions: form.qrisInstructions.trim() || null,
-            midtransServerKey: form.midtransServerKey.trim() || null,
-            midtransClientKey: form.midtransClientKey.trim() || null,
+            ...(form.midtransServerKey.trim() ? { midtransServerKey: form.midtransServerKey.trim() } : {}),
+            ...(form.midtransClientKey.trim() ? { midtransClientKey: form.midtransClientKey.trim() } : {}),
             paymentMode: form.paymentMode,
           }),
         })
@@ -506,7 +510,7 @@ export function BranchesPage() {
                           type="password"
                           value={form.midtransServerKey}
                           onChange={(e) => setForm({ ...form, midtransServerKey: e.target.value })}
-                          placeholder="SB-Mid-server-xxxx... atau Mid-server-xxxx..."
+                          placeholder={editingId ? "Kosongkan untuk mempertahankan key tersimpan" : "SB-Mid-server-xxxx... atau Mid-server-xxxx..."}
                           className="h-8 text-xs font-mono rounded-lg mt-0.5"
                         />
                       </div>
@@ -518,7 +522,7 @@ export function BranchesPage() {
                           id="branch-midtrans-client"
                           value={form.midtransClientKey}
                           onChange={(e) => setForm({ ...form, midtransClientKey: e.target.value })}
-                          placeholder="SB-Mid-client-xxxx..."
+                          placeholder={editingId ? "Kosongkan untuk mempertahankan key tersimpan" : "SB-Mid-client-xxxx..."}
                           className="h-8 text-xs font-mono rounded-lg mt-0.5"
                         />
                       </div>
@@ -551,7 +555,7 @@ export function BranchesPage() {
                         <span className="text-[9px] text-muted-foreground mt-0.5">PNG, JPG (Maks 2MB)</span>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/png,image/jpeg"
                           className="hidden"
                           onChange={handleBranchQrisUpload}
                         />

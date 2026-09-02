@@ -1,8 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
 import { useRouter } from "@/i18n/navigation"
 import { DashboardOverview } from "@/components/kasir/dashboard-overview"
 import { CashierDashboardOverview } from "@/components/kasir/cashier-dashboard-overview"
@@ -10,10 +8,8 @@ import { useOrganization } from "@/components/kasir/organization-provider"
 import { SuperAdminDashboard } from "@/components/admin/super-admin-dashboard"
 
 export function DashboardRoleView() {
-  const { data: session } = useSession()
   const router = useRouter()
-  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
-  const { organization, loading } = useOrganization()
+  const { organization, loading, isSuperAdmin } = useOrganization()
   const [impersonating, setImpersonating] = useState(false)
 
   useEffect(() => {

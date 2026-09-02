@@ -12,12 +12,11 @@ import {
   type ApiEnvelope,
   type UserOrganization,
 } from "@/lib/client"
-import { authClient, useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
-import { useRouter, usePathname } from "@/i18n/navigation"
+import { useRouter } from "@/i18n/navigation"
 import { showError } from "@/lib/toast-handler"
 
 type OrganizationContextValue = {
+  isSuperAdmin: boolean
   organizations: UserOrganization[]
   organization?: UserOrganization
   branch?: UserOrganization["branches"][number]
@@ -32,6 +31,7 @@ type OrganizationContextValue = {
 const OrganizationContext = createContext<OrganizationContextValue | null>(null)
 
 const defaultSuperAdminValue: OrganizationContextValue = {
+  isSuperAdmin: true,
   organizations: [],
   organization: undefined,
   branch: undefined,
@@ -52,10 +52,7 @@ export function OrganizationProvider({
 }) {
   const t = useTranslations("OrganizationProvider")
   const router = useRouter()
-  const pathname = usePathname()
-  const { data: session } = useSession()
-  const isExplicitAdminRoute = pathname.includes("/admin")
-  const checkSuperAdmin = isSuperAdmin || isSuperAdminEmail(session?.user?.email) || isExplicitAdminRoute
+  const checkSuperAdmin = isSuperAdmin
 
   const [organizations, setOrganizations] = useState<UserOrganization[]>([])
   const [organizationId, setOrganizationId] = useState<string>()
@@ -81,11 +78,6 @@ export function OrganizationProvider({
       }
 
       if (!payload.data.length) {
-        if (checkSuperAdmin || pathname.includes("/admin")) {
-          setNoOrganization(false)
-          setLoading(false)
-          return
-        }
         setNoOrganization(true)
         router.replace("/onboarding")
         setLoading(false)
@@ -138,7 +130,7 @@ export function OrganizationProvider({
   }
 
   function selectAllBranches() {
-    if (!organization) return
+    if (!organization?.canAccessAllBranches) return
     persistActiveContext({ organizationId: organization.id })
     setBranchId(undefined); setWarehouseId(undefined)
     window.dispatchEvent(new Event("kedai-ku-context-change"))
@@ -148,7 +140,7 @@ export function OrganizationProvider({
     return <OrganizationContext.Provider value={defaultSuperAdminValue}>{children}</OrganizationContext.Provider>
   }
 
-  const value = { organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }
+  const value = { isSuperAdmin: false, organizations, organization, branch, warehouse, loading, refresh, selectOrganization, selectBranch, selectAllBranches }
 
   if (loading || noOrganization) return <div className="flex min-h-screen items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>
   return <OrganizationContext.Provider value={value}>{children}</OrganizationContext.Provider>

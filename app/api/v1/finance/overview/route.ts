@@ -11,13 +11,20 @@ export const GET = apiHandler(async (request) => {
 
   const [sales, expenseRow, cashBalance, payments, movements] = await Promise.all([
     db.execute(sql`
-      select coalesce(sum(total_amount), 0)::text as total_sales,
-             coalesce(sum(total_amount - cost_amount), 0)::text as total_profit,
+      select coalesce(sum(so.total_amount - coalesce(rr.refund_amount, 0)), 0)::text as total_sales,
+             coalesce(sum(so.total_amount - coalesce(rr.refund_amount, 0) - so.cost_amount), 0)::text as total_profit,
              count(*)::int as total_orders
-      from sales_orders
-      where organization_id = ${orgId} ${branchFilter}
-        and status in ('paid','partially_refunded','refunded')
-        and occurred_at >= date_trunc('day', now())
+      from sales_orders so
+      left join (
+        select sr.order_id, sum(r.amount) as refund_amount
+        from refunds r
+        join sales_returns sr on sr.id = r.return_id
+        where r.status = 'processed'
+        group by sr.order_id
+      ) rr on rr.order_id = so.id
+      where so.organization_id = ${orgId} ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
+        and so.status in ('paid','partially_refunded','refunded')
+        and so.occurred_at >= date_trunc('day', now())
     `),
     db.execute(sql`
       select coalesce(sum(amount), 0)::text as total_expenses
@@ -32,14 +39,29 @@ export const GET = apiHandler(async (request) => {
       where organization_id = ${orgId} and type in ('cash','bank') and is_active = true
     `),
     db.execute(sql`
-      select sp.method, coalesce(sum(sp.amount), 0)::text as amount, count(*)::int as count
-      from sales_payments sp
-      join sales_orders so on so.id = sp.order_id
-      where so.organization_id = ${orgId} ${branchFilter}
-        and sp.status = 'settled'
-        and so.status in ('paid','partially_refunded','refunded')
-        and so.occurred_at >= date_trunc('day', now())
-      group by sp.method order by sum(sp.amount) desc limit 5
+      with payment_flows as (
+        select sp.method, sp.amount as amount, 1::int as payment_count
+        from sales_payments sp
+        join sales_orders so on so.id = sp.order_id
+        where so.organization_id = ${orgId}
+          ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
+          and sp.status = 'settled'
+          and so.status in ('paid','partially_refunded','refunded')
+          and so.occurred_at >= date_trunc('day', now())
+        union all
+        select coalesce(sp.method, 'refund') as method, -r.amount as amount, 0::int as payment_count
+        from refunds r
+        join sales_returns sr on sr.id = r.return_id
+        join sales_orders so on so.id = sr.order_id
+        left join sales_payments sp on sp.id = r.payment_id
+        where r.organization_id = ${orgId}
+          ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
+          and r.status = 'processed'
+          and so.occurred_at >= date_trunc('day', now())
+      )
+      select method, coalesce(sum(amount), 0)::text as amount, sum(payment_count)::int as count
+      from payment_flows
+      group by method order by sum(amount) desc limit 5
     `),
     db.execute(sql`
       select coalesce(sum(case when direction = 'in' then amount else 0 end), 0)::text as cash_in,
@@ -56,12 +78,13 @@ export const GET = apiHandler(async (request) => {
   const m = movements.rows[0] as Record<string, unknown> | undefined;
   const totalSales = BigInt((s?.total_sales as string) || "0");
   const totalExpenses = BigInt((e?.total_expenses as string) || "0");
-  const netProfit = totalSales - totalExpenses;
+  const grossProfit = BigInt((s?.total_profit as string) || "0");
+  const netProfit = grossProfit - totalExpenses;
 
   return dataResponse({
     today: {
       totalSales: rupiah(totalSales),
-      totalProfit: rupiah(BigInt((s?.total_profit as string) || "0")),
+      totalProfit: rupiah(grossProfit),
       totalExpenses: rupiah(totalExpenses),
       netProfit: rupiah(netProfit),
       totalOrders: (s?.total_orders as number) || 0,

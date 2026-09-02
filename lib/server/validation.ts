@@ -1,16 +1,26 @@
 import { z, type ZodType } from "zod";
 import { AppError } from "./errors";
 
-export async function parseJson<T>(request: Request, schema: ZodType<T>): Promise<T> {
+export async function parseJson<T>(request: Request, schema: ZodType<T>, maxBytes = 3 * 1024 * 1024): Promise<T> {
   const contentType = request.headers.get("content-type")?.split(";", 1)[0];
   if (contentType !== "application/json") {
     throw new AppError("BAD_REQUEST", "Content-Type must be application/json");
   }
 
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+    throw new AppError("BAD_REQUEST", "Request body is too large");
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
-  } catch {
+    const rawBody = await request.text();
+    if (new TextEncoder().encode(rawBody).byteLength > maxBytes) {
+      throw new AppError("BAD_REQUEST", "Request body is too large");
+    }
+    body = JSON.parse(rawBody);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
     throw new AppError("BAD_REQUEST", "Request body must be valid JSON");
   }
   return schema.parse(body);

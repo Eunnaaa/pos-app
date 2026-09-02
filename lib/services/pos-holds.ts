@@ -130,6 +130,7 @@ export async function resumeHeldOrder(
   organizationId: string,
   heldOrderId: string,
   userId: string,
+  branchId?: string,
 ): Promise<HeldOrder> {
   const [held] = await db
     .select()
@@ -140,6 +141,7 @@ export async function resumeHeldOrder(
         eq(heldOrders.organizationId, organizationId),
         eq(heldOrders.createdBy, userId),
         eq(heldOrders.status, "held"),
+        ...(branchId ? [eq(heldOrders.branchId, branchId)] : []),
       ),
     )
     .limit(1);
@@ -181,6 +183,7 @@ export async function discardHeldOrder(
   organizationId: string,
   heldOrderId: string,
   userId: string,
+  branchId?: string,
 ): Promise<void> {
   const [held] = await db
     .select()
@@ -190,6 +193,7 @@ export async function discardHeldOrder(
         eq(heldOrders.id, heldOrderId),
         eq(heldOrders.organizationId, organizationId),
         eq(heldOrders.createdBy, userId),
+        ...(branchId ? [eq(heldOrders.branchId, branchId)] : []),
       ),
     )
     .limit(1);

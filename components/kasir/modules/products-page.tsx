@@ -179,7 +179,7 @@ export function ProductsPage() {
           isActive: form.active,
           categoryId,
           imageUrl,
-        })
+        }, { queueOffline: false })
 
         if (form.hasVariants && form.variantsList.length > 0) {
           for (let i = 0; i < form.variantsList.length; i++) {
@@ -192,7 +192,7 @@ export function ProductsPage() {
                 costAmount: v.cost || form.cost,
                 priceAmount: v.price || form.price,
                 isActive: form.active,
-              })
+              }, { queueOffline: false })
             } else {
               await variants.create({
                 productId: editing.product.id,
@@ -203,7 +203,7 @@ export function ProductsPage() {
                 priceAmount: v.price || form.price,
                 isDefault: i === 0,
                 isActive: form.active,
-              })
+              }, { queueOffline: false })
             }
           }
         } else {
@@ -215,7 +215,7 @@ export function ProductsPage() {
               costAmount: form.cost,
               priceAmount: form.price,
               isActive: form.active,
-            })
+            }, { queueOffline: false })
           } else {
             await variants.create({
               productId: editing.product.id,
@@ -226,7 +226,7 @@ export function ProductsPage() {
               priceAmount: form.price,
               isDefault: true,
               isActive: form.active,
-            })
+            }, { queueOffline: false })
           }
         }
         showSuccess("Produk diperbarui")
@@ -240,7 +240,7 @@ export function ProductsPage() {
           isActive: form.active,
           categoryId,
           imageUrl,
-        })
+        }, { queueOffline: false })
         if (productResponse.queued || !productResponse.data?.id)
           throw new Error("Pembuatan produk perlu koneksi internet")
 
@@ -258,7 +258,7 @@ export function ProductsPage() {
               priceAmount: v.price || form.price,
               isDefault: i === 0,
               isActive: form.active,
-            })
+            }, { queueOffline: false })
 
             if (Number(v.stock) > 0 && variantResponse.data?.id && warehouse?.id) {
               await apiFetch("/api/v1/inventory/adjustments", {
@@ -284,7 +284,7 @@ export function ProductsPage() {
             priceAmount: form.price,
             isDefault: true,
             isActive: form.active,
-          })
+          }, { queueOffline: false })
           if (Number(form.stock) > 0 && variantResponse.data?.id && warehouse?.id) {
             await apiFetch("/api/v1/inventory/adjustments", {
               method: "POST",
@@ -313,7 +313,7 @@ export function ProductsPage() {
   async function remove(product: Product) {
     if (!confirm(`Hapus ${product.name}?`)) return
     try {
-      await products.remove(product.id)
+      await products.remove(product.id, { queueOffline: false })
       showSuccess("Produk dihapus")
     } catch (caught) {
       showError(caught instanceof Error ? caught.message : "Gagal menghapus produk")
@@ -385,6 +385,13 @@ export function ProductsPage() {
           )}
         </div>
       </div>
+
+      {(products.error || variants.error || categories.error) && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive" role="alert">
+          Data produk belum dapat diperbarui. {products.error || variants.error || categories.error}
+          <Button variant="link" className="ml-2 h-auto p-0 text-destructive" onClick={() => void Promise.all([products.refresh(0), variants.refresh(0), categories.refresh(0)])}>Coba lagi</Button>
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card>
@@ -520,13 +527,14 @@ export function ProductsPage() {
                         <div className="flex justify-end gap-1">
                           {isOwner && (
                             <>
-                              <Button variant="ghost" size="icon" onClick={() => showEdit(product, allVariants)}>
+                              <Button variant="ghost" size="icon" className="size-11" aria-label={`Edit ${product.name}`} onClick={() => showEdit(product, allVariants)}>
                                 <Pencil className="size-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="text-destructive"
+                                className="size-11 text-destructive"
+                                aria-label={`Hapus ${product.name}`}
                                 onClick={() => void remove(product)}
                               >
                                 <Trash2 className="size-4" />

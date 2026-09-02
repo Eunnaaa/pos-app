@@ -11,6 +11,10 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>
 }
 
+interface ServiceWorkerRegistrationWithSync extends ServiceWorkerRegistration {
+  sync?: { register: (tag: string) => Promise<void> }
+}
+
 export function PwaRegister() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [dismissed, setDismissed] = useState(false)
@@ -49,6 +53,7 @@ export function PwaRegister() {
 
     navigator.serviceWorker.register("/sw.js").then((registration) => {
       if (navigator.onLine) void sync()
+      else void (registration as ServiceWorkerRegistrationWithSync).sync?.register("kedai-ku-sync").catch(() => undefined)
       return registration.update()
     }).catch(() => undefined)
 

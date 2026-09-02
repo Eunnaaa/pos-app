@@ -69,6 +69,7 @@ export const account = pgTable(
     refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
     scope: text("scope"),
     password: text("password"),
+    issuer: text("issuer"),
     ...timestamps(),
   },
   (table) => [

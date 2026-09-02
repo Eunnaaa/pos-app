@@ -2,7 +2,7 @@ import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 
 import { auth } from "@/lib/auth"
-import { isSuperAdminEmail } from "@/lib/super-admin"
+import { isSuperAdminUser } from "@/lib/super-admin"
 
 import {
   SidebarInset,
@@ -26,7 +26,7 @@ export default async function DashboardLayout({
   const session = await auth.api.getSession({ headers: requestHeaders })
   if (!session) redirect("/sign-in")
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
-  const isSuperAdmin = isSuperAdminEmail(session.user.email)
+  const isSuperAdmin = isSuperAdminUser(session.user)
 
   return (
     <SidebarProvider

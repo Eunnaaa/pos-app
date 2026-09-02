@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { useTranslations } from "next-intl"
 import { Building2, Loader2, Store } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -10,23 +10,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LanguageToggle } from "@/components/language-toggle"
 import { persistActiveContext } from "@/lib/client"
-import { useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
 import { useRouter } from "@/i18n/navigation"
 import { showSuccess } from "@/lib/toast-handler"
 
 export default function OnboardingPage() {
   const t = useTranslations("Onboarding")
   const router = useRouter()
-  const { data: session } = useSession()
-  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
-
-  useEffect(() => {
-    if (isSuperAdmin) {
-      router.replace("/dashboard/admin")
-    }
-  }, [isSuperAdmin, router])
-
   const [form, setForm] = useState({ businessName: "", slug: "", branchName: t("branchPlaceholder") })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")

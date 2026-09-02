@@ -14,7 +14,10 @@ export function createRequestContext(request: Request): RequestContext {
   const organizationId = z.string().uuid().parse(getRequiredHeader(request, "x-organization-id", 36));
   const branchHeader = request.headers.get("x-branch-id")?.trim();
   const branchId = branchHeader ? z.string().uuid().parse(branchHeader) : undefined;
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
+  const trustProxy = process.env.TRUST_PROXY === "true" || process.env.VERCEL === "1";
+  const forwardedFor = trustProxy
+    ? request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim()
+    : undefined;
   return {
     requestId,
     organizationId,

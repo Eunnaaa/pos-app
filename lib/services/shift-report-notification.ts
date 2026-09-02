@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { organizationSettings } from "@/db/schema";
 import { sendWhatsApp } from "@/lib/integrations";
+import { logger } from "@/lib/server/logger";
 
 import { buildShiftReportMessage, type ShiftReportData as SessionRow } from "./shift-report-message";
 export { buildShiftReportMessage, type ShiftReportData } from "./shift-report-message";
@@ -39,19 +40,18 @@ export async function sendShiftReportWhatsApp(sessionId: string): Promise<boolea
   const row = await buildShiftReport(sessionId);
   if (!row) return false;
 
-  let phone = row.branchPhone?.trim() || row.orgPhone?.trim();
+  // The profile contact is maintained by the owner and is the intended shift
+  // report recipient. Store/branch phones are operational fallbacks only.
+  const [setting] = await db
+    .select({ value: organizationSettings.value })
+    .from(organizationSettings)
+    .where(and(eq(organizationSettings.organizationId, row.organizationId), eq(organizationSettings.namespace, PROFILE_NAMESPACE)))
+    .limit(1);
+  const profilePhone = (setting?.value as { phone?: string } | undefined)?.phone?.trim();
+  const phone = profilePhone || row.orgPhone?.trim() || row.branchPhone?.trim();
 
   if (!phone) {
-    const [setting] = await db
-      .select({ value: organizationSettings.value })
-      .from(organizationSettings)
-      .where(and(eq(organizationSettings.organizationId, row.organizationId), eq(organizationSettings.namespace, PROFILE_NAMESPACE)))
-      .limit(1);
-    phone = (setting?.value as { phone?: string } | undefined)?.phone?.trim();
-  }
-
-  if (!phone) {
-    console.warn(`[ShiftReportWhatsApp] Nomor telepon toko tidak ditemukan untuk organization ${row.organizationId}`);
+    logger.warn("shift report recipient is not configured", { organizationId: row.organizationId });
     return false;
   }
 
@@ -59,7 +59,7 @@ export async function sendShiftReportWhatsApp(sessionId: string): Promise<boolea
     await sendWhatsApp(phone, buildShiftReportMessage(row));
     return true;
   } catch (error) {
-    console.error(`[ShiftReportWhatsApp] Gagal mengirim WhatsApp ke ${phone}:`, error);
+    logger.error("shift report WhatsApp failed", { organizationId: row.organizationId, sessionId }, error);
     return false;
   }
 }

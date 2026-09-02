@@ -8,7 +8,7 @@ export const ACTIVE_WAREHOUSE_KEY = "kedai-ku-warehouse-id";
 
 export type ApiEnvelope<T> = { data: T; meta?: Record<string, unknown>; queued?: boolean };
 
-type ApiOptions = RequestInit & { queueOffline?: boolean; organizationId?: string; branchId?: string };
+type ApiOptions = RequestInit & { queueOffline?: boolean; organizationId?: string; branchId?: string | null };
 
 export class ClientApiError extends Error {
   readonly status: number;
@@ -45,7 +45,8 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
   const method = (options.method || "GET").toUpperCase();
   const active = getActiveContext();
   const organizationId = options.organizationId ?? active.organizationId;
-  const branchId = options.branchId ?? active.branchId;
+  // `null` explicitly means organization-wide. `undefined` keeps the active branch.
+  const branchId = options.branchId === null ? undefined : (options.branchId ?? active.branchId);
   const headers = new Headers(options.headers);
   if (organizationId) headers.set("x-organization-id", organizationId);
   if (branchId) headers.set("x-branch-id", branchId);

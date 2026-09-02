@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
+import { Redis } from "@upstash/redis";
 import { routing } from "./i18n/routing";
+import { RATE_LIMIT_WINDOW_MS, resolveRateLimitPolicy } from "./lib/rate-limit-policy";
 
 /**
  * Edge-level rate limiting for domain API routes.
@@ -8,36 +10,53 @@ import { routing } from "./i18n/routing";
  * Better Auth already rate-limits /api/auth/* endpoints. This middleware adds
  * a first line of defense for /api/v1/* routes to prevent abuse and DoS.
  *
- * Note: This uses an in-memory Map, so limits are per-edge-instance (not distributed).
- * For production at scale, replace with Redis or an external rate limit service.
- * The window is generous to avoid blocking legitimate POS traffic.
+ * Upstash Redis provides a distributed counter when configured. The bounded
+ * in-memory map is a development/fail-safe fallback.
  */
 
 type Bucket = { count: number; resetAt: number };
 
-const WINDOW_MS = 60_000; // 1 minute
-const READ_LIMIT = 120; // GET requests per window
-const WRITE_LIMIT = 40; // POST/PATCH/DELETE/PUT requests per window
-const READ_LIMIT_SELF = 300; // Self-order GET (menu, tracking) lebih longgar
-const WRITE_LIMIT_SELF = 60; // Self-order POST (create order, charge) moderat
 const MAX_BUCKETS = 10_000; // prevent memory exhaustion
 
 const buckets = new Map<string, Bucket>();
+let redis: Redis | null | undefined;
+
+const incrementWithTtlScript = `
+local current = redis.call("INCR", KEYS[1])
+if current == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end
+local ttl = redis.call("TTL", KEYS[1])
+return {current, ttl}
+`;
 
 // Periodically purge expired buckets to prevent memory growth
 let lastPurge = Date.now();
 
 function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) return realIp.trim();
+  const trustProxy = process.env.TRUST_PROXY === "true" || process.env.VERCEL === "1";
+  if (trustProxy) {
+    const forwarded = request.headers.get("x-forwarded-for");
+    if (forwarded) return forwarded.split(",")[0]!.trim().slice(0, 64);
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) return realIp.trim().slice(0, 64);
+  }
   return "unknown";
 }
 
-function getRateLimit(ip: string, isWrite: boolean, isSelfOrder: boolean): { allowed: boolean; remaining: number; resetAt: number } {
+function getRedis(): Redis | null {
+  if (redis !== undefined) return redis;
+  const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  try {
+    if (url) new URL(url);
+    redis = url && token ? new Redis({ url, token }) : null;
+  } catch {
+    redis = null;
+  }
+  return redis;
+}
+
+function getLocalRateLimit(key: string, limit: number): { allowed: boolean; remaining: number; resetAt: number } {
   const now = Date.now();
-  const limit = isSelfOrder ? (isWrite ? WRITE_LIMIT_SELF : READ_LIMIT_SELF) : (isWrite ? WRITE_LIMIT : READ_LIMIT);
 
   // Purge expired buckets every 5 minutes
   if (now - lastPurge > 300_000) {
@@ -56,11 +75,10 @@ function getRateLimit(ip: string, isWrite: boolean, isSelfOrder: boolean): { all
     }
   }
 
-  const key = `${ip}:${isWrite ? "w" : "r"}${isSelfOrder ? "-self" : ""}`;
   let bucket = buckets.get(key);
 
   if (!bucket || bucket.resetAt < now) {
-    bucket = { count: 0, resetAt: now + WINDOW_MS };
+    bucket = { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS };
     buckets.set(key, bucket);
   }
 
@@ -71,7 +89,26 @@ function getRateLimit(ip: string, isWrite: boolean, isSelfOrder: boolean): { all
   return { allowed, remaining, resetAt: bucket.resetAt };
 }
 
-function handleRateLimit(request: NextRequest): NextResponse {
+async function getRateLimit(key: string, limit: number): Promise<{ allowed: boolean; remaining: number; resetAt: number }> {
+  const client = getRedis();
+  if (!client) return getLocalRateLimit(key, limit);
+  try {
+    const redisKey = `ratelimit:v1:${key}`;
+    const result = await client.eval(
+      incrementWithTtlScript,
+      [redisKey],
+      [Math.ceil(RATE_LIMIT_WINDOW_MS / 1_000)],
+    ) as [number, number];
+    const count = Number(result[0]);
+    const ttl = Number(result[1]);
+    const resetAt = Date.now() + Math.max(1, ttl) * 1_000;
+    return { allowed: count <= limit, remaining: Math.max(0, limit - count), resetAt };
+  } catch {
+    return getLocalRateLimit(key, limit);
+  }
+}
+
+async function handleRateLimit(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
   // Health check is exempt
@@ -79,18 +116,12 @@ function handleRateLimit(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
 
-  // Webhook endpoints use signature-based auth, exempt from IP rate limiting
-  if (pathname.startsWith("/api/v1/webhooks/") || pathname === "/api/v1/integrations/payments/webhook") {
-    return NextResponse.next();
-  }
-
   const ip = getClientIp(request);
-  const isWrite = !["GET", "HEAD", "OPTIONS"].includes(request.method);
-  const isSelfOrder = pathname.startsWith("/api/v1/self-order/");
-  const { allowed, remaining, resetAt } = getRateLimit(ip, isWrite, isSelfOrder);
+  const policy = resolveRateLimitPolicy(pathname, request.method);
+  const { allowed, remaining, resetAt } = await getRateLimit(`${ip}:${policy.bucket}`, policy.limit);
 
   const headers = new Headers({
-    "x-ratelimit-limit": String(isSelfOrder ? (isWrite ? WRITE_LIMIT_SELF : READ_LIMIT_SELF) : (isWrite ? WRITE_LIMIT : READ_LIMIT)),
+    "x-ratelimit-limit": String(policy.limit),
     "x-ratelimit-remaining": String(remaining),
     "x-ratelimit-reset": String(Math.ceil(resetAt / 1000)),
   });
@@ -99,12 +130,12 @@ function handleRateLimit(request: NextRequest): NextResponse {
     const retryAfter = Math.ceil((resetAt - Date.now()) / 1000);
     return NextResponse.json(
       { error: { code: "RATE_LIMITED", message: "Terlalu banyak permintaan. Coba lagi sebentar." }, requestId: crypto.randomUUID() },
-      { status: 429, headers: { ...headers, "retry-after": String(retryAfter) } },
+      { status: 429, headers: new Headers([...headers.entries(), ["retry-after", String(retryAfter)]]) },
     );
   }
 
   const response = NextResponse.next();
-  for (const [key, value] of Object.entries(headers)) {
+  for (const [key, value] of headers.entries()) {
     response.headers.set(key, value);
   }
   return response;
@@ -112,7 +143,7 @@ function handleRateLimit(request: NextRequest): NextResponse {
 
 const intlMiddleware = createMiddleware(routing);
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Only rate-limit domain API routes; Better Auth handles /api/auth/*

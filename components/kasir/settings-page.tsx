@@ -9,8 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useOrganization } from "@/components/kasir/organization-provider"
-import { useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
 import { AccountTab } from "./settings/account-tab"
 import { BusinessTab } from "./settings/business-tab"
 import { BranchesTab } from "./settings/branches-tab"
@@ -22,8 +20,7 @@ export function SettingsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const tabParam = searchParams.get("tab")
-  const { data: session } = useSession()
-  const { organization } = useOrganization()
+  const { organization, isSuperAdmin } = useOrganization()
   const [activeTab, setActiveTab] = useState(() => {
     if (tabParam && ["account", "business", "branches", "businesses", "notifications"].includes(tabParam)) {
       return tabParam
@@ -42,10 +39,10 @@ export function SettingsPage() {
   }, [tabParam, router])
 
   useEffect(() => {
-    if (!organization && isSuperAdminEmail(session?.user?.email)) {
+    if (!organization && isSuperAdmin) {
       router.replace("/dashboard/admin?tab=settings")
     }
-  }, [organization, session, router])
+  }, [organization, isSuperAdmin, router])
 
   if (!organization) return null
 

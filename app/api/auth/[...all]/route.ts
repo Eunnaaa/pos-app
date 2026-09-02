@@ -1,20 +1,16 @@
+import { getServerEnv, getTrustedOrigins } from "@/config/env";
 import { getAuth } from "@/lib/auth";
+import { resolveAuthOrigin } from "@/lib/server/auth-origin";
+
+const env = getServerEnv();
 
 function resolveOrigin(req: Request): string {
-  const forwardedProto = req.headers.get("x-forwarded-proto") || (req.url.startsWith("https:") ? "https" : "http");
-  const forwardedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
-  if (forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-  const origin = req.headers.get("origin");
-  if (origin) return origin;
-  const referer = req.headers.get("referer");
-  if (referer) {
-    try {
-      return new URL(referer).origin;
-    } catch {}
-  }
-  return "http://localhost:3000";
+  return resolveAuthOrigin(req, {
+    baseUrl: env.BETTER_AUTH_URL,
+    trustedOrigins: getTrustedOrigins(env),
+    trustProxy: env.TRUST_PROXY === "true" || process.env.VERCEL === "1",
+    isProduction: env.NODE_ENV === "production",
+  });
 }
 
 export const POST = async (req: Request) => {

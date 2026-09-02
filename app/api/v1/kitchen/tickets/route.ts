@@ -46,7 +46,8 @@ export const GET = apiHandler(async (request) => {
     left join sales_order_items soi on soi.id = kti.order_item_id
     where kt.organization_id = ${context.organizationId} ${branchFilter}
       and kt.status in ('queued', 'cooking', 'ready')
-      and so.status not in ('pending', 'held', 'draft', 'cancelled')
+      and so.status = 'paid'
+      and so.channel in ('self_order', 'kiosk')
     group by kt.id, so.order_number, so.channel, so.notes, so.total_amount, so.status, c.name, dt.name, dt.area
     order by
       case kt.status when 'queued' then 0 when 'cooking' then 1 when 'ready' then 2 end,

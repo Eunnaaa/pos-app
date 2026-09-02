@@ -13,12 +13,13 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["business", "finance", "productivity"],
     icons: [
-      { src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
-      { src: "/kedai-ku-icon-maskable.svg", sizes: "any", type: "image/svg+xml", purpose: "maskable" },
+      { src: "/kedai-ku-icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/kedai-ku-icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/kedai-ku-icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Buka Kasir", short_name: "Kasir", url: "/dashboard/pos", icons: [{ src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
-      { name: "Inventory", short_name: "Stok", url: "/dashboard/inventory", icons: [{ src: "/kedai-ku-icon.svg", sizes: "any", type: "image/svg+xml" }] },
+      { name: "Buka Kasir", short_name: "Kasir", url: "/dashboard/pos", icons: [{ src: "/kedai-ku-icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Inventory", short_name: "Stok", url: "/dashboard/inventory", icons: [{ src: "/kedai-ku-icon-192.png", sizes: "192x192", type: "image/png" }] },
     ],
   };
 }

@@ -167,7 +167,7 @@ export async function assertCanCreateBranch(organizationId: string): Promise<voi
   if (usage.branches >= plan.limits.maxBranches) {
     throw new AppError(
       "PAYMENT_REQUIRED",
-      `Batas cabang untuk paket ${plan.name} (${plan.limits.maxBranches} cabang) telah tercapai. Upgrade ke paket Business untuk mengelola hingga 5 cabang.`,
+      `Batas cabang untuk paket ${plan.name} (${plan.limits.maxBranches} cabang) telah tercapai. Upgrade ke paket Business untuk mengelola hingga 20 cabang.`,
     );
   }
 }

@@ -45,13 +45,17 @@ export function InventoryPage() {
     event.preventDefault(); setSaving(true)
     try {
       if (!warehouse?.id) throw new Error("Gudang belum dipilih")
-      await apiFetch("/api/v1/inventory/adjustments", { method: "POST", queueOffline: true, body: JSON.stringify({ branchId: branch?.id, warehouseId: warehouse.id, variantId: form.variantId, quantity: form.quantity, reason: form.reason }) })
+      await apiFetch("/api/v1/inventory/adjustments", { method: "POST", queueOffline: false, body: JSON.stringify({ branchId: branch?.id, warehouseId: warehouse.id, variantId: form.variantId, quantity: form.quantity, reason: form.reason }) })
       showSuccess("Penyesuaian stok tersimpan"); setOpen(false); setForm({ variantId: "", quantity: "", reason: "" }); await Promise.all([balances.refresh(), movements.refresh()])
     } catch (caught) { showError(caught instanceof Error ? caught.message : "Gagal menyesuaikan stok") }
     finally { setSaving(false) }
   }
 
   const loading = balances.loading || variants.loading || products.loading
+  const resourceError = balances.error || variants.error || products.error || movements.error
+  if (!loading && resourceError && !balances.data.length && !variants.data.length) {
+    return <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold text-destructive" role="alert">Data inventory gagal dimuat</p><p className="max-w-lg text-sm text-muted-foreground">{resourceError}</p><Button variant="outline" onClick={() => void Promise.all([balances.refresh(0), variants.refresh(0), products.refresh(0), movements.refresh(0)])}>Coba lagi</Button></div>
+  }
   return <div className="flex flex-1 flex-col gap-5 p-4 md:p-6">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-2xl font-bold">Inventory & Stok</h2><p className="text-sm text-muted-foreground">Saldo dan movement aktual untuk {warehouse?.name || "gudang aktif"}.</p></div>{isOwner && <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setOpen(true)}><SlidersHorizontal /> Penyesuaian stok</Button>}</div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">SKU tercatat</p><p className="mt-2 text-2xl font-bold">{visibleBalances.length}</p></CardContent></Card><Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Total unit tersedia</p><p className="mt-2 text-2xl font-bold">{visibleBalances.reduce((sum, item) => sum + Number(item.available), 0)}</p></CardContent></Card><Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Stok menipis</p><p className="mt-2 text-2xl font-bold text-amber-600">{low.length}</p></CardContent></Card><Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Nilai stok (HPP)</p><p className="mt-2 text-2xl font-bold">Rp {Number(inventoryValue).toLocaleString("id-ID")}</p></CardContent></Card></div>

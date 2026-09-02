@@ -91,25 +91,35 @@ export async function confirmOrderPayment(tx: Tx, params: {
     });
   }
 
-  // 2. Create kitchen ticket
-  const ticketId = crypto.randomUUID();
-  const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
-  await tx.insert(kitchenTickets).values({
-    id: ticketId,
-    organizationId: order.organizationId,
-    branchId: order.branchId,
-    orderId: order.id,
-    number: ticketNumber,
-    status: "queued",
-    priority: 0,
-  });
-  await tx.insert(kitchenTicketItems).values(items.map((item) => ({
-    organizationId: order.organizationId,
-    ticketId,
-    orderItemId: item.id,
-    status: "queued" as const,
-    notes: item.notes,
-  })));
+  // 2. Create kitchen ticket ONLY for self-order or kiosk channels that are paid
+  if (order.channel === "self_order" || order.channel === "kiosk") {
+    const [existingTicket] = await tx
+      .select({ id: kitchenTickets.id })
+      .from(kitchenTickets)
+      .where(eq(kitchenTickets.orderId, order.id))
+      .limit(1);
+
+    if (!existingTicket) {
+      const ticketId = crypto.randomUUID();
+      const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
+      await tx.insert(kitchenTickets).values({
+        id: ticketId,
+        organizationId: order.organizationId,
+        branchId: order.branchId,
+        orderId: order.id,
+        number: ticketNumber,
+        status: "queued",
+        priority: 0,
+      });
+      await tx.insert(kitchenTicketItems).values(items.map((item) => ({
+        organizationId: order.organizationId,
+        ticketId,
+        orderItemId: item.id,
+        status: "queued" as const,
+        notes: item.notes,
+      })));
+    }
+  }
 
   // 3. Award loyalty points
   if (order.customerId) {

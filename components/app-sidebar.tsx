@@ -32,7 +32,6 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { NavUser } from "@/components/nav-user"
-import { isSuperAdminEmail } from "@/lib/super-admin"
 import {
   Sidebar,
   SidebarContent,
@@ -54,7 +53,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const searchParams = useSearchParams()
   const currentTab = searchParams.get("tab") || "overview"
   const { data: session } = useSession()
-  const { organization } = useOrganization()
+  const { organization, isSuperAdmin } = useOrganization()
   const isOwner = !organization || organization.role === "owner"
   const allowed = new Set(isOwner ? ["all"] : ["dashboard:read", "pos:write", "sales:read", "sales:write", "customers:read", "customers:write", "inventory:read", "selfOrder:manage"])
   const itemPermission: Record<string, string> = {
@@ -126,8 +125,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     },
   ]
-
-  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
 
   const superAdminGroups: { label: string; items: [string, string, LucideIcon][] }[] = [
     {

@@ -2,9 +2,9 @@
 
 export const dynamic = "force-dynamic"
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { useSearchParams } from "next/navigation"
-import { Eye, EyeOff, KeyRound, Loader2, LockKeyhole, ShieldCheck } from "lucide-react"
+import { Eye, EyeOff, Loader2, LockKeyhole } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,9 +12,17 @@ import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/kasir/auth-layout"
 import { authClient } from "@/lib/auth-client"
 import { useRouter } from "@/i18n/navigation"
-import { showError, showSuccess } from "@/lib/toast-handler"
+import { showSuccess } from "@/lib/toast-handler"
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-background" />}>
+      <ResetPasswordForm />
+    </Suspense>
+  )
+}
+
+function ResetPasswordForm() {
   const searchParams = useSearchParams()
   const token = searchParams.get("token") || ""
   const errorParam = searchParams.get("error")

@@ -5,12 +5,12 @@ import { apiHandler, dataResponse } from "@/lib/api";
 import { sendSubscriptionSuccessEmail } from "@/lib/integrations/notifications";
 import { AppError, requireSession } from "@/lib/server";
 import { upgradeSubscription } from "@/lib/services/subscription";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 import { PLANS, type PlanId } from "@/config/plans";
 
 export const POST = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Super Admin");
   }
 

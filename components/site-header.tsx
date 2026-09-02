@@ -22,9 +22,6 @@ import { useOrganization } from "@/components/kasir/organization-provider"
 import { LanguageToggle } from "@/components/language-toggle"
 import { showSuccess } from "@/lib/toast-handler"
 
-import { useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
-
 const titles: Record<string, string> = {
   dashboard: "Dashboard",
   admin: "Platform Master Admin",
@@ -55,9 +52,7 @@ import { ShieldAlert } from "lucide-react"
 export function SiteHeader() {
   const pathname = usePathname()
   const t = useTranslations("Header")
-  const { data: session } = useSession()
-  const isSuperAdmin = isSuperAdminEmail(session?.user?.email)
-  const { organization, branch, selectBranch, selectAllBranches } = useOrganization()
+  const { organization, branch, selectBranch, selectAllBranches, isSuperAdmin } = useOrganization()
   const [online, setOnline] = useState(true)
   const [impersonating, setImpersonating] = useState<string | null>(null)
 
@@ -121,20 +116,24 @@ export function SiteHeader() {
         {!isSuperAdmin && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="hidden min-w-40 justify-between md:flex">
-                <Building2 className="mr-1.5 size-4 text-muted-foreground" />
-                <span className="truncate">{branch?.name || t("allBranches")}</span>
+              <Button variant="outline" className="min-h-11 min-w-11 justify-between px-3 md:min-w-40" aria-label={`Cabang aktif: ${branch?.name || t("allBranches")}`}>
+                <Building2 className="size-4 text-muted-foreground md:mr-1.5" />
+                <span className="hidden truncate md:inline">{branch?.name || t("allBranches")}</span>
                 <ChevronsUpDown className="size-4 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>{organization?.name || t("selectBranch")}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => selectAllBranches()}>
-                <Building2 className="mr-2 size-4 text-muted-foreground" />
-                {t("allBranches")}{!branch ? " ✓" : ""}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              {organization?.canAccessAllBranches && (
+                <>
+                  <DropdownMenuItem onClick={() => selectAllBranches()}>
+                    <Building2 className="mr-2 size-4 text-muted-foreground" />
+                    {t("allBranches")}{!branch ? " ✓" : ""}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
               {organization?.branches.map((item) => (
                 <DropdownMenuItem key={item.id} onClick={() => { selectBranch(item.id); showSuccess("Cabang diganti") }}>
                   {item.name}{item.id === branch?.id ? " ✓" : ""}

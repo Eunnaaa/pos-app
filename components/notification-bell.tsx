@@ -7,8 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useResource } from "@/hooks/use-resource"
 import { useOrganization } from "@/components/kasir/organization-provider"
-import { useSession } from "@/lib/auth-client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
 
 type Notification = {
   id: string
@@ -30,10 +28,9 @@ const statusColor: Record<string, string> = {
 }
 
 export function NotificationBell() {
-  const { organization } = useOrganization()
-  const { data: session } = useSession()
+  const { organization, isSuperAdmin } = useOrganization()
 
-  if (!organization || isSuperAdminEmail(session?.user?.email)) {
+  if (!organization || isSuperAdmin) {
     return null
   }
 

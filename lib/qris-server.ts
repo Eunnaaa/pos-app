@@ -2,6 +2,15 @@ import "server-only";
 import jsQR from "jsqr";
 import jpeg from "jpeg-js";
 import { PNG } from "pngjs";
+import { AppError } from "@/lib/server/errors";
+import { validateImageBytes } from "@/lib/server/image-validation";
+
+export function assertSafeQrisDataUrl(dataUrl: string): void {
+  const match = /^data:(image\/(?:png|jpeg));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
+  if (!match) throw new AppError("VALIDATION_ERROR", "Gambar QRIS harus berupa PNG atau JPEG");
+  const bytes = Buffer.from(match[2], "base64");
+  validateImageBytes(bytes, match[1], ["image/png", "image/jpeg"]);
+}
 
 /**
  * Decode raw QR code payload string (EMVCo QRIS) from an image data URL (PNG/JPEG) or Buffer

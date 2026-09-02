@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/kasir/auth-layout"
 import { signUp, sendVerificationEmail } from "@/lib/auth-client"
 import { signIn } from "@/lib/auth-client"
-import { apiFetch, resolveAuthenticatedDestination } from "@/lib/client"
+import { resolveAuthenticatedDestination } from "@/lib/client"
 import { useRouter } from "@/i18n/navigation"
 import { showSuccess } from "@/lib/toast-handler"
 
@@ -33,8 +33,6 @@ export default function SignUpPage() {
     if (form.password !== form.confirm) return setError(t("confirmMismatch"))
     setLoading(true)
     try {
-      const check = await apiFetch<{ registered: boolean }>("/api/v1/auth/check-email", { method: "POST", body: JSON.stringify({ email: form.email }) })
-      if (check.data.registered) { setError(t("alreadyRegistered")); return }
       const result = await signUp.email({ name: form.name, email: form.email, password: form.password })
       if (result.error) { setError(result.error.message || t("registerFailed")); return }
 

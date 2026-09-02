@@ -56,7 +56,10 @@ export async function requireSelfOrderContext(request: Request): Promise<SelfOrd
     throw new AppError("CONFLICT", "Token self-order telah kedaluwarsa");
   }
 
-  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim();
+  const trustProxy = process.env.TRUST_PROXY === "true" || process.env.VERCEL === "1";
+  const forwardedFor = trustProxy
+    ? request.headers.get("x-forwarded-for")?.split(",", 1)[0]?.trim()
+    : undefined;
   return {
     requestId: request.headers.get("x-request-id")?.slice(0, 100) || crypto.randomUUID(),
     tokenId: row.id,

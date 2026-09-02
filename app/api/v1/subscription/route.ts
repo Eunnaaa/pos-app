@@ -1,15 +1,18 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import QRCode from "qrcode";
 import { PLANS } from "@/config/plans";
 import { db } from "@/db";
 import { platformSettings, subscriptionInvoices } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { createMidtransPayment, createMidtransQRISCharge } from "@/lib/integrations/payments";
+import {
+  createDokuPayment,
+  createMidtransPayment,
+} from "@/lib/integrations/payments";
 import { injectAmountToQris } from "@/lib/qris";
 import { decodeQrisFromDataUrl } from "@/lib/qris-server";
 import { getServerEnv } from "@/config/env";
-import { AppError, parseJson } from "@/lib/server";
+import { AppError, decryptSecret, parseJson } from "@/lib/server";
 import {
   getOrCreateSubscription,
   getOrganizationPlan,
@@ -19,7 +22,6 @@ import {
 const upgradeSchema = z.object({
   plan: z.enum(["free", "pro", "business"]),
   billingCycle: z.enum(["monthly", "yearly"]).default("monthly"),
-  directSimulate: z.boolean().optional(), // For instant testing if needed
 });
 
 export const GET = apiHandler(async (request) => {
@@ -55,8 +57,9 @@ export const POST = apiHandler(async (request) => {
 
   const input = await parseJson(request, upgradeSchema);
 
-  // If downgrading to free or direct simulation requested
-  if (input.plan === "free" || input.directSimulate) {
+  // Free-plan downgrade does not require a payment. Paid plans are only
+  // activated by a verified payment event or an explicit super-admin action.
+  if (input.plan === "free") {
     const updated = await upgradeSubscription(context.organizationId, {
       plan: input.plan,
       billingCycle: input.billingCycle,
@@ -115,14 +118,37 @@ export const POST = apiHandler(async (request) => {
     qrImageUrl: undefined,
     snapToken: undefined,
     snapRedirectUrl: undefined,
-    expiryTime: undefined,
+    expiryTime: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
     raw: null,
   };
 
   const env = getServerEnv();
-  const hasMidtrans = Boolean(env.MIDTRANS_SERVER_KEY || platformConfig.midtransServerKey);
+  const hasDoku = Boolean(env.DOKU_CLIENT_ID && env.DOKU_SECRET_KEY);
+  const midtransServerKey = decryptSecret(platformConfig.midtransServerKey || env.MIDTRANS_SERVER_KEY || "");
+  const hasMidtrans = Boolean(midtransServerKey);
+  let activeProvider = "manual_qris";
 
-  if (paymentMode === "midtrans_auto" || hasMidtrans || (!customQrisPayload && !customQris)) {
+  if (hasDoku) {
+    try {
+      const dokuRes = await createDokuPayment({
+        reference: invoiceNumber,
+        amount,
+        description: `Langganan ${planConfig.name} (${input.billingCycle === "yearly" ? "1 Tahun" : "1 Bulan"})`,
+        customerName: context.session.user.name || "Owner",
+        customerEmail: context.session.user.email || undefined,
+        successRedirectUrl: env.BETTER_AUTH_URL ? `${env.BETTER_AUTH_URL}/dashboard/subscription?invoice=${invoiceNumber}` : undefined,
+      });
+      if (dokuRes.paymentUrl) {
+        qrisResult.snapRedirectUrl = dokuRes.paymentUrl;
+        qrisResult.snapToken = dokuRes.token;
+        activeProvider = "doku";
+      }
+    } catch {
+      // Fallback to Midtrans or QRIS
+    }
+  }
+
+  if (!qrisResult.snapRedirectUrl && (paymentMode === "midtrans_auto" || hasMidtrans || (!customQrisPayload && !customQris))) {
     try {
       const snapResult = await createMidtransPayment({
         reference: invoiceNumber,
@@ -130,47 +156,21 @@ export const POST = apiHandler(async (request) => {
         description: `Langganan ${planConfig.name} (${input.billingCycle === "yearly" ? "1 Tahun" : "1 Bulan"})`,
         customerName: context.session.user.name || "Owner",
         customerEmail: context.session.user.email || undefined,
-        serverKey: String(platformConfig.midtransServerKey || env.MIDTRANS_SERVER_KEY || ""),
+        serverKey: midtransServerKey,
         successRedirectUrl: env.BETTER_AUTH_URL ? `${env.BETTER_AUTH_URL}/dashboard/subscription?invoice=${invoiceNumber}` : undefined,
       });
       qrisResult.snapToken = snapResult.token;
       qrisResult.snapRedirectUrl = snapResult.paymentUrl;
+      activeProvider = "midtrans";
     } catch {
       // Direct Snap optional fallback
     }
 
-    try {
-      const midtransRes = await createMidtransQRISCharge({
-        orderId: invoiceNumber,
-        amount,
-        description: `Langganan ${planConfig.name} (${input.billingCycle === "yearly" ? "1 Tahun" : "1 Bulan"})`,
-        customerName: context.session.user.name || "Owner",
-        customerEmail: context.session.user.email || undefined,
-        serverKey: String(platformConfig.midtransServerKey || env.MIDTRANS_SERVER_KEY || ""),
-      });
-      if (midtransRes.qrString) {
-        qrisResult.qrString = midtransRes.qrString;
-        qrisResult.qrImageUrl = midtransRes.qrImageUrl;
-      }
-      if (midtransRes.snapRedirectUrl && !qrisResult.snapRedirectUrl) {
-        qrisResult.snapRedirectUrl = midtransRes.snapRedirectUrl;
-      }
-      if (midtransRes.snapToken && !qrisResult.snapToken) {
-        qrisResult.snapToken = midtransRes.snapToken;
-      }
-    } catch {
-      // Fallback to manual QRIS generator
-    }
   }
 
   // Ensure we ALWAYS generate a Dynamic QRIS string with the exact amount embedded!
-  if (!qrisResult.qrString) {
-    let basePayload = customQrisPayload;
-    if (!basePayload || !basePayload.startsWith("000201")) {
-      const cleanName = accountName.slice(0, 25).toUpperCase();
-      const nameLen = cleanName.length.toString().padStart(2, "0");
-      basePayload = `00020101021126510011ID.DANA.WWW0118936009153123456789021012345678905204581253033605802ID59${nameLen}${cleanName}6007JAKARTA6105123406304`;
-    }
+  if (!qrisResult.qrString && customQrisPayload?.startsWith("000201")) {
+    const basePayload = customQrisPayload;
     // Inject exact amount into payload -> dynamic QR with nominal locked
     qrisResult.qrString = injectAmountToQris(basePayload, amount);
   }
@@ -199,7 +199,7 @@ export const POST = apiHandler(async (request) => {
       invoiceNumber,
       amount: String(amount),
       status: "pending",
-      paymentProvider: paymentMode === "midtrans_auto" || hasMidtrans ? "midtrans" : "manual_qris",
+      paymentProvider: activeProvider,
       dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       metadata: {
         plan: String(input.plan),

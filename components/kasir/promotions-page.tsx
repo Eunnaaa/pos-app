@@ -211,7 +211,7 @@ export function PromotionsPage() {
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Promosi &amp; Diskon</h2>
             <p className="text-sm text-muted-foreground">
-              Kelola diskon kasir, promo otomatis, voucher kupon, dan flash sale.
+              Kelola kode promo persentase/fixed dan voucher yang dapat dimasukkan saat checkout kasir.
             </p>
           </div>
         </div>

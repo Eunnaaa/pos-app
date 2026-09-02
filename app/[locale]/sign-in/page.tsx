@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic"
 
 import { useState } from "react"
 import { Link } from "@/i18n/navigation"
-import { Chrome, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, Mail, ShieldCheck } from "lucide-react"
+import { Chrome, Eye, EyeOff, KeyRound, Loader2, LockKeyhole, Mail } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -20,8 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AuthLayout } from "@/components/kasir/auth-layout"
 import { authClient, signIn } from "@/lib/auth-client"
-import { apiFetch, resolveAuthenticatedDestination } from "@/lib/client"
-import { isSuperAdminEmail } from "@/lib/super-admin"
+import { resolveAuthenticatedDestination } from "@/lib/client"
 import { useRouter } from "@/i18n/navigation"
 import { showError, showSuccess } from "@/lib/toast-handler"
 
@@ -43,8 +42,6 @@ export default function SignInPage() {
   // Forgot Password Modal State
   const [forgotModal, setForgotModal] = useState(false)
   const [forgotEmail, setForgotEmail] = useState("")
-  const [newPassword, setNewPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
   const [resettingPassword, setResettingPassword] = useState(false)
 
   async function social(provider: "google") {
@@ -76,15 +73,6 @@ export default function SignInPage() {
     setLoading(true)
     setError("")
     try {
-      const check = await apiFetch<{ registered: boolean }>("/api/v1/auth/check-email", {
-        method: "POST",
-        body: JSON.stringify({ email }),
-      })
-      if (!check.data.registered) {
-        setError(t("unregistered"))
-        return
-      }
-
       const result = await signIn.email({ email, password })
       if (result.error) {
         setError(result.error.message || t("wrongCredentials"))
@@ -92,11 +80,7 @@ export default function SignInPage() {
         setIs2FA(true)
       } else {
         showSuccess(t("welcomeBack"))
-        if (isSuperAdminEmail(email.trim())) {
-          router.replace("/dashboard/admin")
-        } else {
-          router.replace(await resolveAuthenticatedDestination())
-        }
+        router.replace(await resolveAuthenticatedDestination())
       }
     } catch {
       setError(t("connectionError"))
@@ -146,7 +130,7 @@ export default function SignInPage() {
     setResettingPassword(true)
     try {
       const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/reset-password` : "/reset-password"
-      const { error: err } = await authClient.forgetPassword({
+      const { error: err } = await authClient.requestPasswordReset({
         email: forgotEmail.trim(),
         redirectTo,
       })

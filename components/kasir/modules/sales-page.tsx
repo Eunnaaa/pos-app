@@ -64,6 +64,9 @@ export function SalesPage() {
   const [data, setData] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [summary, setSummary] = useState({ successfulOrders: 0, netAmount: "0", refundedOrders: 0 })
   const [detail, setDetail] = useState<SaleDetail>()
   const [returnOpen, setReturnOpen] = useState(false)
   const [returnReason, setReturnReason] = useState("")
@@ -85,7 +88,7 @@ export function SalesPage() {
     async (silent = false) => {
       if (!silent) setLoading(true)
       try {
-        let url = `/api/v1/sales?q=${encodeURIComponent(search)}&limit=100`
+        let url = `/api/v1/sales?q=${encodeURIComponent(search)}&limit=100&page=${page}`
         if (!isCashier) {
           if (selectedBranchId === "all") {
             url += `&allBranches=true`
@@ -100,6 +103,9 @@ export function SalesPage() {
 
         const res = await apiFetch<Sale[]>(url)
         setData(res.data)
+        setHasMore(res.meta?.hasMore === true)
+        const nextSummary = res.meta?.summary as typeof summary | undefined
+        setSummary(nextSummary || { successfulOrders: 0, netAmount: "0", refundedOrders: 0 })
       } catch (caught) {
         if (!silent) {
           showError(caught instanceof Error ? caught.message : "Gagal mengambil transaksi")
@@ -108,7 +114,7 @@ export function SalesPage() {
         if (!silent) setLoading(false)
       }
     },
-    [search, selectedBranchId, activeGlobalBranch?.id, isCashier]
+    [search, selectedBranchId, activeGlobalBranch?.id, isCashier, page]
   )
 
   useEffect(() => {
@@ -155,10 +161,11 @@ export function SalesPage() {
     if (!items.length) return showError("Masukkan minimal satu kuantitas return")
     setSaving(true)
     try {
+      const paymentId = detail.payments.find((payment) => payment.status === "settled")?.id
       await apiFetch("/api/v1/sales/returns", {
         method: "POST",
-        body: JSON.stringify({ orderId: detail.order.id, reason: returnReason, items }),
-        queueOffline: true,
+        body: JSON.stringify({ orderId: detail.order.id, paymentId, reason: returnReason, items }),
+        queueOffline: false,
       })
       showSuccess("Return dan refund diproses")
       setReturnOpen(false)
@@ -171,12 +178,9 @@ export function SalesPage() {
     }
   }
 
-  const isNonSuccessful = (status: string) =>
-    ["held", "pending", "draft", "cancelled"].includes((status || "").toLowerCase().trim())
-  const successfulSales = (data || []).filter((sale) => !isNonSuccessful(sale.status))
-  const totalSuccessCount = successfulSales.length
-  const totalSuccessAmount = successfulSales.reduce((sum, sale) => sum + Number(sale.total_amount || 0), 0)
-  const refundedCount = (data || []).filter((sale) => sale.status.toLowerCase().includes("refund")).length
+  const totalSuccessCount = summary.successfulOrders
+  const totalSuccessAmount = Number(summary.netAmount)
+  const refundedCount = summary.refundedOrders
 
   return (
     <div className="flex flex-1 flex-col gap-5 p-4 md:p-6">
@@ -260,7 +264,7 @@ export function SalesPage() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+                  <Select value={selectedBranchId} onValueChange={(value) => { setSelectedBranchId(value); setPage(1) }}>
                     <SelectTrigger className="w-full sm:w-[220px]">
                       <Store className="size-4 text-muted-foreground shrink-0" />
                       <SelectValue placeholder="Pilih Cabang" />
@@ -287,7 +291,7 @@ export function SalesPage() {
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => { setSearch(event.target.value); setPage(1) }}
                   placeholder="Cari invoice / pelanggan..."
                   className="pl-9 sm:w-64"
                 />
@@ -333,8 +337,8 @@ export function SalesPage() {
                   const isHeldOrPending = ["held", "pending", "draft"].includes(sale.status.toLowerCase())
                   const isPaid = sale.status.toLowerCase() === "paid"
                   return (
-                    <TableRow key={sale.id} className="cursor-pointer" onClick={() => void showDetail(sale.id)}>
-                      <TableCell className="font-medium">{index + 1}</TableCell>
+                    <TableRow key={sale.id} className="cursor-pointer" role="button" tabIndex={0} onClick={() => void showDetail(sale.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void showDetail(sale.id) } }}>
+                      <TableCell className="font-medium">{(page - 1) * 100 + index + 1}</TableCell>
                       <TableCell className="font-mono text-xs">{sale.order_number.slice(-8)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(sale.occurred_at).toLocaleString("id-ID", {
@@ -373,6 +377,13 @@ export function SalesPage() {
                 })}
               </TableBody>
             </Table>
+          </div>
+          <div className="flex items-center justify-between border-t px-4 py-3">
+            <p className="text-xs text-muted-foreground">Halaman {page}</p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page === 1 || loading}>Sebelumnya</Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((current) => current + 1)} disabled={!hasMore || loading}>Berikutnya</Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -417,6 +428,7 @@ export function SalesPage() {
                 <p className="mt-3 break-all text-xs text-muted-foreground border-t pt-2">
                   Verifikasi: {detail.receipt?.verificationToken || detail.receipt?.verification_token || "—"}
                 </p>
+                <p className="break-all font-mono text-[11px] text-muted-foreground">Order ID: {detail.order.id}</p>
               </div>
             </div>
           )}

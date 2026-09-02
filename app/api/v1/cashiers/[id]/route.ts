@@ -1,7 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { memberBranches, tenantMembers, user } from "@/db/schema";
+import { branches, memberBranches, tenantMembers, user } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { AppError, parseJson } from "@/lib/server";
 
@@ -16,6 +16,20 @@ export const PATCH = apiHandler(async (request) => {
   if (context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Only owner can manage cashiers");
   const id = z.string().uuid().parse(new URL(request.url).pathname.split("/").filter(Boolean).at(-1));
   const input = await parseJson(request, updateSchema);
+
+  if (input.branchIds?.length) {
+    const validBranches = await db
+      .select({ id: branches.id })
+      .from(branches)
+      .where(and(
+        eq(branches.organizationId, context.organizationId),
+        eq(branches.isActive, true),
+        inArray(branches.id, input.branchIds),
+      ));
+    if (validBranches.length !== input.branchIds.length) {
+      throw new AppError("VALIDATION_ERROR", "All branches must belong to organization");
+    }
+  }
 
   const [member] = await db.select({ id: tenantMembers.id, userId: tenantMembers.userId }).from(tenantMembers).where(and(eq(tenantMembers.id, id), eq(tenantMembers.organizationId, context.organizationId), eq(tenantMembers.role, "cashier"))).limit(1);
   if (!member) throw new AppError("NOT_FOUND", "Cashier not found");

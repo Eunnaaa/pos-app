@@ -6,6 +6,6 @@ export const POST = apiHandler(async (request) => {
   const id = z.string().uuid().parse(new URL(request.url).pathname.split("/").filter(Boolean).at(-2));
   const context = await requireApiContext(request, "pos:write");
 
-  const held = await resumeHeldOrder(context.organizationId, id, context.session.user.id);
+  const held = await resumeHeldOrder(context.organizationId, id, context.session.user.id, context.branchId);
   return dataResponse(held);
 });

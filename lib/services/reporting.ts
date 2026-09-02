@@ -85,81 +85,142 @@ export async function salesReport(
 ): Promise<SalesReport> {
   const [summary, byPayment, byProduct, byCustomer, hourly] = await Promise.all([
     db.execute(sql`
-      SELECT 
-        COALESCE(SUM(total_amount), 0)::text as total_sales,
-        COALESCE(SUM(total_amount - cost_amount), 0)::text as total_profit,
+      WITH net_orders AS (
+        SELECT so.*,
+          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+        FROM sales_orders so
+        LEFT JOIN (
+          SELECT sr.order_id, SUM(r.amount) AS refund_amount
+          FROM refunds r
+          JOIN sales_returns sr ON sr.id = r.return_id
+          WHERE r.status = 'processed'
+          GROUP BY sr.order_id
+        ) rr ON rr.order_id = so.id
+        WHERE so.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+      )
+      SELECT
+        COALESCE(SUM(net_total), 0)::text as total_sales,
+        COALESCE(SUM(net_total - cost_amount), 0)::text as total_profit,
         COUNT(*)::int as total_orders,
-        COALESCE(AVG(total_amount), 0)::text as avg_order_value,
+        COALESCE(AVG(net_total), 0)::text as avg_order_value,
         COUNT(DISTINCT customer_id)::int as unique_customers
-      FROM sales_orders
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND status IN ('paid', 'partially_refunded', 'refunded')
-        AND occurred_at >= ${startDate}
-        AND occurred_at < ${endDate}
+      FROM net_orders
     `),
     db.execute(sql`
-      SELECT 
-        sp.method,
-        SUM(sp.amount)::text as amount,
-        COUNT(*)::int as count
-      FROM sales_payments sp
-      JOIN sales_orders so ON so.id = sp.order_id
-      WHERE sp.organization_id = ${organizationId}
-        ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
-        AND sp.status = 'settled'
-        AND so.status IN ('paid', 'partially_refunded', 'refunded')
-        AND so.occurred_at >= ${startDate}
-        AND so.occurred_at < ${endDate}
-      GROUP BY sp.method
-      ORDER BY SUM(sp.amount) DESC
+      WITH payment_flows AS (
+        SELECT sp.method, sp.amount AS amount, 1::int AS payment_count
+        FROM sales_payments sp
+        JOIN sales_orders so ON so.id = sp.order_id
+        WHERE sp.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND sp.status = 'settled'
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+        UNION ALL
+        SELECT COALESCE(sp.method, 'refund') AS method, -r.amount AS amount, 0::int AS payment_count
+        FROM refunds r
+        JOIN sales_returns sr ON sr.id = r.return_id
+        JOIN sales_orders so ON so.id = sr.order_id
+        LEFT JOIN sales_payments sp ON sp.id = r.payment_id
+        WHERE r.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND r.status = 'processed'
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+      )
+      SELECT method, COALESCE(SUM(amount), 0)::text AS amount, SUM(payment_count)::int AS count
+      FROM payment_flows
+      GROUP BY method
+      ORDER BY SUM(amount) DESC
     `),
     db.execute(sql`
-      SELECT 
+      SELECT
         soi.item_name as name,
-        SUM(soi.quantity)::text as quantity,
-        SUM(soi.total_amount)::text as sales,
-        SUM(COALESCE(soi.unit_cost_amount, 0) * soi.quantity)::text as profit
+        SUM(soi.quantity - COALESCE(ri.returned_quantity, 0))::text as quantity,
+        SUM(soi.total_amount - COALESCE(ri.refund_amount, 0))::text as sales,
+        SUM(
+          (soi.total_amount - COALESCE(ri.refund_amount, 0))
+          - COALESCE(soi.unit_cost_amount, 0) * (soi.quantity - COALESCE(ri.returned_quantity, 0))
+        )::text as profit
       FROM sales_order_items soi
       JOIN sales_orders so ON so.id = soi.order_id
+      LEFT JOIN (
+        SELECT sri.order_item_id,
+          SUM(sri.quantity) AS returned_quantity,
+          SUM(sri.refund_amount) AS refund_amount
+        FROM sales_return_items sri
+        JOIN sales_returns sr ON sr.id = sri.return_id
+        WHERE sr.status = 'refunded'
+        GROUP BY sri.order_item_id
+      ) ri ON ri.order_item_id = soi.id
       WHERE soi.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
         AND so.status IN ('paid', 'partially_refunded', 'refunded')
         AND so.occurred_at >= ${startDate}
         AND so.occurred_at < ${endDate}
       GROUP BY soi.item_name
-      ORDER BY SUM(soi.quantity) DESC
+      HAVING SUM(soi.quantity - COALESCE(ri.returned_quantity, 0)) > 0
+      ORDER BY SUM(soi.quantity - COALESCE(ri.returned_quantity, 0)) DESC
       LIMIT 20
     `),
     db.execute(sql`
-      SELECT 
+      WITH net_orders AS (
+        SELECT so.*,
+          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+        FROM sales_orders so
+        LEFT JOIN (
+          SELECT sr.order_id, SUM(r.amount) AS refund_amount
+          FROM refunds r
+          JOIN sales_returns sr ON sr.id = r.return_id
+          WHERE r.status = 'processed'
+          GROUP BY sr.order_id
+        ) rr ON rr.order_id = so.id
+        WHERE so.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+      )
+      SELECT
         COALESCE(c.name, 'Pelanggan Umum') as name,
         COUNT(*)::int as orders,
-        SUM(so.total_amount)::text as total,
+        SUM(so.net_total)::text as total,
         COALESCE(SUM(la.points), 0)::text as points
-      FROM sales_orders so
+      FROM net_orders so
       LEFT JOIN customers c ON c.id = so.customer_id
-      LEFT JOIN loyalty_transactions la ON la.reference_id = so.id AND la.reference_type = 'sale' AND la.type = 'earn'
-      WHERE so.organization_id = ${organizationId}
-        ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
-        AND so.occurred_at >= ${startDate}
-        AND so.occurred_at < ${endDate}
-        AND so.status IN ('paid', 'partially_refunded', 'refunded')
+      LEFT JOIN loyalty_transactions la ON la.reference_id = so.id AND la.reference_type IN ('sale', 'sales_order') AND la.type = 'earn'
       GROUP BY c.id, c.name
-      ORDER BY SUM(so.total_amount) DESC
+      ORDER BY SUM(so.net_total) DESC
       LIMIT 20
     `),
     db.execute(sql`
-      SELECT 
+      WITH net_orders AS (
+        SELECT so.*,
+          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+        FROM sales_orders so
+        LEFT JOIN (
+          SELECT sr.order_id, SUM(r.amount) AS refund_amount
+          FROM refunds r
+          JOIN sales_returns sr ON sr.id = r.return_id
+          WHERE r.status = 'processed'
+          GROUP BY sr.order_id
+        ) rr ON rr.order_id = so.id
+        WHERE so.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+      )
+      SELECT
         TO_CHAR(DATE_TRUNC('hour', occurred_at), 'YYYY-MM-DD HH24:00') as hour,
-        SUM(total_amount)::text as sales,
+        SUM(net_total)::text as sales,
         COUNT(*)::int as orders
-      FROM sales_orders
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND status IN ('paid', 'partially_refunded', 'refunded')
-        AND occurred_at >= ${startDate}
-        AND occurred_at < ${endDate}
+      FROM net_orders
       GROUP BY DATE_TRUNC('hour', occurred_at)
       ORDER BY DATE_TRUNC('hour', occurred_at)
     `),
@@ -363,16 +424,28 @@ export async function financeReport(
 ): Promise<FinanceReport> {
   const [sales, expenseSum, byAccount, incomeBreakdown, expenseBreakdown, dailyFlow, cashBalanceRow] = await Promise.all([
     db.execute(sql`
+      WITH net_orders AS (
+        SELECT so.*,
+          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+        FROM sales_orders so
+        LEFT JOIN (
+          SELECT sr.order_id, SUM(r.amount) AS refund_amount
+          FROM refunds r
+          JOIN sales_returns sr ON sr.id = r.return_id
+          WHERE r.status = 'processed'
+          GROUP BY sr.order_id
+        ) rr ON rr.order_id = so.id
+        WHERE so.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+      )
       SELECT
-        COALESCE(SUM(total_amount), 0)::text as total_sales,
-        COALESCE(SUM(total_amount - cost_amount), 0)::text as total_profit,
+        COALESCE(SUM(net_total), 0)::text as total_sales,
+        COALESCE(SUM(net_total - cost_amount), 0)::text as total_profit,
         COUNT(*)::int as total_orders
-      FROM sales_orders
-      WHERE organization_id = ${organizationId}
-        ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-        AND status IN ('paid', 'partially_refunded', 'refunded')
-        AND occurred_at >= ${startDate}
-        AND occurred_at < ${endDate}
+      FROM net_orders
     `),
     db.execute(sql`
       SELECT COALESCE(SUM(amount), 0)::text as expenses
@@ -428,14 +501,23 @@ export async function financeReport(
     `),
     db.execute(sql`
       WITH daily_data AS (
-        SELECT DATE(occurred_at) as d, SUM(total_amount)::bigint as income, 0::bigint as expenses
-        FROM sales_orders
-        WHERE organization_id = ${organizationId}
-          ${branchId ? sql`AND branch_id = ${branchId}` : sql``}
-          AND status IN ('paid', 'partially_refunded', 'refunded')
-          AND occurred_at >= ${startDate}
-          AND occurred_at < ${endDate}
-        GROUP BY DATE(occurred_at)
+        SELECT DATE(so.occurred_at) as d,
+          SUM(GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0))::bigint as income,
+          0::bigint as expenses
+        FROM sales_orders so
+        LEFT JOIN (
+          SELECT sr.order_id, SUM(r.amount) AS refund_amount
+          FROM refunds r
+          JOIN sales_returns sr ON sr.id = r.return_id
+          WHERE r.status = 'processed'
+          GROUP BY sr.order_id
+        ) rr ON rr.order_id = so.id
+        WHERE so.organization_id = ${organizationId}
+          ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
+          AND so.status IN ('paid', 'partially_refunded', 'refunded')
+          AND so.occurred_at >= ${startDate}
+          AND so.occurred_at < ${endDate}
+        GROUP BY DATE(so.occurred_at)
         UNION ALL
         SELECT expense_date::date as d, 0::bigint as income, SUM(amount)::bigint as expenses
         FROM expenses

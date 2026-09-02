@@ -43,17 +43,23 @@ export function SelfOrderPage() {
   const [tableArea, setTableArea] = useState("");
   const [tableCapacity, setTableCapacity] = useState("4");
 
+  const [publicUrl, setPublicUrl] = useState<string>("");
+
   const activeTables = useMemo(() => tables.filter((t) => t.is_active), [tables]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tablesRes, tokensRes] = await Promise.all([
+      const [tablesRes, tokensRes, hostRes] = await Promise.all([
         apiFetch<TableRecord[]>("/api/v1/resources/dining-tables?limit=200"),
         apiFetch<TokenRecord[]>("/api/v1/resources/qr-order-tokens?limit=200"),
+        apiFetch<{ publicUrl: string; source: string }>("/api/v1/self-order/public-host").catch(() => ({ data: { publicUrl: "", source: "" } })),
       ]);
       setTables(tablesRes.data);
       setTokens(tokensRes.data);
+      if (hostRes?.data?.publicUrl) {
+        setPublicUrl(hostRes.data.publicUrl);
+      }
     } catch (e) {
       showError(e instanceof Error ? e.message : "Gagal memuat data meja & QR token");
     } finally {
@@ -72,7 +78,10 @@ export function SelfOrderPage() {
     }
   }, [createOpen, activeTables, selectedTableId]);
 
-  const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+  // Generate QR links from the dashboard origin so copied links stay on the
+  // same host (localhost, LAN IP, or ngrok) that the owner is currently using.
+  const effectiveAppUrl = browserOrigin || publicUrl;
 
   async function generateQR(value: string): Promise<string> {
     const dataUrl = await QRCode.toDataURL(value, { width: 256, margin: 2 });
@@ -329,6 +338,8 @@ export function SelfOrderPage() {
         </div>
       </div>
 
+
+
       {/* Search Toolbar */}
       <div className="flex items-center justify-between gap-4">
         <div className="relative flex-1 sm:max-w-md">
@@ -380,7 +391,7 @@ export function SelfOrderPage() {
                 key={tok.id}
                 table={table ?? { id: tableId ?? "", name: "Meja", is_active: true }}
                 token={tok}
-                appUrl={appUrl}
+                appUrl={effectiveAppUrl}
                 isOwner={isOwner}
                 onGenerateQR={generateQR}
                 onToggleToken={toggleToken}
@@ -668,4 +679,3 @@ function TableQRCard({
     </Card>
   );
 }
-

@@ -37,7 +37,7 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
       const params = new URLSearchParams()
       if (startDate) params.append("startDate", new Date(`${startDate}T00:00:00`).toISOString())
       if (endDate) params.append("endDate", new Date(`${endDate}T23:59:59.999`).toISOString())
-      const targetBranchId = selectedBranchId === "all" ? undefined : selectedBranchId
+      const targetBranchId = selectedBranchId === "all" ? null : selectedBranchId
       const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`, { branchId: targetBranchId })
       setReport(response.data)
     } catch (caught) {
@@ -69,8 +69,8 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
             [
               { header: "Nama Produk", accessor: (i) => i.name },
               { header: "Kuantitas Terjual", accessor: (i) => i.quantity },
-              { header: "Total Penjualan (Rp)", accessor: (i) => Number(i.sales) },
-              { header: "Estimasi Profit (Rp)", accessor: (i) => Number(i.profit) },
+              { header: "Penjualan Bersih (Rp)", accessor: (i) => Number(i.sales) },
+              { header: "Laba Kotor (Rp)", accessor: (i) => Number(i.profit) },
             ]
           )
         } else {
@@ -78,8 +78,8 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
             baseFilename,
             [salesRep.summary],
             [
-              { header: "Total Penjualan (Rp)", accessor: (s) => Number(s.totalSales) },
-              { header: "Total Profit (Rp)", accessor: (s) => Number(s.totalProfit) },
+              { header: "Penjualan Bersih (Rp)", accessor: (s) => Number(s.totalSales) },
+              { header: "Laba Kotor (Rp)", accessor: (s) => Number(s.totalProfit) },
               { header: "Total Transaksi", accessor: (s) => s.totalOrders },
               { header: "Rata-rata Transaksi (Rp)", accessor: (s) => Number(s.averageOrderValue) },
               { header: "Jumlah Pelanggan Unik", accessor: (s) => s.uniqueCustomers },
@@ -245,13 +245,13 @@ function SalesReportContent({ report }: { report: SalesReport }) {
     <div className="space-y-6">
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          label="Total Penjualan"
+          label="Penjualan Bersih"
           value={rupiah(summary.totalSales)}
           trend={trend}
           icon={TrendingUp}
         />
         <MetricCard
-          label="Total Profit"
+          label="Laba Kotor"
           value={rupiah(summary.totalProfit)}
           trend={trend}
           icon={TrendingUp}
@@ -267,7 +267,7 @@ function SalesReportContent({ report }: { report: SalesReport }) {
       <section className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Tren Penjualan Harian</CardTitle>
+            <CardTitle className="text-base">Tren Penjualan per Jam</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -312,8 +312,8 @@ function SalesReportContent({ report }: { report: SalesReport }) {
                 <tr className="border-b">
                   <th className="text-left py-2 font-semibold">Produk</th>
                   <th className="text-right py-2 font-semibold">Qty</th>
-                  <th className="text-right py-2 font-semibold">Penjualan</th>
-                  <th className="text-right py-2 font-semibold">Profit</th>
+                  <th className="text-right py-2 font-semibold">Penjualan Bersih</th>
+                  <th className="text-right py-2 font-semibold">Laba Kotor</th>
                 </tr>
               </thead>
               <tbody>

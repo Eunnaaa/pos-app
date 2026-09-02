@@ -3,8 +3,8 @@ import { z } from "zod";
 import { db } from "@/db";
 import { branches, cashRegisters, warehouses, type JsonValue } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { decodeQrisFromDataUrl } from "@/lib/qris-server";
-import { AppError, parseJson } from "@/lib/server";
+import { assertSafeQrisDataUrl, decodeQrisFromDataUrl } from "@/lib/qris-server";
+import { AppError, encryptSecret, parseJson } from "@/lib/server";
 import { assertCanCreateBranch } from "@/lib/services/subscription";
 
 const createSchema = z.object({
@@ -38,14 +38,15 @@ export const POST = apiHandler(async (request) => {
 
     const branchMeta: Record<string, JsonValue> = {};
     if (input.qrisImageUrl) {
+      assertSafeQrisDataUrl(input.qrisImageUrl);
       branchMeta.qrisImageUrl = input.qrisImageUrl;
       const decoded = decodeQrisFromDataUrl(input.qrisImageUrl);
       if (decoded) branchMeta.qrisPayload = decoded;
     }
     if (input.qrisAccountName) branchMeta.qrisAccountName = input.qrisAccountName;
     if (input.qrisInstructions) branchMeta.qrisInstructions = input.qrisInstructions;
-    if (input.midtransServerKey) branchMeta.midtransServerKey = input.midtransServerKey;
-    if (input.midtransClientKey) branchMeta.midtransClientKey = input.midtransClientKey;
+    if (input.midtransServerKey) branchMeta.midtransServerKey = encryptSecret(input.midtransServerKey);
+    if (input.midtransClientKey) branchMeta.midtransClientKey = encryptSecret(input.midtransClientKey);
     if (input.midtransMerchantId) branchMeta.midtransMerchantId = input.midtransMerchantId;
     if (input.paymentMode) branchMeta.paymentMode = input.paymentMode;
 
@@ -82,5 +83,11 @@ export const POST = apiHandler(async (request) => {
     return { branch, warehouse, register };
   });
 
-  return dataResponse(result, { status: 201 });
+  const safeMetadata = { ...((result.branch.metadata || {}) as Record<string, unknown>) };
+  delete safeMetadata.midtransServerKey;
+  delete safeMetadata.midtransClientKey;
+  return dataResponse({
+    ...result,
+    branch: { ...result.branch, metadata: safeMetadata },
+  }, { status: 201 });
 });

@@ -39,7 +39,7 @@ export const resources = {
   suppliers: { table: "suppliers", read: "suppliers:read", write: "suppliers:write", search: ["code", "name", "phone", "email"], fields: { code: text(true), name: text(true), contactName: text(), email: text(), phone: text(), address: text(), taxId: text(), paymentTermsDays: integer(), isActive: boolean(), metadata: json() } },
   customers: { table: "customers", read: "customers:read", write: "customers:write", search: ["code", "name", "phone", "email"], fields: { membershipLevelId: uuid(), code: text(true), name: text(true), email: text(), phone: text(), dateOfBirth: date(), address: text(), notes: text(), referralCode: text(), referredByCustomerId: uuid(), totalSpendAmount: bigint(), storeCreditAmount: bigint(), isActive: boolean(), metadata: json() } },
   promotions: { table: "promotions", read: "sales:read", write: "sales:write", search: ["name", "code"], fields: { name: text(true), code: text(), type: text(true), valueAmount: bigint(), percentageBps: integer(), rules: json(), startsAt: timestamp(), endsAt: timestamp(), usageLimit: integer(), perCustomerLimit: integer(), isActive: boolean() } },
-  branches: { table: "branches", read: "dashboard:read", write: "branches:manage", search: ["code", "name", "city"], fields: { code: text(true), name: text(true), phone: text(), email: text(), address: text(), city: text(), province: text(), postalCode: text(), timezone: text(), isActive: boolean(), metadata: json() } },
+  branches: { table: "branches", read: "dashboard:read", write: "branches:manage", search: ["code", "name", "city"], fields: { code: text(true), name: text(true), phone: text(), email: text(), address: text(), city: text(), province: text(), postalCode: text(), timezone: text(), isActive: boolean() } },
   warehouses: { table: "warehouses", read: "inventory:read", write: "branches:manage", search: ["code", "name"], fields: { branchId: uuid(), code: text(true), name: text(true), address: text(), isDefault: boolean(), isActive: boolean() } },
   employees: { table: "employees", read: "dashboard:read", write: "employees:manage", search: ["employee_number", "name", "email", "phone"], fields: { userId: text(), employeeNumber: { ...text(true), column: "employee_number" }, name: text(true), email: text(), phone: text(), jobTitle: text(), employmentStatus: text(), hiredAt: date(), salaryReferenceAmount: bigint(), commissionRateBps: integer() } },
   expenses: { table: "expenses", read: "finance:read", write: "finance:write", search: ["expense_number", "category", "vendor", "description"], fields: { branchId: uuid(), accountId: uuid(), expenseNumber: { ...text(true), column: "expense_number" }, category: text(true), vendor: text(), description: text(true), amount: bigint(), status: text(), expenseDate: date(), receiptUrl: text() } },
@@ -53,8 +53,6 @@ export const resources = {
   "stock-balances": { table: "stock_balances", read: "inventory:read", write: "inventory:write", fields: { warehouseId: uuid(true), variantId: uuid(true), onHand: bigint(), reserved: bigint(), available: bigint(), reorderPoint: bigint(), reorderQuantity: bigint(), averageCostAmount: bigint() } },
   "stock-movements": { table: "stock_movements", read: "inventory:read", write: "inventory:write", search: ["reference_type", "reason"], fields: { branchId: uuid(), warehouseId: uuid(true), variantId: uuid(true), type: text(true), quantity: bigint(), beforeQuantity: bigint(), afterQuantity: bigint(), unitCostAmount: bigint(), referenceType: text(), referenceId: uuid(), reason: text() } },
   notifications: { table: "notifications", read: "dashboard:read", write: "settings:manage", search: ["template", "recipient", "subject"], fields: { userId: text(), channel: text(true), template: text(true), recipient: text(true), subject: text(), body: text(true), status: text(), scheduledAt: timestamp() } },
-  integrations: { table: "integrations", read: "settings:manage", write: "settings:manage", search: ["provider", "name"], fields: { provider: text(true), name: text(true), encryptedConfig: text(true), status: text() } },
-  settings: { table: "organization_settings", read: "settings:manage", write: "settings:manage", search: ["namespace"], fields: { namespace: text(true), value: json(), isSecret: boolean() } },
   shifts: { table: "employee_shifts", read: "dashboard:read", write: "employees:manage", fields: { branchId: uuid(true), employeeId: uuid(true), startsAt: timestamp(), endsAt: timestamp(), status: text(), notes: text() } },
   attendance: { table: "attendance", read: "dashboard:read", write: "employees:manage", fields: { employeeId: uuid(true), shiftId: uuid(), clockedInAt: timestamp(), clockedOutAt: timestamp(), notes: text() } },
   "membership-levels": { table: "membership_levels", read: "customers:read", write: "customers:write", search: ["name"], fields: { name: text(true), minimumSpendAmount: bigint(), pointMultiplier: integer(), benefits: json() } },
@@ -69,6 +67,17 @@ function snakeCase(value: string): string {
 
 function fieldColumn(name: string, field: Field): string {
   return field.column ?? snakeCase(name);
+}
+
+function sanitizeResourceRecord(name: ResourceName, value: Record<string, unknown>): Record<string, unknown> {
+  if (name !== "branches") return value;
+  const metadata = value.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return value;
+  const safeMetadata = { ...(metadata as Record<string, unknown>) };
+  delete safeMetadata.midtransServerKey;
+  delete safeMetadata.midtransClientKey;
+  delete safeMetadata.dokuSecretKey;
+  return { ...value, metadata: safeMetadata };
 }
 
 function parseField(field: Field, value: unknown): unknown {
@@ -157,7 +166,7 @@ export async function listResource(name: ResourceName, request: Request, context
     limit ${query.limit + 1} offset ${offset}
   `);
   const hasMore = result.rows.length > query.limit;
-  const rows = result.rows.slice(0, query.limit);
+  const rows = result.rows.slice(0, query.limit).map((row) => sanitizeResourceRecord(name, row as Record<string, unknown>));
 
   if (cacheKey) {
     void cacheSet(cacheKey, { rows, hasMore }, 1800);
@@ -171,7 +180,7 @@ export async function getResource(name: ResourceName, id: string, context: ApiCo
   const config = resources[name];
   const result = await db.execute(sql`select * from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} limit 1`);
   if (!result.rows[0]) throw new AppError("NOT_FOUND", `${name} record not found`);
-  return dataResponse(result.rows[0]);
+  return dataResponse(sanitizeResourceRecord(name, result.rows[0] as Record<string, unknown>));
 }
 
 export async function createResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
@@ -211,7 +220,7 @@ export async function createResource(name: ResourceName, request: Request, conte
     return created;
   });
   invalidateResourceCache(name, context);
-  return dataResponse(record, { status: 201 });
+  return dataResponse(sanitizeResourceRecord(name, record), { status: 201 });
 }
 
 export async function updateResource(name: ResourceName, id: string, request: Request, context: ApiContext): Promise<Response> {
@@ -252,7 +261,7 @@ export async function updateResource(name: ResourceName, id: string, request: Re
   });
   if (!record) throw new AppError("NOT_FOUND", `${name} record not found`);
   invalidateResourceCache(name, context);
-  return dataResponse(record);
+  return dataResponse(sanitizeResourceRecord(name, record));
 }
 
 export async function deleteResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {

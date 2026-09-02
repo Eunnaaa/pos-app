@@ -1,4 +1,10 @@
-export const DEFAULT_SUPER_ADMIN_EMAIL = "garryhardyansyah22@gmail.com";
+import "server-only";
+
+export type SuperAdminIdentity = {
+  email?: string | null;
+  emailVerified?: boolean | null;
+  twoFactorEnabled?: boolean | null;
+};
 
 /**
  * Checks whether a given user email is the authorized platform Super Admin.
@@ -6,35 +12,31 @@ export const DEFAULT_SUPER_ADMIN_EMAIL = "garryhardyansyah22@gmail.com";
 export function isSuperAdminEmail(email?: string | null): boolean {
   if (!email) return false;
 
-  const configured =
-    (typeof process !== "undefined" && process.env?.SUPER_ADMIN_EMAILS) ||
-    DEFAULT_SUPER_ADMIN_EMAIL;
-
-  const allowed = configured
+  const allowed = (process.env.SUPER_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
 
-  return (
-    allowed.includes(email.toLowerCase()) ||
-    email.toLowerCase() === DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase()
+  return allowed.includes(email.trim().toLowerCase());
+}
+
+/**
+ * Platform access requires control of a server-side allowlisted email, a
+ * verified mailbox, and an enrolled second factor. Client-side checks must
+ * never be used as an authorization decision.
+ */
+export function isSuperAdminUser(identity?: SuperAdminIdentity | null): boolean {
+  return Boolean(
+    identity &&
+    identity.emailVerified === true &&
+    identity.twoFactorEnabled === true &&
+    isSuperAdminEmail(identity.email),
   );
 }
 
 export function getSuperAdminEmails(): string[] {
-  const configured =
-    (typeof process !== "undefined" && (process.env?.SUPER_ADMIN_EMAILS || process.env?.NEXT_PUBLIC_SUPER_ADMIN_EMAILS)) ||
-    DEFAULT_SUPER_ADMIN_EMAIL;
-
-  const emails = configured
+  return (process.env.SUPER_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (!emails.includes(DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase())) {
-    emails.push(DEFAULT_SUPER_ADMIN_EMAIL.toLowerCase());
-  }
-
-  return Array.from(new Set(emails));
+    .filter((email, index, emails) => Boolean(email) && emails.indexOf(email) === index);
 }
-

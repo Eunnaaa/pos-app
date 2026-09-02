@@ -5,7 +5,7 @@ import { organizations, subscriptions } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, parseJson, requireSession } from "@/lib/server";
 import { upgradeSubscription } from "@/lib/services/subscription";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 const updateTenantSchema = z.object({
   plan: z.enum(["free", "pro", "business"]).optional(),
@@ -15,7 +15,7 @@ const updateTenantSchema = z.object({
 
 export const PATCH = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Master Admin platform yang dapat mengubah data tenant");
   }
 

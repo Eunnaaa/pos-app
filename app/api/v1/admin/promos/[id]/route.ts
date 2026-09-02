@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { promoCodes } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, parseJson, requireSession } from "@/lib/server";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 const updatePromoSchema = z.object({
   discountValue: z.number().int().min(1).optional(),
@@ -15,7 +15,7 @@ const updatePromoSchema = z.object({
 
 export const PATCH = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Super Admin");
   }
 
@@ -37,7 +37,7 @@ export const PATCH = apiHandler(async (request) => {
 
 export const DELETE = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Super Admin");
   }
 

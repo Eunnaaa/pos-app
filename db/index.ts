@@ -14,7 +14,7 @@ export const pool =
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 15_000,
     keepAlive: true,
-    ssl: env.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : false,
+    ssl: env.DATABASE_SSL === "require" ? { rejectUnauthorized: true } : false,
   });
 
 if (env.NODE_ENV !== "production") globalForDb.posPool = pool;

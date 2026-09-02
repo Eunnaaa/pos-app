@@ -6,12 +6,20 @@ import { getServerEnv, getTrustedOrigins } from "@/config/env";
 import { db } from "@/db";
 import { account, session, twoFactor as twoFactorTable, user, verification } from "@/db/schema";
 import { sendEmail, sendResetPasswordEmail } from "@/lib/integrations/notifications";
+import { getRedisClient } from "@/lib/redis";
 
 const env = getServerEnv();
 const isProduction = env.NODE_ENV === "production";
 const googleEnabled = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
 const appleEnabled = Boolean(env.APPLE_CLIENT_ID && env.APPLE_CLIENT_SECRET);
 const emailEnabled = Boolean(env.EMAIL_API_URL && env.EMAIL_API_KEY);
+const redis = getRedisClient();
+
+const incrementWithTtlScript = `
+local current = redis.call("INCR", KEYS[1])
+if current == 1 then redis.call("EXPIRE", KEYS[1], ARGV[1]) end
+return current
+`;
 
 const authInstances = new Map<string, ReturnType<typeof createBetterAuthInstance>>();
 
@@ -30,6 +38,36 @@ function createBetterAuthInstance(baseURL: string) {
         twoFactor: twoFactorTable,
       },
     }),
+    ...(redis
+      ? {
+          secondaryStorage: {
+            get: async (key: string) => {
+              const res = await redis.get(key);
+              if (res === null || res === undefined) return null;
+              return typeof res === "string" ? res : JSON.stringify(res);
+            },
+            getAndDelete: async (key: string) => {
+              let res: unknown = null;
+              try {
+                res = await (redis as any).getdel(key);
+              } catch {
+                res = await redis.get(key);
+                if (res !== null && res !== undefined) {
+                  await redis.del(key);
+                }
+              }
+              if (res === null || res === undefined) return null;
+              return typeof res === "string" ? res : JSON.stringify(res);
+            },
+            increment: async (key: string, ttl: number) => Number(await redis.eval(incrementWithTtlScript, [key], [ttl])),
+            set: async (key: string, value: string, ttl?: number) => {
+              if (ttl) await redis.set(key, value, { ex: ttl });
+              else await redis.set(key, value);
+            },
+            delete: async (key: string) => { await redis.del(key); },
+          },
+        }
+      : {}),
     trustedOrigins: getTrustedOrigins(env),
     emailAndPassword: {
       enabled: true,
@@ -91,7 +129,7 @@ function createBetterAuthInstance(baseURL: string) {
         ? {
             changeEmail: {
               enabled: true,
-              sendChangeEmailVerification: async ({ newEmail, url }) => {
+              sendChangeEmailVerification: async ({ newEmail, url }: { newEmail: string; url: string }) => {
                 await sendEmail(
                   newEmail,
                   "Konfirmasi Email Baru — Kedai-Ku",
@@ -110,6 +148,7 @@ function createBetterAuthInstance(baseURL: string) {
     },
     rateLimit: {
       enabled: true,
+      storage: redis ? "secondary-storage" : "memory",
       window: 60,
       max: 100,
       customRules: {
@@ -121,7 +160,15 @@ function createBetterAuthInstance(baseURL: string) {
       },
     },
     advanced: {
+      ipAddress: {
+        ipAddressHeaders: env.TRUST_PROXY === "true" || process.env.VERCEL === "1" || !isProduction
+          ? ["x-forwarded-for", "x-real-ip"]
+          : [],
+      },
       useSecureCookies: isProduction,
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
+      crossSubDomainCookies: { enabled: false },
       defaultCookieAttributes: {
         httpOnly: true,
         sameSite: "lax",

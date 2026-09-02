@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { promoCodes } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, parseJson, requireSession } from "@/lib/server";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
 
 const createPromoSchema = z.object({
   code: z.string().min(3).max(30).transform((c) => c.toUpperCase().trim()),
@@ -18,7 +18,7 @@ const createPromoSchema = z.object({
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Super Admin");
   }
 
@@ -32,7 +32,7 @@ export const GET = apiHandler(async (request) => {
 
 export const POST = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
-  if (!isSuperAdminEmail(session.user.email)) {
+  if (!isSuperAdminUser(session.user)) {
     throw new AppError("FORBIDDEN", "Akses ditolak: Hanya Super Admin");
   }
 

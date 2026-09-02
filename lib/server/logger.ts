@@ -1,4 +1,5 @@
 import "server-only";
+import { scrubSensitiveText, scrubTelemetryValue } from "@/lib/observability/scrub";
 
 export type LogLevel = "debug" | "info" | "warn" | "error" | "fatal";
 
@@ -14,61 +15,25 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 
 const MIN_LEVEL: LogLevel = (process.env.LOG_LEVEL as LogLevel) || "info";
 
-/** Fields whose values are redacted to prevent leaking PII or secrets in logs. */
-const SENSITIVE_KEYS = new Set([
-  "password",
-  "passwd",
-  "secret",
-  "token",
-  "accesstoken",
-  "refreshtoken",
-  "authorization",
-  "apikey",
-  "api_key",
-  "clientsecret",
-  "serverkey",
-  "servicekey",
-  "servicerolekey",
-  "session",
-  "cookie",
-  "creditcard",
-  "cardnumber",
-  "cvv",
-]);
-
-function redact(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") return value;
-  if (typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(redact);
-  const obj = value as Record<string, unknown>;
-  const out: Record<string, unknown> = {};
-  for (const [key, val] of Object.entries(obj)) {
-    const lower = key.toLowerCase();
-    if (SENSITIVE_KEYS.has(lower)) {
-      out[key] = "[redacted]";
-    } else {
-      out[key] = redact(val);
-    }
-  }
-  return out;
-}
-
 function emit(level: LogLevel, message: string, meta?: LogMeta, error?: unknown): void {
   if (LEVEL_PRIORITY[level] < LEVEL_PRIORITY[MIN_LEVEL]) return;
 
   const entry: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     level,
-    message,
-    ...(redact(meta || {}) as Record<string, unknown>),
+    message: scrubSensitiveText(message),
+    ...(scrubTelemetryValue(meta || {}) as Record<string, unknown>),
   };
 
   if (error) {
     if (error instanceof Error) {
-      entry.error = { name: error.name, message: error.message, stack: error.stack };
+      entry.error = {
+        name: error.name,
+        message: scrubSensitiveText(error.message),
+        stack: error.stack ? scrubSensitiveText(error.stack) : undefined,
+      };
     } else {
-      entry.error = String(error);
+      entry.error = scrubSensitiveText(String(error));
     }
   }
 

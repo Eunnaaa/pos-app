@@ -79,7 +79,44 @@ export const GET = apiHandler(async (request) => {
       and (so.order_number ilike ${search} or coalesce(c.name, '') ilike ${search})
     group by so.id, b.id, b.name, c.id, c.name
     order by so.occurred_at desc
-    limit ${query.limit} offset ${(query.page - 1) * query.limit}
+    limit ${query.limit + 1} offset ${(query.page - 1) * query.limit}
   `);
-  return dataResponse(result.rows, {}, { page: query.page, limit: query.limit, shiftActive: true });
+  const hasMore = result.rows.length > query.limit;
+  const rows = result.rows.slice(0, query.limit);
+  const summaryResult = await db.execute(sql`
+    select
+      count(*) filter (where so.status in ('paid', 'partially_refunded', 'refunded'))::int as successful_orders,
+      coalesce(sum(
+        case when so.status in ('paid', 'partially_refunded', 'refunded')
+          then greatest(so.total_amount - coalesce(rr.refund_amount, 0), 0)
+          else 0 end
+      ), 0)::text as net_amount,
+      count(*) filter (where so.status in ('partially_refunded', 'refunded'))::int as refunded_orders
+    from sales_orders so
+    left join customers c on c.id = so.customer_id
+    left join (
+      select sr.order_id, sum(r.amount) as refund_amount
+      from refunds r
+      join sales_returns sr on sr.id = r.return_id
+      where r.status = 'processed'
+      group by sr.order_id
+    ) rr on rr.order_id = so.id
+    where so.organization_id = ${context.organizationId}
+      ${branchFilter}
+      ${cashierSessionFilter}
+      ${historyDateFilter}
+      and (so.order_number ilike ${search} or coalesce(c.name, '') ilike ${search})
+  `);
+  const summary = summaryResult.rows[0] as Record<string, unknown> | undefined;
+  return dataResponse(rows, {}, {
+    page: query.page,
+    limit: query.limit,
+    hasMore,
+    shiftActive: true,
+    summary: {
+      successfulOrders: Number(summary?.successful_orders || 0),
+      netAmount: String(summary?.net_amount || "0"),
+      refundedOrders: Number(summary?.refunded_orders || 0),
+    },
+  });
 });

@@ -19,12 +19,21 @@ export function useResource<T extends ResourceRecord = ResourceRecord>(resource:
     }
     setLoading(true); setError("")
     try {
-      const suffix = query ? `?${query}` : ""
-      const response = await apiFetch<T[]>(`/api/v1/resources/${resource}${suffix}`)
-      setData(Array.isArray(response?.data) ? response.data : [])
+      const params = new URLSearchParams(query)
+      const hasExplicitPage = params.has("page")
+      let page = Number(params.get("page") || "1")
+      const rows: T[] = []
+      do {
+        params.set("page", String(page))
+        const response = await apiFetch<T[]>(`/api/v1/resources/${resource}?${params.toString()}`)
+        const batch = Array.isArray(response?.data) ? response.data : []
+        rows.push(...batch)
+        if (hasExplicitPage || response.meta?.hasMore !== true || batch.length === 0) break
+        page += 1
+      } while (true)
+      setData(rows)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Gagal mengambil data")
-      setData([])
     }
     finally { setLoading(false) }
   }, [resource, query])
@@ -45,20 +54,20 @@ export function useResource<T extends ResourceRecord = ResourceRecord>(resource:
     return () => window.removeEventListener("kedai-ku-context-change", handleContextChange)
   }, [doRefresh])
 
-  async function create(input: Record<string, unknown>) {
-    const response = await apiFetch<T>(`/api/v1/resources/${resource}`, { method: "POST", body: JSON.stringify(input), queueOffline: true })
+  async function create(input: Record<string, unknown>, options: { queueOffline?: boolean } = {}) {
+    const response = await apiFetch<T>(`/api/v1/resources/${resource}`, { method: "POST", body: JSON.stringify(input), queueOffline: options.queueOffline ?? true })
     if (!response.queued) await refresh(0)
     return response
   }
 
-  async function update(id: string, input: Record<string, unknown>) {
-    const response = await apiFetch<T>(`/api/v1/resources/${resource}/${id}`, { method: "PATCH", body: JSON.stringify(input), queueOffline: true })
+  async function update(id: string, input: Record<string, unknown>, options: { queueOffline?: boolean } = {}) {
+    const response = await apiFetch<T>(`/api/v1/resources/${resource}/${id}`, { method: "PATCH", body: JSON.stringify(input), queueOffline: options.queueOffline ?? true })
     if (!response.queued) await refresh(0)
     return response
   }
 
-  async function remove(id: string) {
-    const response = await apiFetch<null>(`/api/v1/resources/${resource}/${id}`, { method: "DELETE", queueOffline: true })
+  async function remove(id: string, options: { queueOffline?: boolean } = {}) {
+    const response = await apiFetch<null>(`/api/v1/resources/${resource}/${id}`, { method: "DELETE", queueOffline: options.queueOffline ?? true })
     if (!response.queued) await refresh(0)
     return response
   }

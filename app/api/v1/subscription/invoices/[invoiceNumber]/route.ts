@@ -9,7 +9,7 @@ import {
 } from "@/db/schema";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { AppError } from "@/lib/server";
-import { checkMidtransTransactionStatus } from "@/lib/integrations/payments";
+import { checkDokuTransactionStatus, checkMidtransTransactionStatus } from "@/lib/integrations/payments";
 import { upgradeSubscription } from "@/lib/services/subscription";
 import { sendSubscriptionSuccessEmail } from "@/lib/integrations/notifications";
 import { PLANS } from "@/config/plans";
@@ -37,9 +37,15 @@ export const GET = apiHandler(async (request) => {
     throw new AppError("NOT_FOUND", `Tagihan ${invoiceNumber} tidak ditemukan`);
   }
 
-  // If pending, verify live Midtrans status!
+  // If pending, verify live status from DOKU or Midtrans!
   if (invoice.status === "pending") {
-    const check = await checkMidtransTransactionStatus(invoiceNumber);
+    let check = await checkDokuTransactionStatus(invoiceNumber);
+    let resolvedProvider = "doku";
+    if (check.status !== "settled") {
+      check = await checkMidtransTransactionStatus(invoiceNumber);
+      resolvedProvider = "midtrans";
+    }
+
     if (check.status === "settled") {
       await db.transaction(async (tx) => {
         await tx
@@ -48,7 +54,7 @@ export const GET = apiHandler(async (request) => {
             status: "paid",
             paidAt: new Date(),
             paymentReference: (check.raw as Record<string, unknown>)?.transaction_id ? String((check.raw as Record<string, unknown>).transaction_id) : invoiceNumber,
-            paymentProvider: "midtrans",
+            paymentProvider: resolvedProvider,
             updatedAt: new Date(),
           })
           .where(eq(subscriptionInvoices.id, invoice.id));

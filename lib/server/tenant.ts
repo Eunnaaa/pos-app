@@ -3,7 +3,10 @@ import { db, type Database } from "@/db";
 import { memberBranches, tenantMembers, user, type TenantRole } from "@/db/schema";
 import { AppError } from "./errors";
 import { type Permission, requirePermission } from "./rbac";
-import { isSuperAdminEmail } from "@/lib/super-admin";
+import { isSuperAdminUser } from "@/lib/super-admin";
+import { assertBranchAccess } from "./branch-access";
+
+export { assertBranchAccess } from "./branch-access";
 
 export type TenantContext = {
   organizationId: string;
@@ -30,7 +33,7 @@ export async function resolveTenantContext(
     const userRow = await database.query.user.findFirst({
       where: eq(user.id, userId),
     });
-    if (isSuperAdminEmail(userRow?.email)) {
+    if (isSuperAdminUser(userRow)) {
       return {
         organizationId,
         memberId: `super-admin-${userId}`,
@@ -58,5 +61,5 @@ export async function resolveTenantContext(
 
 export function authorizeTenant(context: TenantContext, permission: Permission, branchId?: string): void {
   requirePermission(context.role, permission, context.permissions);
-  void branchId;
+  assertBranchAccess(context, branchId);
 }

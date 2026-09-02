@@ -71,7 +71,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     limits: {
       maxMonthlyOrders: Infinity,
       maxProducts: Infinity,
-      maxBranches: 1,
+      maxBranches: 5,
       maxMembers: Infinity,
       maxWarehouses: 3,
       historyDays: 365,
@@ -98,7 +98,7 @@ export const PLANS: Record<PlanId, PlanConfig> = {
     limits: {
       maxMonthlyOrders: Infinity,
       maxProducts: Infinity,
-      maxBranches: 5,
+      maxBranches: 20,
       maxMembers: Infinity,
       maxWarehouses: 10,
       historyDays: Infinity,
