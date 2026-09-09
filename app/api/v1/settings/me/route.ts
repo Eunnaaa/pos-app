@@ -19,13 +19,17 @@ const updateSchema = z
 
 export const GET = apiHandler(async (request) => {
   const session = await requireSession(request.headers);
+  const userRecord = await db.query.user.findFirst({
+    where: eq(user.id, session.user.id),
+    columns: { locale: true },
+  });
   return dataResponse({
     id: session.user.id,
     name: session.user.name,
     email: session.user.email,
     emailVerified: session.user.emailVerified,
     image: session.user.image,
-    locale: session.user.locale,
+    locale: userRecord?.locale || "id-ID",
   });
 });
 
@@ -50,7 +54,7 @@ export const PATCH = apiHandler(async (request) => {
     result.emailStatus = "pending";
   }
 
-  if (input.locale !== undefined && input.locale !== session.user.locale) {
+  if (input.locale !== undefined) {
     await db.update(user).set({ locale: input.locale, updatedAt: new Date() }).where(eq(user.id, session.user.id));
     result.locale = input.locale;
   }

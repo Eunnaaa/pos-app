@@ -394,22 +394,22 @@ export function ProductsPage() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <p className="text-sm text-muted-foreground">Total produk</p>
-            <p className="mt-2 text-2xl font-bold">{products.data.length}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight">{products.data.length}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <p className="text-sm text-muted-foreground">Varian aktif</p>
-            <p className="mt-2 text-2xl font-bold">{variants.data.filter((item) => item.is_active).length}</p>
+            <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600">{variants.data.filter((item) => item.is_active).length}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <p className="text-sm text-muted-foreground">Nilai harga katalog</p>
-            <p className="mt-2 text-2xl font-bold">
+            <p className="mt-1 text-2xl font-bold tracking-tight">
               {rupiah(variants.data.reduce((sum, item) => sum + Number(item.price_amount), 0))}
             </p>
           </CardContent>

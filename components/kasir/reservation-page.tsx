@@ -186,7 +186,17 @@ export function ReservationPage() {
 
       <div className="grid gap-3 sm:grid-cols-4">
         {stats.map((stat, i) => (
-          <Card key={i}><CardContent className="p-5"><div className="flex items-center gap-3"><span className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${stat.bg}`}><stat.icon className={`size-5 ${stat.color}`} /></span><div><p className="text-sm text-muted-foreground">{stat.label}</p><p className="mt-1 text-2xl font-bold">{stat.value}</p></div></div></CardContent></Card>
+          <Card key={i} className="py-3 shadow-sm">
+            <CardContent className="px-4 py-0 flex items-center gap-3">
+              <span className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${stat.bg}`}>
+                <stat.icon className={`size-5 ${stat.color}`} />
+              </span>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
+                <p className="mt-0.5 text-xl font-bold tracking-tight">{stat.value}</p>
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 

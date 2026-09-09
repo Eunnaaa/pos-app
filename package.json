@@ -121,7 +121,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "css-loader": "^7.1.4",
-    "drizzle-kit": "^0.31.4",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "^15.5.25",
     "style-loader": "^4.0.0",

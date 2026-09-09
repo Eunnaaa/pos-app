@@ -59,6 +59,12 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     const response = await fetch(path, { ...options, method, headers, credentials: "include", cache: "no-store" });
     const payload = response.status === 204 ? { data: null } : await response.json();
     if (!response.ok) {
+      if (response.status === 401 && payload.error?.code === "UNAUTHENTICATED" && typeof window !== "undefined") {
+        const pathname = window.location.pathname;
+        if (!pathname.includes("/sign-in") && !pathname.includes("/sign-up") && !pathname.includes("/self-order")) {
+          window.location.href = "/sign-in";
+        }
+      }
       throw new ClientApiError(payload.error?.message || "Permintaan gagal", response.status, payload.error?.code, payload.error?.details);
     }
     return payload as ApiEnvelope<T>;

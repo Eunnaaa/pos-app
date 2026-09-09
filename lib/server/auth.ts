@@ -1,11 +1,12 @@
 import { headers } from "next/headers";
-import { auth, type AuthSession } from "@/lib/auth";
+import { auth, getAuthFromHeaders, type AuthSession } from "@/lib/auth";
 import { AppError } from "./errors";
 import { resolveTenantContext, type TenantContext } from "./tenant";
 
 export async function requireSession(requestHeaders?: Headers): Promise<AuthSession> {
-  const session = await auth.api.getSession({
-    headers: requestHeaders ?? (await headers()),
+  const reqHeaders = requestHeaders ?? (await headers());
+  const session = await getAuthFromHeaders(reqHeaders).api.getSession({
+    headers: reqHeaders,
   });
   if (!session) throw new AppError("UNAUTHENTICATED", "Authentication required");
   return session;

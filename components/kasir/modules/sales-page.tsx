@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, RefreshCw, RotateCcw, Search, Store } from "lucide-react"
+import { DollarSign, Loader2, RefreshCw, RotateCcw, Search, ShoppingBag, Store } from "lucide-react"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -208,37 +208,52 @@ export function SalesPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Total transaksi (Berhasil)</span>
-              <Badge variant="secondary" className="text-xs font-normal">
-                {activeBranchName}
-              </Badge>
+        <Card className="py-3 shadow-sm">
+          <CardContent className="px-4 py-0 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Total Transaksi (Berhasil)</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                  {activeBranchName}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xl font-bold tracking-tight">{totalSuccessCount}</p>
             </div>
-            <p className="mt-2 text-2xl font-bold">{totalSuccessCount}</p>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300">
+              <ShoppingBag className="size-4" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Nilai transaksi (Berhasil)</span>
-              <Badge variant="secondary" className="text-xs font-normal">
-                {activeBranchName}
-              </Badge>
+        <Card className="py-3 shadow-sm">
+          <CardContent className="px-4 py-0 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Nilai Penjualan (Berhasil)</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                  {activeBranchName}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xl font-bold tracking-tight text-emerald-600">{rupiah(totalSuccessAmount)}</p>
             </div>
-            <p className="mt-2 text-2xl font-bold">{rupiah(totalSuccessAmount)}</p>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300">
+              <DollarSign className="size-4" />
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>Refunded</span>
-              <Badge variant="secondary" className="text-xs font-normal">
-                {activeBranchName}
-              </Badge>
+        <Card className="py-3 shadow-sm">
+          <CardContent className="px-4 py-0 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span>Refunded</span>
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal">
+                  {activeBranchName}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xl font-bold tracking-tight text-rose-600">{refundedCount}</p>
             </div>
-            <p className="mt-2 text-2xl font-bold">{refundedCount}</p>
+            <div className="flex size-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-300">
+              <RotateCcw className="size-4" />
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -169,42 +169,42 @@ export function LoyaltyPage() {
         </div>
       ) : (
         <>
-          <section className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
+          <section className="grid gap-3 sm:grid-cols-3">
+            <Card className="py-4 shadow-sm">
+              <CardContent className="px-5 py-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Member</p>
-                    <p className="mt-2 text-2xl font-bold">{summary?.total_members ?? 0}</p>
+                    <p className="mt-1 text-2xl font-bold tracking-tight">{summary?.total_members ?? 0}</p>
                   </div>
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-emerald-100">
-                    <Sparkles className="size-6 text-emerald-600" />
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <Sparkles className="size-5" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="py-4 shadow-sm">
+              <CardContent className="px-5 py-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Poin Beredar</p>
-                    <p className="mt-2 text-2xl font-bold">{Number(summary?.total_points ?? 0).toLocaleString("id-ID")}</p>
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-amber-600">{Number(summary?.total_points ?? 0).toLocaleString("id-ID")}</p>
                   </div>
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-amber-100">
-                    <Star className="size-6 text-amber-600" />
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    <Star className="size-5" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardContent className="pt-6">
+            <Card className="py-4 shadow-sm">
+              <CardContent className="px-5 py-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">Total Poin Sepanjang Masa</p>
-                    <p className="mt-2 text-2xl font-bold">{Number(summary?.total_lifetime_points ?? 0).toLocaleString("id-ID")}</p>
+                    <p className="mt-1 text-2xl font-bold tracking-tight text-violet-600">{Number(summary?.total_lifetime_points ?? 0).toLocaleString("id-ID")}</p>
                   </div>
-                  <div className="flex size-12 items-center justify-center rounded-lg bg-violet-100">
-                    <Award className="size-6 text-violet-600" />
+                  <div className="flex size-11 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300">
+                    <Award className="size-5" />
                   </div>
                 </div>
               </CardContent>

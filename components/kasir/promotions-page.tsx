@@ -233,41 +233,41 @@ export function PromotionsPage() {
       </div>
 
       {/* Metrics */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Total Promosi</p>
-                <p className="mt-1 text-2xl font-bold">{totalPromos}</p>
+                <p className="text-sm text-muted-foreground font-medium">Total Promosi</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight">{totalPromos}</p>
               </div>
-              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                 <Tag className="size-5" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Promosi Aktif</p>
-                <p className="mt-1 text-2xl font-bold text-emerald-600">{activePromos}</p>
+                <p className="text-sm text-muted-foreground font-medium">Promosi Aktif</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600">{activePromos}</p>
               </div>
-              <div className="flex size-10 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+              <div className="flex size-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
                 <Sparkles className="size-5" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="rounded-2xl">
-          <CardContent className="pt-6">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground font-medium">Kode Kupon Tersedia</p>
-                <p className="mt-1 text-2xl font-bold text-amber-600">{couponPromos}</p>
+                <p className="text-sm text-muted-foreground font-medium">Kode Kupon Tersedia</p>
+                <p className="mt-1 text-2xl font-bold tracking-tight text-amber-600">{couponPromos}</p>
               </div>
-              <div className="flex size-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+              <div className="flex size-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
                 <Percent className="size-5" />
               </div>
             </div>

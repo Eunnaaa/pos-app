@@ -8,7 +8,7 @@ function resolveOrigin(req: Request): string {
   return resolveAuthOrigin(req, {
     baseUrl: env.BETTER_AUTH_URL,
     trustedOrigins: getTrustedOrigins(env),
-    trustProxy: env.TRUST_PROXY === "true" || process.env.VERCEL === "1",
+    trustProxy: env.TRUST_PROXY === "true" || process.env.VERCEL === "1" || env.NODE_ENV !== "production",
     isProduction: env.NODE_ENV === "production",
   });
 }

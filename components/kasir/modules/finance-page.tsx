@@ -106,10 +106,10 @@ export function FinancePage() {
     </div>
 
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Penjualan hari ini</p><p className="mt-2 text-2xl font-bold">{rupiah(overview.total_sales)}</p></CardContent></Card>
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Laba hari ini</p><p className="mt-2 text-2xl font-bold text-emerald-600">{rupiah(overview.total_profit)}</p></CardContent></Card>
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Total selisih kas</p><p className={`mt-2 text-2xl font-bold ${variance === 0 ? "" : "text-rose-600"}`}>{rupiah(variance)}</p></CardContent></Card>
-      <Card><CardContent className="p-5"><p className="text-sm text-muted-foreground">Shift terbuka / Periode tertutup</p><p className="mt-2 text-2xl font-bold">{openSessions.length} / {closedPeriods.length}</p></CardContent></Card>
+      <Card className="py-4 shadow-sm"><CardContent className="px-5 py-0"><p className="text-sm text-muted-foreground">Penjualan hari ini</p><p className="mt-1 text-2xl font-bold tracking-tight">{rupiah(overview.total_sales)}</p></CardContent></Card>
+      <Card className="py-4 shadow-sm"><CardContent className="px-5 py-0"><p className="text-sm text-muted-foreground">Laba hari ini</p><p className="mt-1 text-2xl font-bold tracking-tight text-emerald-600">{rupiah(overview.total_profit)}</p></CardContent></Card>
+      <Card className="py-4 shadow-sm"><CardContent className="px-5 py-0"><p className="text-sm text-muted-foreground">Total selisih kas</p><p className={`mt-1 text-2xl font-bold tracking-tight ${variance === 0 ? "" : "text-rose-600"}`}>{rupiah(variance)}</p></CardContent></Card>
+      <Card className="py-4 shadow-sm"><CardContent className="px-5 py-0"><p className="text-sm text-muted-foreground">Shift terbuka / Tutup buku</p><p className="mt-1 text-2xl font-bold tracking-tight">{openSessions.length} / {closedPeriods.length}</p></CardContent></Card>
     </div>
 
     <Card>

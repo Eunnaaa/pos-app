@@ -218,41 +218,41 @@ export function BranchesPage() {
       </div>
 
       {/* Summary KPI Strip */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="rounded-2xl border border-t-2 border-t-emerald-500 bg-card shadow-2xs transition-all hover:shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Card className="py-4 border-t-2 border-t-emerald-500 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-foreground/80">Total Cabang</p>
-              <p className="text-2xl font-extrabold tracking-tight text-foreground mt-1">{branches.length}</p>
+              <p className="text-sm font-semibold text-muted-foreground">Total Cabang</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground mt-1">{branches.length}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Lokasi operasional aktif</p>
             </div>
-            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/60 shadow-2xs">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200/60 shadow-2xs">
               <Building2 className="size-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border border-t-2 border-t-blue-500 bg-card shadow-2xs transition-all hover:shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="py-4 border-t-2 border-t-blue-500 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-foreground/80">Total Gudang Terkait</p>
-              <p className="text-2xl font-extrabold tracking-tight text-foreground mt-1">{totalWarehouses}</p>
+              <p className="text-sm font-semibold text-muted-foreground">Total Gudang Terkait</p>
+              <p className="text-2xl font-bold tracking-tight text-foreground mt-1">{totalWarehouses}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Penampungan stok inventaris</p>
             </div>
-            <div className="flex size-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300 border border-blue-200/60 shadow-2xs">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-300 border border-blue-200/60 shadow-2xs">
               <Warehouse className="size-5" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border border-t-2 border-t-amber-500 bg-card shadow-2xs transition-all hover:shadow-xs">
-          <CardContent className="p-4 flex items-center justify-between">
+        <Card className="py-4 border-t-2 border-t-amber-500 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
-              <p className="text-xs font-semibold text-foreground/80">Status Operasional</p>
-              <p className="text-2xl font-extrabold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">100% Aktif</p>
+              <p className="text-sm font-semibold text-muted-foreground">Status Operasional</p>
+              <p className="text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1">100% Aktif</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Terintegrasi dengan kasir POS</p>
             </div>
-            <div className="flex size-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/60 shadow-2xs">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300 border border-amber-200/60 shadow-2xs">
               <CheckCircle2 className="size-5" />
             </div>
           </CardContent>

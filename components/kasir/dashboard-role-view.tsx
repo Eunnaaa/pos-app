@@ -1,11 +1,16 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import dynamic from "next/dynamic"
 import { useRouter } from "@/i18n/navigation"
 import { DashboardOverview } from "@/components/kasir/dashboard-overview"
 import { CashierDashboardOverview } from "@/components/kasir/cashier-dashboard-overview"
 import { useOrganization } from "@/components/kasir/organization-provider"
-import { SuperAdminDashboard } from "@/components/admin/super-admin-dashboard"
+
+const SuperAdminDashboard = dynamic(
+  () => import("@/components/admin/super-admin-dashboard").then((mod) => mod.SuperAdminDashboard),
+  { ssr: false }
+)
 
 export function DashboardRoleView() {
   const router = useRouter()

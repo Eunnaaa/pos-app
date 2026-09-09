@@ -145,66 +145,66 @@ export function EmployeesCashierPage() {
       </div>
 
       {/* KPI Global Stat Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {/* Total Karyawan */}
-        <Card className="shadow-xs rounded-2xl">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Kasir / Staf</p>
-              <p className="mt-1.5 text-2xl font-bold text-foreground">{rows.length}</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{rows.length}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {rows.filter((r) => r.member_active).length} aktif bertugas
               </p>
             </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground">
               <Users className="size-5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Shift Aktif */}
-        <Card className="border-emerald-200/60 bg-emerald-50/40 dark:border-emerald-900/60 dark:bg-emerald-950/20 shadow-xs rounded-2xl">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="py-4 border-emerald-200/60 bg-emerald-50/40 dark:border-emerald-900/60 dark:bg-emerald-950/20 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">Shift Aktif</p>
-              <p className="mt-1.5 text-2xl font-bold text-emerald-700 dark:text-emerald-400">{openShift}</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-emerald-700 dark:text-emerald-400">{openShift}</p>
               <p className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80 mt-0.5">
                 Sedang melayani pelanggan
               </p>
             </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
               <Clock className="size-5 animate-pulse" />
             </div>
           </CardContent>
         </Card>
 
         {/* Total Omzet Kasir */}
-        <Card className="shadow-xs rounded-2xl">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Omzet Kasir</p>
-              <p className="mt-1.5 text-2xl font-bold text-foreground">{rupiah(totalSalesAll.toString())}</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{rupiah(totalSalesAll.toString())}</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {totalOrdersAll} transaksi diselesaikan
               </p>
             </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100/80 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
               <DollarSign className="size-5" />
             </div>
           </CardContent>
         </Card>
 
         {/* Akurasi Kas Shift */}
-        <Card className="shadow-xs rounded-2xl">
-          <CardContent className="p-5 flex items-center justify-between">
+        <Card className="py-4 shadow-sm">
+          <CardContent className="px-5 py-0 flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Akurasi Kas Shift</p>
-              <p className="mt-1.5 text-2xl font-bold text-foreground">{overallAccuracy}%</p>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">{overallAccuracy}%</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {perfectShiftsAll} dari {totalShiftsAll} shift seimbang (Rp 0)
               </p>
             </div>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+            <div className="flex size-11 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
               <CheckCircle2 className="size-5" />
             </div>
           </CardContent>

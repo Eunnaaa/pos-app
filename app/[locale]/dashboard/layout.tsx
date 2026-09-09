@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { auth } from "@/lib/auth"
+import { auth, getAuthFromHeaders } from "@/lib/auth"
 import { isSuperAdminUser } from "@/lib/super-admin"
 
 import {
@@ -23,7 +23,7 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const [cookieStore, requestHeaders] = await Promise.all([cookies(), headers()])
-  const session = await auth.api.getSession({ headers: requestHeaders })
+  const session = await getAuthFromHeaders(requestHeaders).api.getSession({ headers: requestHeaders })
   if (!session) redirect("/sign-in")
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true"
   const isSuperAdmin = isSuperAdminUser(session.user)

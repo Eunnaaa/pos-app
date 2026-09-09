@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { account, session, twoFactor as twoFactorTable, user, verification } from "@/db/schema";
 import { sendEmail, sendResetPasswordEmail } from "@/lib/integrations/notifications";
 import { getRedisClient } from "@/lib/redis";
+import { isDevTunnelOrLocal, resolveOriginFromHeaders } from "@/lib/server/auth-origin";
 
 const env = getServerEnv();
 const isProduction = env.NODE_ENV === "production";
@@ -49,7 +50,12 @@ function createBetterAuthInstance(baseURL: string) {
             getAndDelete: async (key: string) => {
               let res: unknown = null;
               try {
-                res = await (redis as any).getdel(key);
+                const client = redis as unknown as { getdel?: (k: string) => Promise<unknown> };
+                if (typeof client.getdel === "function") {
+                  res = await client.getdel(key);
+                } else {
+                  throw new Error("getdel not available");
+                }
               } catch {
                 res = await redis.get(key);
                 if (res !== null && res !== undefined) {
@@ -68,7 +74,18 @@ function createBetterAuthInstance(baseURL: string) {
           },
         }
       : {}),
-    trustedOrigins: getTrustedOrigins(env),
+    trustedOrigins: (request?: Request) => {
+      const allowed = new Set(getTrustedOrigins(env));
+      if (!isProduction && request) {
+        const originHeader = request.headers.get("origin") || request.headers.get("referer");
+        if (originHeader && isDevTunnelOrLocal(originHeader)) {
+          try {
+            allowed.add(new URL(originHeader).origin);
+          } catch {}
+        }
+      }
+      return Array.from(allowed);
+    },
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 12,
@@ -112,6 +129,7 @@ function createBetterAuthInstance(baseURL: string) {
     },
     account: {
       encryptOAuthTokens: true,
+      skipStateCookieCheck: !isProduction || env.TRUST_PROXY === "true",
       accountLinking: {
         enabled: true,
         trustedProviders: ["google", "apple", "email-password"],
@@ -129,7 +147,7 @@ function createBetterAuthInstance(baseURL: string) {
         ? {
             changeEmail: {
               enabled: true,
-              sendChangeEmailVerification: async ({ newEmail, url }: { newEmail: string; url: string }) => {
+              sendChangeEmailConfirmation: async ({ newEmail, url }: { newEmail: string; url: string }) => {
                 await sendEmail(
                   newEmail,
                   "Konfirmasi Email Baru — Kedai-Ku",
@@ -141,9 +159,10 @@ function createBetterAuthInstance(baseURL: string) {
         : {}),
     },
     session: {
-      expiresIn: 60 * 60 * 12,
-      updateAge: 60 * 15,
-      freshAge: 60 * 10,
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      freshAge: 60 * 60 * 12,
+      storeSessionInDatabase: true,
       cookieCache: { enabled: true, maxAge: 60 * 2 },
     },
     rateLimit: {
@@ -160,6 +179,7 @@ function createBetterAuthInstance(baseURL: string) {
       },
     },
     advanced: {
+      trustedProxyHeaders: true,
       ipAddress: {
         ipAddressHeaders: env.TRUST_PROXY === "true" || process.env.VERCEL === "1" || !isProduction
           ? ["x-forwarded-for", "x-real-ip"]
@@ -172,7 +192,7 @@ function createBetterAuthInstance(baseURL: string) {
       defaultCookieAttributes: {
         httpOnly: true,
         sameSite: "lax",
-        secure: isProduction,
+        secure: isProduction || baseURL.startsWith("https://"),
         path: "/",
       },
     },
@@ -199,6 +219,12 @@ export function getAuth(origin?: string) {
     authInstances.set(url, instance);
   }
   return instance;
+}
+
+export function getAuthFromHeaders(headers?: Headers) {
+  if (!headers) return auth;
+  const origin = resolveOriginFromHeaders(headers);
+  return getAuth(origin);
 }
 
 export const auth = getAuth();

@@ -225,13 +225,15 @@ export function CashierDashboardOverview() {
 
 function Kpi({ icon: Icon, label, value }: { icon: typeof Banknote; label: string; value: string }) {
   return (
-    <Card className="py-4 shadow-sm">
-      <CardContent className="px-5 py-0">
-        <div className="flex size-11 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950">
+    <Card className="py-3 shadow-sm">
+      <CardContent className="px-4 py-0 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="mt-0.5 text-xl font-bold tracking-tight">{value}</p>
+        </div>
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
           <Icon className="size-5 text-emerald-600" />
         </div>
-        <p className="mt-3 text-sm text-muted-foreground">{label}</p>
-        <p className="mt-1 text-2xl font-bold tracking-tight">{value}</p>
       </CardContent>
     </Card>
   )

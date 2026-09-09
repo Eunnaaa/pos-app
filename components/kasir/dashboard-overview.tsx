@@ -131,16 +131,18 @@ export function DashboardOverview() {
   return <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
     <AnnouncementBanner />
     <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-2xl font-bold tracking-tight">Selamat datang, {session?.user.name || "Pengguna"}</h2><p className="text-muted-foreground">Ringkasan bisnis berdasarkan data aktual.</p></div><div className="flex gap-2"><Button variant="outline" asChild><Link href="/dashboard/reports"><BarChart3 className="mr-2 size-4" /> Semua laporan</Link></Button><Button className="bg-emerald-600 hover:bg-emerald-700" asChild><Link href="/dashboard/pos"><ShoppingBag className="mr-2 size-4" /> Buka kasir</Link></Button></div></section>
-    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {kpis.map((item) => (
-        <Card key={item.label} className="py-4 shadow-sm">
-          <CardContent className="px-5 py-0">
-            <div className={`flex size-11 items-center justify-center rounded-xl ${item.bg}`}>
+        <Card key={item.label} className="py-3 shadow-sm">
+          <CardContent className="px-4 py-0 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+              <p className="mt-0.5 text-xl font-bold tracking-tight">{item.value}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{item.note}</p>
+            </div>
+            <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${item.bg}`}>
               <item.icon className={`size-5 ${item.color}`} />
             </div>
-            <p className="mt-3 text-sm text-muted-foreground">{item.label}</p>
-            <p className="mt-1 text-2xl font-bold tracking-tight">{item.value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{item.note}</p>
           </CardContent>
         </Card>
       ))}

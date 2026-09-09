@@ -1,17 +1,27 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { AppError, logger } from "@/lib/server";
+import { AppError, assertBranchAccess, logger } from "@/lib/server";
 import { financeReport } from "@/lib/services/reporting";
+
+export const dynamic = "force-dynamic";
 
 const querySchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
+  branchId: z.string().optional(),
 });
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "reports:read");
   const url = new URL(request.url);
   const query = querySchema.parse(Object.fromEntries(url.searchParams));
+
+  const targetBranchId =
+    query.branchId === "all"
+      ? null
+      : (query.branchId || context.branchId || null);
+
+  assertBranchAccess(context.tenant, targetBranchId);
 
   const endDate = query.endDate ? new Date(query.endDate) : new Date();
   const startDate = query.startDate
@@ -20,7 +30,7 @@ export const GET = apiHandler(async (request) => {
   if (startDate >= endDate) throw new AppError("VALIDATION_ERROR", "startDate must be before endDate");
 
   try {
-    const report = await financeReport(context.organizationId, context.branchId || null, startDate, endDate);
+    const report = await financeReport(context.organizationId, targetBranchId, startDate, endDate);
     return dataResponse(report);
   } catch (error) {
     const details: unknown[] = [];

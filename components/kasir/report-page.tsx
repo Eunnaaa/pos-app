@@ -6,14 +6,14 @@ import { Building2, Calendar, Download, Loader2, TrendingDown, TrendingUp } from
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { apiFetch } from "@/lib/client"
+import { apiFetch, getActiveContext } from "@/lib/client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { showError, showSuccess } from "@/lib/toast-handler"
 import type { SalesReport, InventoryReport, PurchaseReport, FinanceReport, CustomerReport } from "@/lib/services/reporting"
 import { exportToCsv } from "@/lib/utils/export-csv"
 
-const rupiah = (value: string | number) => `Rp ${Number(value).toLocaleString("id-ID")}`
+const rupiah = (value: string | number) => `Rp ${Math.round(Number(value) || 0).toLocaleString("id-ID")}`
 
 interface ReportPageProps {
   reportType: "sales" | "inventory" | "purchases" | "finance" | "customers"
@@ -21,14 +21,43 @@ interface ReportPageProps {
 }
 
 export function ReportPage({ reportType, title }: ReportPageProps) {
-  const { branch, organization } = useOrganization()
+  const { branch, organization, selectBranch, selectAllBranches } = useOrganization()
   const searchParams = useSearchParams()
   const [report, setReport] = useState<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [selectedBranchId, setSelectedBranchId] = useState<string>(branch?.id || "all")
+  const [selectedBranchId, setSelectedBranchId] = useState<string>(() => {
+    const active = getActiveContext()
+    return active.branchId || branch?.id || "all"
+  })
   const [startDate, setStartDate] = useState(searchParams.get("startDate") || "")
   const [endDate, setEndDate] = useState(searchParams.get("endDate") || "")
+
+  useEffect(() => {
+    if (branch?.id) {
+      setSelectedBranchId(branch.id)
+    } else {
+      setSelectedBranchId("all")
+    }
+  }, [branch?.id])
+
+  useEffect(() => {
+    const handleContextChange = () => {
+      const active = getActiveContext()
+      setSelectedBranchId(active.branchId || "all")
+    }
+    window.addEventListener("kedai-ku-context-change", handleContextChange)
+    return () => window.removeEventListener("kedai-ku-context-change", handleContextChange)
+  }, [])
+
+  const handleBranchChange = (value: string) => {
+    setSelectedBranchId(value)
+    if (value === "all") {
+      selectAllBranches()
+    } else {
+      selectBranch(value)
+    }
+  }
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -37,8 +66,12 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
       const params = new URLSearchParams()
       if (startDate) params.append("startDate", new Date(`${startDate}T00:00:00`).toISOString())
       if (endDate) params.append("endDate", new Date(`${endDate}T23:59:59.999`).toISOString())
+      params.append("branchId", selectedBranchId)
       const targetBranchId = selectedBranchId === "all" ? null : selectedBranchId
-      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(`/api/v1/reports/${reportType}?${params.toString()}`, { branchId: targetBranchId })
+      const response = await apiFetch<SalesReport | InventoryReport | PurchaseReport | FinanceReport | CustomerReport>(
+        `/api/v1/reports/${reportType}?${params.toString()}`,
+        { branchId: targetBranchId }
+      )
       setReport(response.data)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Gagal memuat laporan"
@@ -133,33 +166,30 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
     : (organization?.branches.find((b) => b.id === selectedBranchId)?.name || "Cabang Aktif")
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-4 md:p-6">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-1 flex-col gap-4 p-4 md:px-6 md:pb-6 md:pt-4">
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
-          <p className="text-muted-foreground">Laporan terperinci dan analitik bisnis per cabang.</p>
+          <h2 className="text-2xl font-bold">{title}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Laporan terperinci dan analitik bisnis per cabang.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="secondary" className="gap-1.5 py-1.5 pl-3 pr-3.5 text-sm">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="gap-1.5 py-1.5 pl-3 pr-3.5 text-xs">
             <Building2 className="size-3.5 text-muted-foreground" />
             {currentBranchLabel}
           </Badge>
-          <Button onClick={handleExport} disabled={!report} variant="outline">
-            <Download className="mr-2 size-4" />
+          <Button onClick={handleExport} disabled={!report} variant="outline" size="sm">
+            <Download className="mr-1.5 size-3.5" />
             Export CSV
           </Button>
         </div>
       </section>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Filter Periode &amp; Cabang</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <Card className="py-2.5 px-3 sm:px-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           {organization && organization.branches.length > 0 && (
             <div className="flex-1">
-              <label className="text-xs font-semibold">Pilih Cabang</label>
-              <Select value={selectedBranchId} onValueChange={setSelectedBranchId}>
+              <label className="text-xs font-semibold text-muted-foreground">Pilih Cabang</label>
+              <Select value={selectedBranchId} onValueChange={handleBranchChange}>
                 <SelectTrigger className="w-full mt-1 rounded-lg h-9 text-xs">
                   <SelectValue placeholder="Pilih Cabang" />
                 </SelectTrigger>
@@ -175,21 +205,21 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
             </div>
           )}
           <div className="flex-1">
-            <label className="text-xs font-semibold">Dari tanggal</label>
+            <label className="text-xs font-semibold text-muted-foreground">Dari tanggal</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9"
+              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9 bg-background"
             />
           </div>
           <div className="flex-1">
-            <label className="text-xs font-semibold">Sampai tanggal</label>
+            <label className="text-xs font-semibold text-muted-foreground">Sampai tanggal</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9"
+              className="w-full mt-1 rounded-lg border px-3 py-1.5 text-xs h-9 bg-background"
             />
           </div>
           <div>
@@ -198,13 +228,17 @@ export function ReportPage({ reportType, title }: ReportPageProps) {
               Terapkan Filter
             </Button>
           </div>
-        </CardContent>
+        </div>
       </Card>
 
-      {error && <Card className="border-destructive/40"><CardContent className="p-4 text-sm text-destructive">{error}</CardContent></Card>}
+      {error ? (
+        <Card className="border-destructive/40">
+          <CardContent className="p-4 text-sm text-destructive">{error}</CardContent>
+        </Card>
+      ) : null}
 
       {loading ? (
-        <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="flex min-h-[50vh] items-center justify-center">
           <Loader2 className="size-8 animate-spin text-emerald-600" />
         </div>
       ) : report ? (
@@ -242,8 +276,8 @@ function SalesReportContent({ report }: { report: SalesReport }) {
   const trend = Number(summary.totalSales) > 0
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           label="Penjualan Bersih"
           value={rupiah(summary.totalSales)}
@@ -264,7 +298,7 @@ function SalesReportContent({ report }: { report: SalesReport }) {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Tren Penjualan per Jam</CardTitle>
@@ -368,8 +402,8 @@ function InventoryReportContent({ report }: { report: InventoryReport }) {
   const summary = report.summary
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total SKU" value={String(summary.totalSKUs)} icon={TrendingUp} />
         <MetricCard label="Total Nilai Stok" value={rupiah(summary.totalValue)} icon={TrendingUp} />
         <MetricCard
@@ -386,7 +420,7 @@ function InventoryReportContent({ report }: { report: InventoryReport }) {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Stok Berdasarkan Kategori</CardTitle>
@@ -467,8 +501,8 @@ function PurchaseReportContent({ report }: { report: PurchaseReport }) {
   const summary = report.summary
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total PO" value={String(summary.totalOrders)} icon={TrendingUp} />
         <MetricCard label="Total Amount" value={rupiah(summary.totalAmount)} icon={TrendingUp} />
         <MetricCard label="Received" value={rupiah(summary.totalReceivedAmount)} icon={TrendingUp} />
@@ -480,7 +514,7 @@ function PurchaseReportContent({ report }: { report: PurchaseReport }) {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Berdasarkan Supplier</CardTitle>
@@ -550,8 +584,8 @@ function FinanceReportContent({ report }: { report: FinanceReport }) {
   const profit = Number(summary.profit)
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total Penjualan" value={rupiah(summary.totalSales)} icon={TrendingUp} />
         <MetricCard label="Pendapatan" value={rupiah(summary.income)} icon={TrendingUp} />
         <MetricCard
@@ -567,7 +601,7 @@ function FinanceReportContent({ report }: { report: FinanceReport }) {
           icon={profit > 0 ? TrendingUp : TrendingDown}
         />
       </section>
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Laba Penjualan" value={rupiah(summary.salesProfit)} icon={TrendingUp} />
         <MetricCard label="Total Order" value={String(summary.totalOrders)} icon={TrendingUp} />
         <MetricCard label="Margin Profit" value={`${summary.profitMargin}%`} icon={TrendingUp} />
@@ -583,7 +617,7 @@ function FinanceReportContent({ report }: { report: FinanceReport }) {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Breakdown Pendapatan</CardTitle>
@@ -660,15 +694,15 @@ function CustomerReportContent({ report }: { report: CustomerReport }) {
   const summary = report.summary
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="space-y-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard label="Total Pelanggan" value={String(summary.totalCustomers)} icon={TrendingUp} />
         <MetricCard label="Pelanggan Baru" value={String(summary.newCustomers)} icon={TrendingUp} />
         <MetricCard label="Pelanggan Aktif" value={String(summary.activeCustomers)} icon={TrendingUp} />
         <MetricCard label="Total Pengeluaran" value={rupiah(summary.totalSpent)} icon={TrendingUp} />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Segmentasi Pelanggan</CardTitle>
@@ -756,16 +790,20 @@ interface MetricCardProps {
 
 function MetricCard({ label, value, icon: Icon, trend }: MetricCardProps) {
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">{label}</p>
-            <p className="mt-2 text-2xl font-bold">{value}</p>
-          </div>
-          <div className={`flex size-12 items-center justify-center rounded-lg ${trend === false ? "bg-red-100" : "bg-emerald-100"}`}>
-            <Icon className={`size-6 ${trend === false ? "text-red-600" : "text-emerald-600"}`} />
-          </div>
+    <Card className="py-3 shadow-sm">
+      <CardContent className="px-4 py-0 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="mt-0.5 text-xl font-bold tracking-tight">{value}</p>
+        </div>
+        <div
+          className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+            trend === false
+              ? "bg-rose-100 text-rose-600 dark:bg-rose-950 dark:text-rose-300"
+              : "bg-emerald-100 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300"
+          }`}
+        >
+          <Icon className="size-5" />
         </div>
       </CardContent>
     </Card>
