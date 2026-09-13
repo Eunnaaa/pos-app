@@ -53,8 +53,10 @@ void test("restricted members cannot access an unassigned or omitted branch", ()
   assert.doesNotThrow(() => assertBranchAccess(restricted, "branch-a"));
   assert.throws(() => assertBranchAccess(restricted, "branch-b"), AppError);
   assert.throws(() => assertBranchAccess(restricted), AppError);
-  assert.doesNotThrow(() => assertBranchAccess({ role: "owner", branchIds: ["branch-a"] }, "branch-b"));
-  assert.doesNotThrow(() => assertBranchAccess({ role: "cashier", branchIds: [] }, "branch-b"));
+  assert.doesNotThrow(() => assertBranchAccess({ role: "owner", branchIds: [] }, "branch-b"));
+  assert.throws(() => assertBranchAccess({ role: "cashier", branchIds: [] }, "branch-b"), AppError);
+  assert.doesNotThrow(() => assertBranchAccess({ role: "owner", branchIds: ["branch-a"], allBranches: true }, "branch-b"));
+  assert.throws(() => assertBranchAccess({ role: "owner", branchIds: [], allBranches: true, activeBranchIds: ["branch-a"] }, "branch-b"), AppError);
 });
 
 void test("super admin requires a server allowlist, verified email, and 2FA", () => {

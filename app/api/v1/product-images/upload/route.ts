@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
 import { uploadToSupabaseStorage } from "@/lib/integrations";
-import { uploadProductImage } from "@/lib/services/product-images";
+import { assertProductImageTarget, uploadProductImage } from "@/lib/services/product-images";
 import { AppError, validateImageBytes } from "@/lib/server";
 
 const ALLOWED_MIME = new Map([
@@ -18,6 +18,8 @@ export const POST = apiHandler(async (request) => {
   }
   const form = await request.formData();
   const productId = z.string().uuid().parse(form.get("productId"));
+  // Check tenancy and target existence before writing bytes to external storage.
+  await assertProductImageTarget(context.organizationId, productId);
   const altText = typeof form.get("altText") === "string" && form.get("altText")
     ? z.string().trim().max(300).parse(form.get("altText"))
     : undefined;

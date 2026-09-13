@@ -110,12 +110,12 @@ async function parseResourceBody(request: Request, config: ResourceConfig, parti
 }
 
 function tenantScope(config: ResourceConfig, context: ApiContext) {
-  if (!config.fields.branchId || context.tenant.role === "owner" || !context.branchId) return sql``;
+  if (!config.fields.branchId || context.tenant.allBranches || !context.branchId) return sql``;
   return sql` and branch_id = ${context.branchId}`;
 }
 
 function enforceBranchScope(config: ResourceConfig, body: Record<string, unknown>, context: ApiContext) {
-  if (!config.fields.branchId || context.tenant.role === "owner" || !context.branchId) return;
+  if (!config.fields.branchId || context.tenant.allBranches || !context.branchId) return;
   if (body.branch_id !== undefined && body.branch_id !== context.branchId) {
     throw new AppError("FORBIDDEN", "No access to this branch");
   }

@@ -68,7 +68,10 @@ export async function assertSafeWebhookUrl(value: string): Promise<URL> {
     }
   } catch (error) {
     if (error instanceof AppError) throw error;
-    // DNS resolution failed — allow gracefully (sync checks already cover direct-IP attacks)
+    // A hostname whose address cannot be verified must not be accepted. Allowing
+    // it would make the SSRF guard fail open and leaves DNS rebinding to the
+    // later outbound request.
+    throw new AppError("VALIDATION_ERROR", "Webhook URL hostname could not be verified");
   }
   return url;
 }

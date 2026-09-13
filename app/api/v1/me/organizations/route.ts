@@ -57,7 +57,7 @@ export const GET = apiHandler(async (request) => {
     }
     return {
       ...membership,
-      canAccessAllBranches: membership.role === "owner" || assignedBranchIds.length === 0,
+      canAccessAllBranches: membership.role === "owner",
       branches: Array.from(branchMap.values()),
     };
   }));

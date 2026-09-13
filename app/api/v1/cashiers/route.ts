@@ -11,7 +11,7 @@ const createSchema = z.object({
   name: z.string().trim().min(2).max(150),
   email: z.string().email().toLowerCase(),
   password: z.string().min(12).max(128),
-  branchIds: z.array(z.string().uuid()).max(100).default([]),
+  branchIds: z.array(z.string().uuid()).min(1, "Kasir harus ditugaskan ke minimal satu cabang").max(100),
 });
 
 export const GET = apiHandler(async (request) => {

@@ -13,22 +13,25 @@ export interface ProductImage {
   createdAt: string;
 }
 
+export async function assertProductImageTarget(
+  organizationId: string,
+  productId: string,
+): Promise<void> {
+  const [product] = await db
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.id, productId), eq(products.organizationId, organizationId)))
+    .limit(1);
+  if (!product) throw new AppError("NOT_FOUND", "Product not found");
+}
+
 export async function uploadProductImage(
   organizationId: string,
   productId: string,
   imageUrl: string,
   altText?: string,
 ): Promise<ProductImage> {
-  // Verify product exists
-  const [product] = await db
-    .select({ id: products.id })
-    .from(products)
-    .where(and(eq(products.id, productId), eq(products.organizationId, organizationId)))
-    .limit(1);
-
-  if (!product) {
-    throw new AppError("NOT_FOUND", "Product not found");
-  }
+  await assertProductImageTarget(organizationId, productId);
 
   // Check if this should be primary (first image)
   const existingImages = await db

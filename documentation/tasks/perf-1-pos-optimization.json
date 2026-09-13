@@ -1,0 +1,11 @@
+{
+  "id": "perf-1-pos-optimization",
+  "title": "POS Bootstrap, rendering performance, and cashier speed optimization",
+  "description": "Consolidate 6 POS resource requests into single bootstrap API, optimize image thumbnails, memoize filters, add keyboard shortcuts and quick cash presets",
+  "status": "completed",
+  "createdAt": "2026-09-13T15:36:00.000Z",
+  "updatedAt": "2026-09-13T16:30:41.204Z",
+  "startedAt": "2026-09-13T15:36:18.118Z",
+  "completion": "Consolidated POS bootstrap endpoint with Redis cache, instant local cache rendering, thumbnail resizing, O(1) barcode index, progressive catalog pagination, keyboard shortcuts, and quick cash denominations. All 57 tests pass, typecheck clean.",
+  "completedAt": "2026-09-13T16:30:41.204Z"
+}

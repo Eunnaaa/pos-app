@@ -7,7 +7,7 @@ import { AppError, parseJson } from "@/lib/server";
 
 const updateSchema = z.object({
   name: z.string().trim().min(2).max(150).optional(),
-  branchIds: z.array(z.string().uuid()).max(100).optional(),
+  branchIds: z.array(z.string().uuid()).min(1, "Kasir harus ditugaskan ke minimal satu cabang").max(100).optional(),
   isActive: z.boolean().optional(),
 });
 

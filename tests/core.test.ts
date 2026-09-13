@@ -94,8 +94,10 @@ void test("webhook targets reject local and private network URLs", async () => {
   const valid = await assertSafeWebhookUrl("https://example.com/hooks/sale");
   assert.equal(valid.hostname, "example.com");
   for (const url of ["http://example.com", "https://localhost/hook", "https://127.0.0.1/hook", "https://10.0.0.8/hook", "https://user:pass@example.com/hook"]) {
-    await assert.rejects(() => assertSafeWebhookUrl(url), AppError);
+  await assert.rejects(() => assertSafeWebhookUrl(url), AppError);
   }
+
+  await assert.rejects(() => assertSafeWebhookUrl("https://this-host-should-not-exist.invalid/hooks"), AppError);
 });
 
 void test("pagination cursors round-trip and reject malformed input", () => {

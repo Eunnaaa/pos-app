@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import QRCode from "qrcode"
 import {
   Banknote,
@@ -45,17 +45,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useOrganization } from "@/components/kasir/organization-provider"
-import { useResource } from "@/hooks/use-resource"
+import { usePosBootstrap, type PosProduct } from "@/hooks/use-pos-bootstrap"
 import { apiFetch } from "@/lib/client"
 import { getCategoryEmoji, getCategoryColor } from "@/lib/services/category-images"
 
-type ProductRecord = { id: string; name: string; category_id?: string; track_stock: boolean; is_active: boolean; image_url?: string | null; imageUrl?: string | null }
-type VariantRecord = { id: string; product_id: string; name: string; sku: string; barcode?: string; price_amount: string; is_active: boolean }
-type BalanceRecord = { id: string; warehouse_id: string; variant_id: string; available: string }
-type CustomerRecord = { id: string; code: string; name: string; phone?: string; is_active: boolean }
-type CategoryRecord = { id: string; name: string; is_active: boolean }
-type TableRecord = { id: string; name: string; capacity: number; is_active: boolean }
-type Product = { id: string; productId: string; name: string; category: string; price: number; stock: number; trackStock: boolean; sku: string; barcode?: string; imageUrl?: string | null }
+export type Product = PosProduct
 type CartItem = Product & { quantity: number }
 type CashSession = { id: string; openingAmount: string; openedAt: string; registerName: string; registerCode: string; shiftHours?: number; branchId?: string }
 type ClosedCashSession = { expectedClosingAmount: string; actualClosingAmount: string; varianceAmount: string }
@@ -89,15 +83,9 @@ const pendingQrisStorageKey = (branchId: string) => `kedai-ku-pos-pending-qris:$
 
 export function PosScreen() {
   const { branch, warehouse, selectBranch, organization } = useOrganization()
-  const productResource = useResource<ProductRecord>("products", "limit=100")
-  const variantResource = useResource<VariantRecord>("variants", "limit=100")
-  const balanceResource = useResource<BalanceRecord>("stock-balances", "limit=100")
-  const customerResource = useResource<CustomerRecord>("customers", "limit=100")
-  const categoryResource = useResource<CategoryRecord>("categories", "limit=100")
-  const tableResource = useResource<TableRecord>("dining-tables", "limit=100")
-  const refreshProducts = productResource.refresh
-  const refreshVariants = variantResource.refresh
-  const refreshBalances = balanceResource.refresh
+  const posBootstrap = usePosBootstrap(branch?.id, warehouse?.id)
+  const { products, categories, customers, tables, loading, error: catalogError, refresh: refreshBootstrap } = posBootstrap
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Semua")
@@ -296,7 +284,7 @@ export function PosScreen() {
         branchName: branch?.name,
         orderNumber: String(number),
         cashierName: session?.registerName || "Kasir",
-        tableName: selectedTableId === "takeaway" ? "Takeaway" : tableResource.data.find((t) => t.id === selectedTableId)?.name,
+        tableName: selectedTableId === "takeaway" ? "Takeaway" : tables.find((t) => t.id === selectedTableId)?.name,
         diningType: selectedTableId === "takeaway" ? "takeaway" : "dine_in",
         date: new Date(),
         items: cart.filter((i) => i.quantity > 0).map((i) => ({
@@ -501,30 +489,39 @@ export function PosScreen() {
     }
   }
 
-  const products = useMemo(() => {
-    const productById = new Map(productResource.data.map((item) => [item.id, item]))
-    const categoryById = new Map(categoryResource.data.map((item) => [item.id, item.name]))
-    const balanceByVariant = new Map(balanceResource.data.filter((item) => item.warehouse_id === warehouse?.id).map((item) => [item.variant_id, Number(item.available)]))
-    return variantResource.data.filter((variant) => variant.is_active && productById.get(variant.product_id)?.is_active).map((variant): Product => {
-      const product = productById.get(variant.product_id)!
-      const imageUrl = product.image_url || product.imageUrl || null
-      return {
-        id: variant.id,
-        productId: product.id,
-        name: variant.name === "Default" ? product.name : `${product.name} - ${variant.name}`,
-        category: product.category_id ? categoryById.get(product.category_id) || "Lainnya" : "Lainnya",
-        price: Number(variant.price_amount),
-        stock: balanceByVariant.get(variant.id) ?? 0,
-        trackStock: product.track_stock,
-        sku: variant.sku,
-        barcode: variant.barcode,
-        imageUrl,
-      }
-    })
-  }, [productResource.data, categoryResource.data, balanceResource.data, variantResource.data, warehouse?.id])
 
-  const categories = ["Semua", ...Array.from(new Set(products.map((item) => item.category)))]
-  const filtered = products.filter((product) => (category === "Semua" || product.category === category) && `${product.name} ${product.sku} ${product.barcode || ""}`.toLowerCase().includes(search.toLowerCase()))
+  const barcodeMap = useMemo(() => {
+    const map = new Map<string, Product>()
+    for (const p of products) {
+      if (p.barcode) map.set(p.barcode.trim().toLowerCase(), p)
+      if (p.sku) map.set(p.sku.trim().toLowerCase(), p)
+    }
+    return map
+  }, [products])
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    if (!query && category === "Semua") return products
+    return products.filter((product) => {
+      const matchesCategory = category === "Semua" || product.category === category
+      if (!matchesCategory) return false
+      if (!query) return true
+      return (
+        product.name.toLowerCase().includes(query) ||
+        product.sku.toLowerCase().includes(query) ||
+        (product.barcode ? product.barcode.toLowerCase().includes(query) : false)
+      )
+    })
+  }, [products, category, search])
+
+  const [visibleLimit, setVisibleLimit] = useState(48)
+  useEffect(() => {
+    setVisibleLimit(48)
+  }, [category, search])
+
+  const visibleProducts = useMemo(() => {
+    return filtered.slice(0, visibleLimit)
+  }, [filtered, visibleLimit])
   const localSubtotal = cart.reduce((total, item) => total + item.price * item.quantity, 0)
   const discountAmount = Math.min(Number(discount) || 0, localSubtotal)
   const quoteSignature = JSON.stringify([
@@ -550,33 +547,37 @@ export function PosScreen() {
         serviceChargeAmount: "0",
         promotionCode: promotionCode.trim().toUpperCase() || undefined,
         voucherCode: voucherCode.trim().toUpperCase() || undefined,
-        items: sourceItems.map((item) => ({ variantId: item.id, quantity: String(item.quantity), discountAmount: "0" })),
-        payments: [],
+        items: sourceItems.map((item) => ({
+          variantId: item.id,
+          quantity: item.quantity,
+          unitPrice: String(item.price),
+          notes: item.sku ? `SKU: ${item.sku}` : undefined,
+        })),
       }),
     })
     return response.data
-  }, [branch?.id, warehouse?.id, customerId, discountAmount, promotionCode, voucherCode])
+  }, [branch?.id, customerId, discountAmount, promotionCode, voucherCode, warehouse?.id])
 
   useEffect(() => {
-    if (!cart.length || !branch?.id || !warehouse?.id) {
+    if (!cart.length) {
       setQuote(null)
       setQuoteError("")
-      setQuoteLoading(false)
       return
     }
+
     let active = true
-    setQuote(null)
+    setQuoteLoading(true)
+    setQuoteError("")
     const timer = window.setTimeout(() => {
-      setQuoteLoading(true)
-      setQuoteError("")
-      void requestCheckoutQuote(cart)
+      requestCheckoutQuote(cart)
         .then((nextQuote) => {
           if (active) setQuote(nextQuote)
         })
         .catch((caught) => {
-          if (!active) return
-          setQuote(null)
-          setQuoteError(caught instanceof Error ? caught.message : "Gagal menghitung total")
+          if (active) {
+            setQuote(null)
+            setQuoteError(caught instanceof Error ? caught.message : "Gagal menghitung kalkulasi checkout")
+          }
         })
         .finally(() => {
           if (active) setQuoteLoading(false)
@@ -596,7 +597,6 @@ export function PosScreen() {
   const tax = quote ? Number(quote.taxAmount) : 0
   const total = quote ? Number(quote.totalAmount) : Math.max(0, localSubtotal - discountAmount)
   const cash = Number(cashAmount.replaceAll(/\D/g, "")) || 0
-  const loading = productResource.loading || variantResource.loading || balanceResource.loading
 
   const qrisAmount = pendingQrisOrder?.amount ?? total
 
@@ -677,7 +677,7 @@ export function PosScreen() {
         setReceipt(response.data)
         playPosChimeSound()
         showSuccess("Pembayaran QRIS terverifikasi otomatis")
-        await Promise.all([refreshBalances(), refreshProducts(), refreshVariants()])
+        await refreshBootstrap()
       } catch (caught) {
         if (active) setQrisPollingError(caught instanceof Error ? caught.message : "Status pembayaran belum dapat diperiksa")
       }
@@ -688,7 +688,7 @@ export function PosScreen() {
       active = false
       window.clearInterval(interval)
     }
-  }, [pendingQrisOrder, branch?.id, refreshBalances, refreshProducts, refreshVariants])
+  }, [pendingQrisOrder, branch?.id, refreshBootstrap])
 
   const initEqualSplits = useCallback((count: number, orderTotal: number) => {
     const base = Math.floor(orderTotal / count)
@@ -792,7 +792,7 @@ export function PosScreen() {
 
     let finalNote = orderNote
     if (selectedTableId) {
-      const tbl = tableResource.data.find((t) => t.id === selectedTableId)
+      const tbl = tables.find((t) => t.id === selectedTableId)
       if (tbl) finalNote = finalNote ? `${finalNote} • Meja: ${tbl.name}` : `Meja: ${tbl.name}`
     }
 
@@ -884,7 +884,7 @@ export function PosScreen() {
       showSuccess("Pembayaran berhasil")
       playPosChimeSound()
       setReceipt(response.data)
-      await Promise.all([balanceResource.refresh(), productResource.refresh(), variantResource.refresh()])
+      await refreshBootstrap()
     } catch (caught) { showError(caught instanceof Error ? caught.message : "Transaksi gagal") }
     finally { setSubmitting(false) }
   }
@@ -907,11 +907,48 @@ export function PosScreen() {
     setPaymentMethod("Tunai")
   }
 
+  const submitOrderRef = useRef(submitOrder)
+  submitOrderRef.current = submitOrder
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || "").toLowerCase()
+      const isInputFocused = activeTag === "input" || activeTag === "textarea"
+
+      if (e.key === "F1" || (!isInputFocused && e.key === "/")) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+        return
+      }
+
+      if (e.key === "F4" && cart.length > 0 && !submitting) {
+        e.preventDefault()
+        void submitOrderRef.current("held")
+        return
+      }
+
+      if (e.key === "F9" && cart.length > 0 && !paymentOpen) {
+        e.preventDefault()
+        setPaymentOpen(true)
+        return
+      }
+
+      if (e.key === "Escape") {
+        if (paymentOpen) setPaymentOpen(false)
+        if (heldOpen) setHeldOpen(false)
+        if (shiftOpen) setShiftOpen(false)
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [cart.length, submitting, paymentOpen, heldOpen, shiftOpen])
+
   const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => { const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 font-medium"><span>Keranjang masih berisi item ({cart.length} produk)</span><Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={() => setCart([])}>Kosongkan Keranjang</Button></div>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
 
-  const catalogError = productResource.error || variantResource.error || balanceResource.error || categoryResource.error
   if (!loading && catalogError && !products.length) {
-    return <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold text-destructive" role="alert">Katalog POS gagal dimuat</p><p className="max-w-lg text-sm text-muted-foreground">{catalogError}</p><Button variant="outline" onClick={() => void Promise.all([productResource.refresh(0), variantResource.refresh(0), balanceResource.refresh(0), categoryResource.refresh(0)])}>Coba lagi</Button></div>
+    return <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold text-destructive" role="alert">Katalog POS gagal dimuat</p><p className="max-w-lg text-sm text-muted-foreground">{catalogError}</p><Button variant="outline" onClick={() => void refreshBootstrap(true)}>Coba lagi</Button></div>
   }
 
   if (sessionLoading) {
@@ -1059,12 +1096,13 @@ export function PosScreen() {
                       >
                         Uang Pas ({rupiah(total)})
                       </Button>
-                      {[50000, 100000, 150000, 200000].map((amount) => (
+                      {[10000, 20000, 50000, 100000].map((amount) => (
                         <Button
                           key={amount}
                           type="button"
                           variant="outline"
                           size="sm"
+                          className="font-medium"
                           onClick={() => setCashAmount(String(amount))}
                         >
                           {amount / 1000}rb
@@ -1503,6 +1541,268 @@ export function PosScreen() {
               Tutup shift
             </Button>
           </div>
-        </div><div className="mb-4 flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" /><Input className="h-12 bg-background pl-10 text-sm font-medium shadow-xs" placeholder="Cari produk, SKU, atau barcode... (Ketik nama/scan)" value={search} onChange={(event) => setSearch(event.target.value)} autoFocus /></div><Button variant="outline" size="icon" className="size-12 bg-background shadow-xs" onClick={() => showInfo("Masukkan barcode pada kolom pencarian")}><Barcode className="size-5" /></Button></div><ScrollArea className="mb-4 w-full whitespace-nowrap"><div className="flex gap-2 pb-2">{categories.map((item) => <Button key={item} size="sm" variant={category === item ? "default" : "outline"} className={category === item ? "bg-emerald-600 hover:bg-emerald-700 shadow-xs" : "bg-background shadow-2xs"} onClick={() => setCategory(item)}>{item}</Button>)}</div></ScrollArea>{loading && <div className="flex h-64 items-center justify-center"><Loader2 className="size-7 animate-spin text-emerald-600" /></div>}{!loading && !filtered.length && <div className="flex h-64 flex-col items-center justify-center text-center"><ShoppingCart className="size-10 text-muted-foreground/30" /><p className="mt-3 font-medium">Produk tidak ditemukan</p><p className="text-sm text-muted-foreground">Tambahkan produk dan stok dari menu Produk.</p></div>}<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">{filtered.map((product) => { const isOut = product.trackStock && product.stock <= 0; const isLow = product.trackStock && product.stock > 0 && product.stock <= 5; return <button key={product.id} disabled={isOut} className="group overflow-hidden rounded-xl border bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-emerald-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50" onClick={() => add(product)}>{product.imageUrl ? <div className="aspect-[1.5] w-full overflow-hidden bg-muted"><img src={product.imageUrl} alt={product.name} className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105" /></div> : <div className={`flex aspect-[1.5] items-center justify-center text-4xl transition-transform duration-200 group-hover:scale-105 ${getCategoryColor(product.category, product.name)}`}>{getCategoryEmoji(product.category, product.name)}</div>}<div className="p-3"><p className="truncate text-sm font-semibold text-foreground">{product.name}</p><p className="mt-1 text-sm font-bold text-emerald-600 dark:text-emerald-400">{rupiah(product.price)}</p><div className="mt-2 flex items-center justify-between">{isOut ? <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Stok Habis</Badge> : isLow ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Stok {product.stock}</Badge> : <p className="truncate text-xs text-muted-foreground">{product.sku} • Stok {product.trackStock ? product.stock : "∞"}</p>}</div></div></button> })}</div></section><aside className="flex min-h-[600px] flex-col border-l bg-background xl:h-[calc(100vh-4rem)]"><div className="flex items-center justify-between border-b p-4"><div><h2 className="flex items-center gap-2 font-bold"><ShoppingCart className="size-5 text-emerald-600" /> Keranjang <Badge className="bg-emerald-600">{cart.reduce((sum, item) => sum + item.quantity, 0)}</Badge></h2><p className="mt-0.5 text-xs text-muted-foreground">{branch?.name} • {warehouse?.name}</p></div>{cart.length > 0 && <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive" onClick={() => setCart([])}><Trash2 className="mr-1 size-3.5" /> Kosongkan</Button>}</div><div className="grid grid-cols-2 gap-2 border-b p-3"><Select value={customerId} onValueChange={setCustomerId}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Pilih pelanggan" /></SelectTrigger><SelectContent>{customerResource.data.filter((item) => item.is_active).map((item) => <SelectItem key={item.id} value={item.id}>{item.name} • {item.code}</SelectItem>)}</SelectContent></Select><Select value={selectedTableId} onValueChange={setSelectedTableId}><SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Pilih meja" /></SelectTrigger><SelectContent><SelectItem value="takeaway">Tanpa Meja (Takeaway)</SelectItem>{tableResource.data.filter((t) => t.is_active).map((t) => <SelectItem key={t.id} value={t.id}>{t.name} (Cap {t.capacity})</SelectItem>)}</SelectContent></Select></div><ScrollArea className="min-h-0 flex-1"><div className="space-y-2 p-3">{!cart.length && <div className="py-16 text-center"><ShoppingCart className="mx-auto size-12 text-muted-foreground/30" /><p className="mt-4 font-medium">Keranjang kosong</p></div>}{cart.map((item) => <div key={item.id} className="rounded-xl border p-3 bg-card shadow-2xs"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{item.name}</p><p className="text-xs text-muted-foreground">{rupiah(item.price)} • {item.sku}</p></div><Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setCart((current) => current.filter((entry) => entry.id !== item.id))}><Trash2 className="size-4" /></Button></div><div className="mt-3 flex items-center justify-between"><div className="flex items-center rounded-lg border bg-background"><Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, -1)}><Minus className="size-3" /></Button><Input type="number" min="0" placeholder="0" className="h-8 w-12 border-0 bg-transparent text-center p-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" value={item.quantity === 0 ? "" : item.quantity} onChange={(e) => { const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10); updateQuantity(item.id, isNaN(val) ? 0 : val) }} onFocus={(e) => e.target.select()} /><Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, 1)}><Plus className="size-3" /></Button></div><p className="font-bold text-foreground">{rupiah(item.price * item.quantity)}</p></div></div>)}</div></ScrollArea><div className="border-t p-4 bg-background"><div className="mb-3 grid grid-cols-2 gap-2"><Textarea placeholder="Catatan pesanan" className="min-h-16 resize-none text-xs" value={orderNote} onChange={(event) => setOrderNote(event.target.value)} /><div><Label className="text-xs">Diskon order</Label><Input type="number" min="0" className="h-9 text-xs" value={discount} onChange={(event) => setDiscount(event.target.value)} /></div></div><div className="space-y-2 text-sm"><div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>{rupiah(subtotal)}</span></div>{discountAmount > 0 && <div className="flex justify-between text-rose-600"><span>Diskon</span><span>-{rupiah(discountAmount)}</span></div>}<div className="flex justify-between"><span className="text-muted-foreground">Pajak</span><span>{rupiah(tax)}</span></div><Separator /><div className="flex justify-between text-lg font-bold"><span>Total</span><span className="text-emerald-600 dark:text-emerald-400">{rupiah(total)}</span></div></div><div className="mt-4 grid grid-cols-[auto_1fr] gap-2"><Button variant="outline" size="icon" className="size-12 shadow-2xs" onClick={() => void submitOrder("held")} disabled={!cart.length || submitting}><PauseCircle className="size-5" /></Button><Button disabled={!cart.length} className="h-12 bg-emerald-600 text-base font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20" onClick={() => setPaymentOpen(true)}>Bayar • {rupiah(total)}</Button></div></div></aside></div>
+        </div>
+        <div className="mb-4 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              ref={searchInputRef}
+              className="h-12 bg-background pl-10 text-sm font-medium shadow-xs"
+              placeholder="Cari produk, SKU, atau barcode... (Ketik nama/scan barcode) [F1]"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && search.trim()) {
+                  const matched = barcodeMap.get(search.trim().toLowerCase())
+                  if (matched) {
+                    if (matched.trackStock && matched.stock <= 0) {
+                      showError(`Stok produk ${matched.name} telah habis`)
+                    } else {
+                      add(matched)
+                      setSearch("")
+                      showSuccess(`Ditambahkan: ${matched.name}`)
+                    }
+                  }
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="size-12 bg-background shadow-xs"
+            onClick={() => {
+              searchInputRef.current?.focus()
+              showInfo("Scan atau ketik barcode produk")
+            }}
+          >
+            <Barcode className="size-5" />
+          </Button>
+        </div>
+        <ScrollArea className="mb-4 w-full whitespace-nowrap">
+          <div className="flex gap-2 pb-2">
+            {categories.map((item) => (
+              <Button
+                key={item}
+                size="sm"
+                variant={category === item ? "default" : "outline"}
+                className={category === item ? "bg-emerald-600 hover:bg-emerald-700 shadow-xs" : "bg-background shadow-2xs"}
+                onClick={() => setCategory(item)}
+              >
+                {item}
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
+        {loading && !products.length && (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="size-7 animate-spin text-emerald-600" />
+          </div>
+        )}
+        {!loading && !filtered.length && (
+          <div className="flex h-64 flex-col items-center justify-center text-center">
+            <ShoppingCart className="size-10 text-muted-foreground/30" />
+            <p className="mt-3 font-medium">Produk tidak ditemukan</p>
+            <p className="text-sm text-muted-foreground">Tambahkan produk dan stok dari menu Produk.</p>
+          </div>
+        )}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+          {visibleProducts.map((product) => {
+            const isOut = product.trackStock && product.stock <= 0
+            const isLow = product.trackStock && product.stock > 0 && product.stock <= 5
+            return (
+              <button
+                key={product.id}
+                disabled={isOut}
+                className="group overflow-hidden rounded-xl border bg-card text-left shadow-xs transition-all duration-200 hover:-translate-y-1 hover:border-emerald-400 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => add(product)}
+              >
+                {product.imageUrl ? (
+                  <div className="aspect-[1.5] w-full overflow-hidden bg-muted">
+                    <img
+                      src={product.thumbnailUrl || product.imageUrl}
+                      alt={product.name}
+                      loading="lazy"
+                      decoding="async"
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                    />
+                  </div>
+                ) : (
+                  <div className={`flex aspect-[1.5] items-center justify-center text-4xl transition-transform duration-200 group-hover:scale-105 ${getCategoryColor(product.category, product.name)}`}>
+                    {getCategoryEmoji(product.category, product.name)}
+                  </div>
+                )}
+                <div className="p-3">
+                  <p className="truncate text-sm font-semibold text-foreground">{product.name}</p>
+                  <p className="mt-1 text-sm font-bold text-emerald-600 dark:text-emerald-400">{rupiah(product.price)}</p>
+                  <div className="mt-2 flex items-center justify-between">
+                    {isOut ? (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0">Stok Habis</Badge>
+                    ) : isLow ? (
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">Stok {product.stock}</Badge>
+                    ) : (
+                      <p className="truncate text-xs text-muted-foreground">{product.sku} • Stok {product.trackStock ? product.stock : "∞"}</p>
+                    )}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+          {filtered.length > visibleLimit && (
+            <div className="col-span-full mt-4 flex justify-center py-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleLimit((curr) => curr + 48)}
+                className="text-xs font-semibold shadow-xs"
+              >
+                Tampilkan {Math.min(48, filtered.length - visibleLimit)} produk lagi ({filtered.length - visibleLimit} tersisa)
+              </Button>
+            </div>
+          )}
+        </div>
+      </section>
+      <aside className="flex min-h-[600px] flex-col border-l bg-background xl:h-[calc(100vh-4rem)]">
+        <div className="flex items-center justify-between border-b p-4">
+          <div>
+            <h2 className="flex items-center gap-2 font-bold">
+              <ShoppingCart className="size-5 text-emerald-600" /> Keranjang <Badge className="bg-emerald-600">{cart.reduce((sum, item) => sum + item.quantity, 0)}</Badge>
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{branch?.name} • {warehouse?.name}</p>
+          </div>
+          {cart.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive" onClick={() => setCart([])}>
+              <Trash2 className="mr-1 size-3.5" /> Kosongkan
+            </Button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 border-b p-3">
+          <Select value={customerId} onValueChange={setCustomerId}>
+            <SelectTrigger className="h-9 text-xs">
+              <SelectValue placeholder="Pilih pelanggan" />
+            </SelectTrigger>
+            <SelectContent>
+              {customers.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name} • {item.code}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={selectedTableId} onValueChange={setSelectedTableId}>
+            <SelectTrigger className="h-9 text-xs">
+              <SelectValue placeholder="Pilih meja" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="takeaway">Tanpa Meja (Takeaway)</SelectItem>
+              {tables.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name} (Cap {t.capacity})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-2 p-3">
+            {!cart.length && (
+              <div className="py-16 text-center">
+                <ShoppingCart className="mx-auto size-12 text-muted-foreground/30" />
+                <p className="mt-4 font-medium">Keranjang kosong</p>
+                <p className="text-xs text-muted-foreground mt-1">Tekan F1 untuk mencari produk atau scan barcode</p>
+              </div>
+            )}
+            {cart.map((item) => (
+              <div key={item.id} className="rounded-xl border p-3 bg-card shadow-2xs">
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{rupiah(item.price)} • {item.sku}</p>
+                  </div>
+                  <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setCart((current) => current.filter((entry) => entry.id !== item.id))}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center rounded-lg border bg-background">
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, -1)}>
+                      <Minus className="size-3" />
+                    </Button>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      className="h-8 w-12 border-0 bg-transparent text-center p-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      value={item.quantity === 0 ? "" : item.quantity}
+                      onChange={(e) => {
+                        const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                        updateQuantity(item.id, isNaN(val) ? 0 : val)
+                      }}
+                      onFocus={(e) => e.target.select()}
+                    />
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, 1)}>
+                      <Plus className="size-3" />
+                    </Button>
+                  </div>
+                  <p className="font-bold text-foreground">{rupiah(item.price * item.quantity)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </ScrollArea>
+        <div className="border-t p-4 bg-background">
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <Textarea placeholder="Catatan pesanan" className="min-h-16 resize-none text-xs" value={orderNote} onChange={(event) => setOrderNote(event.target.value)} />
+            <div>
+              <Label className="text-xs">Diskon order</Label>
+              <Input type="number" min="0" className="h-9 text-xs" value={discount} onChange={(event) => setDiscount(event.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Subtotal</span>
+              <span>{rupiah(subtotal)}</span>
+            </div>
+            {discountAmount > 0 && (
+              <div className="flex justify-between text-rose-600">
+                <span>Diskon</span>
+                <span>-{rupiah(discountAmount)}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Pajak</span>
+              <span>{rupiah(tax)}</span>
+            </div>
+            <Separator />
+            <div className="flex justify-between text-lg font-bold">
+              <span>Total</span>
+              <span className="text-emerald-600 dark:text-emerald-400">{rupiah(total)}</span>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-12 shadow-2xs"
+              title="Tahan Pesanan (F4)"
+              onClick={() => void submitOrder("held")}
+              disabled={!cart.length || submitting}
+            >
+              <PauseCircle className="size-5" />
+            </Button>
+            <Button
+              disabled={!cart.length}
+              className="h-12 bg-emerald-600 text-base font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20"
+              title="Bayar (F9)"
+              onClick={() => setPaymentOpen(true)}
+            >
+              Bayar • {rupiah(total)} [F9]
+            </Button>
+          </div>
+        </div>
+      </aside>
+    </div>
   )
 }
