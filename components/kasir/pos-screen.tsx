@@ -11,7 +11,6 @@ import {
   CreditCard,
   Loader2,
   Minus,
-  PauseCircle,
   Plus,
   Printer,
   QrCode,
@@ -32,12 +31,11 @@ import {
   type PrinterWidth,
   type ReceiptData,
 } from "@/lib/services/escpos-printer"
-import { listOfflineMutations, syncOfflineMutations } from "@/lib/offline/queue"
-import { injectAmountToQris } from "@/lib/qris"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -46,26 +44,21 @@ import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useOrganization } from "@/components/kasir/organization-provider"
 import { usePosBootstrap, type PosProduct } from "@/hooks/use-pos-bootstrap"
+import { usePosCart, type PosCartItem } from "@/hooks/use-pos-cart"
+import { usePosNetworkState } from "@/hooks/use-pos-network-state"
+import {
+  usePosPaymentState,
+  type CheckoutQuote,
+  type CheckoutResult,
+  type SplitPaymentItem,
+} from "@/hooks/use-pos-payment-state"
 import { apiFetch } from "@/lib/client"
 import { getCategoryEmoji, getCategoryColor } from "@/lib/services/category-images"
+import { PosCartPanel } from "@/components/kasir/pos/cart-panel"
 
 export type Product = PosProduct
-type CartItem = Product & { quantity: number }
 type CashSession = { id: string; openingAmount: string; openedAt: string; registerName: string; registerCode: string; shiftHours?: number; branchId?: string }
 type ClosedCashSession = { expectedClosingAmount: string; actualClosingAmount: string; varianceAmount: string }
-type CheckoutResult = { order: { id: string; status?: string; orderNumber?: string; order_number?: string; totalAmount?: string; total_amount?: string; changeAmount?: string; change_amount?: string }; receipt: { verificationToken?: string; verification_token?: string } | null; pointsEarned?: string }
-type CheckoutQuote = {
-  subtotalAmount: string
-  itemDiscountAmount: string
-  orderDiscountAmount: string
-  promotionDiscountAmount: string
-  discountAmount: string
-  taxAmount: string
-  exclusiveTaxAmount: string
-  serviceChargeAmount: string
-  totalAmount: string
-}
-type SplitPaymentItem = { id: string; method: "cash" | "qris" | "debit"; amount: number; cashTendered?: number; label: string }
 type HeldOrder = {
   id: string
   createdAt: string
@@ -89,39 +82,69 @@ export function PosScreen() {
 
   const [search, setSearch] = useState("")
   const [category, setCategory] = useState("Semua")
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [customerId, setCustomerId] = useState<string>()
-  const [selectedTableId, setSelectedTableId] = useState<string>("takeaway")
+  const {
+    cart,
+    setCart,
+    customerId,
+    setCustomerId,
+    selectedTableId,
+    setSelectedTableId,
+    orderNote,
+    setOrderNote,
+    discount,
+    setDiscount,
+    promotionCode,
+    setPromotionCode,
+    voucherCode,
+    setVoucherCode,
+    add,
+    changeQuantity,
+    setQuantity,
+    remove: removeCartItem,
+    clear: clearCart,
+    reset: resetCart,
+  } = usePosCart()
+  const [mobileCartOpen, setMobileCartOpen] = useState(false)
 
   // Held Orders State
   const [heldOpen, setHeldOpen] = useState(false)
   const [heldList, setHeldList] = useState<HeldOrder[]>([])
   const [heldLoading, setHeldLoading] = useState(false)
-  const [paymentOpen, setPaymentOpen] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState("Tunai")
-  const [cashAmount, setCashAmount] = useState("")
-  const [orderNote, setOrderNote] = useState("")
-  const [discount, setDiscount] = useState("0")
-  const [promotionCode, setPromotionCode] = useState("")
-  const [voucherCode, setVoucherCode] = useState("")
-  const [quote, setQuote] = useState<CheckoutQuote | null>(null)
-  const [quoteLoading, setQuoteLoading] = useState(false)
-  const [quoteError, setQuoteError] = useState("")
-  const [submitting, setSubmitting] = useState(false)
-  const [receipt, setReceipt] = useState<CheckoutResult>()
-  const [pendingQrisOrder, setPendingQrisOrder] = useState<{ orderId: string; expiresAt: string; amount: number } | null>(null)
-  const [qrisSecondsLeft, setQrisSecondsLeft] = useState(0)
-  const [qrisPollingError, setQrisPollingError] = useState("")
+  const {
+    paymentOpen,
+    setPaymentOpen,
+    paymentMethod,
+    setPaymentMethod,
+    cashAmount,
+    setCashAmount,
+    quote,
+    setQuote,
+    quoteLoading,
+    setQuoteLoading,
+    quoteError,
+    setQuoteError,
+    submitting,
+    setSubmitting,
+    receipt,
+    setReceipt,
+    pendingQrisOrder,
+    setPendingQrisOrder,
+    qrisPollingError,
+    setQrisPollingError,
+    splitMode,
+    setSplitMode,
+    splitCount,
+    setSplitCount,
+    splitPayments,
+    setSplitPayments,
+    orderKey,
+    setOrderKey,
+  } = usePosPaymentState()
   const [session, setSession] = useState<CashSession | null>(null)
   const [sessionLoading, setSessionLoading] = useState(true)
   const [sessionError, setSessionError] = useState("")
   const [openForm, setOpenForm] = useState({ branchId: branch?.id ?? "", shiftHours: "8", openingAmount: "0" })
   const branches = organization?.branches ?? []
-
-  // Split Bill State
-  const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal")
-  const [splitCount, setSplitCount] = useState<number>(2)
-  const [splitPayments, setSplitPayments] = useState<SplitPaymentItem[]>([])
 
   useEffect(() => {
     if (openForm.branchId) return
@@ -136,130 +159,15 @@ export function PosScreen() {
   const [settlementPreview, setSettlementPreview] = useState<{ expectedCash: string; breakdown: Record<string, { expected: string; paid: string; refunded: string }> } | null>(null)
   const [settlementNotes, setSettlementNotes] = useState("")
   const [closedSession, setClosedSession] = useState<ClosedCashSession>()
-  const [orderKey, setOrderKey] = useState(() => crypto.randomUUID())
-
   // Bluetooth Thermal Printer & Offline Queue State
   const [printerName, setPrinterName] = useState<string | null>(null)
   const [printerWidth, setPrinterWidth] = useState<PrinterWidth>(58)
   const [printingThermal, setPrintingThermal] = useState(false)
-  const [offlineCount, setOfflineCount] = useState(0)
-  const [isOnline, setIsOnline] = useState(true)
-  const [syncingOffline, setSyncingOffline] = useState(false)
-  const [storeQris, setStoreQris] = useState<{
-    qrisImageUrl?: string
-    qrisPayload?: string
-    qrisAccountName?: string
-    qrisInstructions?: string
-  } | null>(null)
-  const [dynamicStoreQrisUrl, setDynamicStoreQrisUrl] = useState<string>("")
-
+  const { offlineCount, isOnline, syncingOffline, syncNow } = usePosNetworkState()
+  const [dynamicStoreQrisUrl, setDynamicStoreQrisUrl] = useState("")
   useEffect(() => {
-    async function loadActiveQris() {
-      try {
-        let branchQris: {
-          qrisImageUrl?: string
-          qrisPayload?: string
-          qrisAccountName?: string
-          qrisInstructions?: string
-        } | null = null
-
-        // 1. Check branch-specific QRIS if active branch is selected
-        if (branch?.id) {
-          const bRes = await apiFetch<{
-            qrisImageUrl?: string | null
-            qrisAccountName?: string | null
-            qrisInstructions?: string | null
-            metadata?: { qrisImageUrl?: string; qrisPayload?: string; qrisAccountName?: string; qrisInstructions?: string }
-          }>(`/api/v1/resources/branches/${branch.id}`)
-          const bMeta = bRes.data?.metadata || {}
-          const img = bRes.data?.qrisImageUrl || bMeta.qrisImageUrl
-          const payload = bMeta.qrisPayload
-          if (img || payload) {
-            branchQris = {
-              qrisImageUrl: img,
-              qrisPayload: payload,
-              qrisAccountName: bRes.data?.qrisAccountName || bMeta.qrisAccountName || undefined,
-              qrisInstructions: bRes.data?.qrisInstructions || bMeta.qrisInstructions || undefined,
-            }
-          }
-        }
-
-        // 2. If branch has QRIS, prioritize it
-        if (branchQris?.qrisImageUrl || branchQris?.qrisPayload) {
-          setStoreQris(branchQris)
-          return
-        }
-
-        // 3. Fallback to Organization general QRIS
-        if (organization?.id) {
-          const orgRes = await apiFetch<{
-            qrisImageUrl?: string | null
-            qrisPayload?: string | null
-            qrisAccountName?: string | null
-            qrisInstructions?: string | null
-            metadata?: { qrisImageUrl?: string; qrisPayload?: string; qrisAccountName?: string; qrisInstructions?: string }
-          }>("/api/v1/settings/organization")
-          const orgMeta = orgRes.data?.metadata || {}
-          const img = orgRes.data?.qrisImageUrl || orgMeta.qrisImageUrl
-          const payload = orgRes.data?.qrisPayload || orgMeta.qrisPayload
-          if (img || payload) {
-            setStoreQris({
-              qrisImageUrl: img,
-              qrisPayload: payload,
-              qrisAccountName: orgRes.data?.qrisAccountName || orgMeta.qrisAccountName || undefined,
-              qrisInstructions: orgRes.data?.qrisInstructions || orgMeta.qrisInstructions || undefined,
-            })
-            return
-          }
-        }
-
-        setStoreQris(null)
-      } catch {
-        // Ignore load failure
-      }
-    }
-
-    void loadActiveQris()
-  }, [branch?.id, organization?.id])
-
-  const refreshOfflineCount = useCallback(async () => {
-    try {
-      const all = await listOfflineMutations()
-      setOfflineCount(all.filter((m) => !m.failedPermanently).length)
-    } catch {
-      // Ignore
-    }
+    setPrinterName(getConnectedPrinterName())
   }, [])
-
-  useEffect(() => {
-    if (typeof navigator !== "undefined") {
-      setIsOnline(navigator.onLine)
-      setPrinterName(getConnectedPrinterName())
-    }
-    void refreshOfflineCount()
-
-    const handleOnline = async () => {
-      setIsOnline(true)
-      showInfo("Koneksi internet kembali aktif. Menyinkronkan data offline...")
-      const res = await syncOfflineMutations()
-      if (res.synced > 0) showSuccess(`${res.synced} transaksi offline berhasil disinkronkan ke server!`)
-      await refreshOfflineCount()
-    }
-    const handleOffline = () => {
-      setIsOnline(false)
-      showWarning("Koneksi terputus. POS beroperasi dalam Mode Offline.")
-    }
-
-    window.addEventListener("online", handleOnline)
-    window.addEventListener("offline", handleOffline)
-    const interval = setInterval(refreshOfflineCount, 6000)
-
-    return () => {
-      window.removeEventListener("online", handleOnline)
-      window.removeEventListener("offline", handleOffline)
-      clearInterval(interval)
-    }
-  }, [refreshOfflineCount])
 
   async function handleConnectPrinter() {
     try {
@@ -312,25 +220,6 @@ export function PosScreen() {
     }
   }
 
-  async function handleManualSync() {
-    setSyncingOffline(true)
-    try {
-      const res = await syncOfflineMutations()
-      if (res.synced > 0) {
-        showSuccess(`${res.synced} transaksi offline berhasil disinkronkan ke server!`)
-      } else if (res.pending > 0) {
-        showWarning(`Ada ${res.pending} antrean offline yang menunggu koneksi stabil.`)
-      } else {
-        showInfo("Semua data transaksi sudah tersinkronisasi.")
-      }
-      await refreshOfflineCount()
-    } catch (e) {
-      showError(e instanceof Error ? e.message : "Gagal menyinkronkan data offline")
-    } finally {
-      setSyncingOffline(false)
-    }
-  }
-
   const loadSession = useCallback(async () => {
     setSessionLoading(true)
     setSessionError("")
@@ -379,7 +268,7 @@ export function PosScreen() {
     try {
       setSubmitting(true)
       await apiFetch(`/api/v1/pos/hold/${held.id}/resume`, { method: "POST" })
-      const restoredItems: CartItem[] = []
+      const restoredItems: PosCartItem[] = []
       for (const hItem of held.cartData.items) {
         const prod = products.find((p) => p.id === hItem.variantId)
         if (prod) { restoredItems.push({ ...prod, quantity: hItem.quantity }) }
@@ -534,7 +423,7 @@ export function PosScreen() {
     cart.map((item) => [item.id, item.quantity]),
   ])
 
-  const requestCheckoutQuote = useCallback(async (sourceItems: CartItem[]) => {
+  const requestCheckoutQuote = useCallback(async (sourceItems: PosCartItem[]) => {
     if (!branch?.id || !warehouse?.id || !sourceItems.length) throw new Error("Cabang, gudang, dan item wajib dipilih")
     const response = await apiFetch<CheckoutQuote>("/api/v1/pos/quote", {
       method: "POST",
@@ -598,69 +487,53 @@ export function PosScreen() {
   const total = quote ? Number(quote.totalAmount) : Math.max(0, localSubtotal - discountAmount)
   const cash = Number(cashAmount.replaceAll(/\D/g, "")) || 0
 
-  const qrisAmount = pendingQrisOrder?.amount ?? total
-
-  // Generate only a valid dynamic QRIS payload. A static image is never presented as
-  // "nominal terkunci" because it cannot guarantee the amount paid by the customer.
+  // This QR opens the verified gateway checkout; merchant QR images are not used
+  // because they cannot confirm payment through a provider webhook.
   useEffect(() => {
-    if (!storeQris || paymentMethod !== "QRIS" || qrisAmount <= 0) {
+    if (paymentMethod !== "QRIS" || !pendingQrisOrder?.paymentUrl) {
       setDynamicStoreQrisUrl("")
       return
     }
-
-    const basePayload = storeQris.qrisPayload
-    if (basePayload && basePayload.startsWith("000201")) {
-      try {
-        const dyn = injectAmountToQris(basePayload, qrisAmount)
-        QRCode.toDataURL(dyn, {
-          width: 360,
-          margin: 1,
-          color: { dark: "#000000", light: "#ffffff" },
-          errorCorrectionLevel: "M",
-        })
-          .then(setDynamicStoreQrisUrl)
-          .catch(() => setDynamicStoreQrisUrl(""))
-        return
-      } catch {
-        setDynamicStoreQrisUrl("")
-        return
-      }
-    }
-
-    setDynamicStoreQrisUrl("")
-  }, [storeQris, paymentMethod, qrisAmount])
+    let active = true
+    QRCode.toDataURL(pendingQrisOrder.paymentUrl, { width: 360, margin: 1 })
+      .then((url) => { if (active) setDynamicStoreQrisUrl(url) })
+      .catch(() => { if (active) setDynamicStoreQrisUrl("") })
+    return () => { active = false }
+  }, [paymentMethod, pendingQrisOrder?.paymentUrl])
 
   useEffect(() => {
     if (!branch?.id) return
     try {
       const raw = localStorage.getItem(pendingQrisStorageKey(branch.id))
       if (!raw) return
-      const saved = JSON.parse(raw) as { orderId?: string; expiresAt?: string; amount?: number }
+      const saved = JSON.parse(raw) as { orderId?: string; expiresAt?: string; amount?: number; paymentUrl?: string }
       if (!saved.orderId || !saved.expiresAt || !saved.amount) return
-      setPendingQrisOrder({ orderId: saved.orderId, expiresAt: saved.expiresAt, amount: saved.amount })
+      setPendingQrisOrder({ orderId: saved.orderId, expiresAt: saved.expiresAt, amount: saved.amount, paymentUrl: saved.paymentUrl })
       setPaymentMethod("QRIS")
       setPaymentOpen(true)
     } catch {
       localStorage.removeItem(pendingQrisStorageKey(branch.id))
     }
-  }, [branch?.id])
+  }, [branch?.id, setPaymentMethod, setPaymentOpen, setPendingQrisOrder])
 
-  useEffect(() => {
-    if (!pendingQrisOrder) {
-      setQrisSecondsLeft(0)
-      return
+  async function renewPendingQris(orderId = pendingQrisOrder?.orderId, amount = pendingQrisOrder?.amount) {
+    if (!orderId || !amount || !branch?.id) return
+    try {
+      const response = await apiFetch<{ paymentUrl?: string }>("/api/v1/integrations/payments", {
+        method: "POST",
+        headers: { "idempotency-key": `midtrans-${orderId}` },
+        body: JSON.stringify({ provider: "midtrans", orderId, customerName: "Pelanggan Kasir" }),
+      })
+      if (!response.data.paymentUrl) throw new Error("Tautan pembayaran Midtrans belum tersedia")
+      const pending = { orderId, amount, paymentUrl: response.data.paymentUrl, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+      setPendingQrisOrder(pending)
+      localStorage.setItem(pendingQrisStorageKey(branch.id), JSON.stringify(pending))
+      setQrisPollingError("")
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Gagal memuat pembayaran Midtrans"
+      setQrisPollingError(message)
+      showError(message)
     }
-    const update = () => {
-      const seconds = Math.max(0, Math.ceil((new Date(pendingQrisOrder.expiresAt).getTime() - Date.now()) / 1000))
-      setQrisSecondsLeft(seconds)
-    }
-    update()
-    const interval = window.setInterval(update, 1000)
-    return () => window.clearInterval(interval)
-  }, [pendingQrisOrder, branch?.id])
-
-  async function renewPendingQris() {
-    showError("Pembayaran QRIS menunggu aktivasi DOKU atau Midtrans")
   }
 
   useEffect(() => {
@@ -688,7 +561,7 @@ export function PosScreen() {
       active = false
       window.clearInterval(interval)
     }
-  }, [pendingQrisOrder, branch?.id, refreshBootstrap])
+  }, [pendingQrisOrder, branch?.id, refreshBootstrap, setPaymentOpen, setPendingQrisOrder, setQrisPollingError, setReceipt])
 
   const initEqualSplits = useCallback((count: number, orderTotal: number) => {
     const base = Math.floor(orderTotal / count)
@@ -700,7 +573,7 @@ export function PosScreen() {
       label: `Orang #${i + 1}`,
     }))
     setSplitPayments(items)
-  }, [])
+  }, [setSplitPayments])
 
   const addCustomSplitPayment = useCallback(() => {
     setSplitPayments((current) => {
@@ -716,7 +589,7 @@ export function PosScreen() {
         },
       ]
     })
-  }, [total])
+  }, [total, setSplitPayments])
 
   const updateSplitPayment = (id: string, patch: Partial<SplitPaymentItem>) => {
     setSplitPayments((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)))
@@ -745,46 +618,9 @@ export function PosScreen() {
     cart.map((item) => [item.id, item.quantity, item.price]),
   ])
 
-  useEffect(() => { setOrderKey(crypto.randomUUID()) }, [orderSignature])
-
-  function add(product: Product) {
-    if (product.trackStock && product.stock <= 0) return showError("Stok produk habis")
-    setCart((current) => {
-      const exists = current.find((item) => item.id === product.id)
-      if (exists) {
-        if (product.trackStock && exists.quantity >= product.stock) { showError("Jumlah melebihi stok tersedia"); return current }
-        return current.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)
-      }
-      return [...current, { ...product, quantity: 1 }]
-    })
-  }
-
-  function change(id: string, changeBy: number) {
-    setCart((current) => current.map((item) => {
-      if (item.id !== id) return item
-      const next = Math.max(0, item.quantity + changeBy)
-      if (item.trackStock && next > item.stock) { showError("Jumlah melebihi stok tersedia"); return item }
-      return { ...item, quantity: next }
-    }))
-  }
-
-  function updateQuantity(id: string, qty: number) {
-    const validQty = Math.max(0, qty)
-    setCart((current) => current.map((item) => {
-      if (item.id !== id) return item
-      if (item.trackStock && validQty > item.stock) {
-        showError("Jumlah melebihi stok tersedia")
-        return { ...item, quantity: item.stock }
-      }
-      return { ...item, quantity: validQty }
-    }))
-  }
+  useEffect(() => { setOrderKey(crypto.randomUUID()) }, [orderSignature, setOrderKey])
 
   async function submitOrder(status: "paid" | "held") {
-    if (paymentMethod === "QRIS") {
-      showError("Pembayaran QRIS menunggu aktivasi DOKU atau Midtrans")
-      return
-    }
     if (!branch?.id || !warehouse?.id) return showError("Cabang atau gudang belum dipilih")
     if (!session) return showError("Buka shift kasir sebelum transaksi")
     const validCartItems = cart.filter((item) => item.quantity > 0)
@@ -809,7 +645,7 @@ export function PosScreen() {
           }),
         })
         showSuccess("Pesanan berhasil ditahan")
-        setCart([])
+        clearCart()
         setOrderNote("")
         setDiscount("0")
         setSelectedTableId("")
@@ -835,6 +671,11 @@ export function PosScreen() {
       const finalTotal = Number(authoritativeQuote.totalAmount)
       let paymentsPayload: { method: "cash" | "debit" | "credit" | "qris" | "e_wallet" | "transfer" | "pay_later" | "store_credit"; amount: string; provider?: string }[] = []
 
+      if (paymentMethod === "QRIS") {
+        const readiness = await apiFetch<{ midtransConfigured: boolean }>("/api/v1/integrations/payments")
+        if (!readiness.data.midtransConfigured) throw new Error("Pembayaran QRIS menunggu aktivasi Midtrans")
+      }
+
       if (paymentMethod === "Tunai") {
         if (cash < finalTotal) throw new Error("Nominal tunai belum cukup")
         paymentsPayload = [{ method: "cash", amount: String(cash) }]
@@ -849,7 +690,7 @@ export function PosScreen() {
       } else {
         const selected = paymentMethods.find(([name]) => name === paymentMethod)!
         const method = selected[1] as "cash" | "debit" | "credit" | "qris" | "e_wallet" | "transfer" | "pay_later" | "store_credit"
-        paymentsPayload = [{ method, amount: String(finalTotal) }]
+        paymentsPayload = [{ method, amount: String(finalTotal), ...(method === "qris" ? { provider: "midtrans" } : {}) }]
       }
 
       const requestKey = `${orderKey}-${status}`
@@ -875,10 +716,13 @@ export function PosScreen() {
       })
       if (response.queued) {
         showWarning("Transaksi disimpan offline, akan disinkronkan saat koneksi kembali")
-        setPaymentOpen(false); setCart([]); setOrderNote(""); setDiscount("0"); setPromotionCode(""); setVoucherCode(""); setSelectedTableId(""); return
+        setPaymentOpen(false); resetCart(); return
       }
       if (paymentMethod === "QRIS") {
-        showError("Pembayaran QRIS menunggu aktivasi DOKU atau Midtrans")
+        const pending = { orderId: response.data.order.id, amount: finalTotal, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+        setPendingQrisOrder(pending)
+        localStorage.setItem(pendingQrisStorageKey(branch.id), JSON.stringify(pending))
+        await renewPendingQris(pending.orderId, pending.amount)
         return
       }
       showSuccess("Pembayaran berhasil")
@@ -894,15 +738,9 @@ export function PosScreen() {
     setReceipt(undefined)
     setPendingQrisOrder(null)
     setPaymentOpen(false)
-    setCart([])
+    resetCart()
     setCashAmount("")
-    setOrderNote("")
-    setDiscount("0")
-    setPromotionCode("")
-    setVoucherCode("")
     setQuote(null)
-    setCustomerId(undefined)
-    setSelectedTableId("")
     setSplitPayments([])
     setPaymentMethod("Tunai")
   }
@@ -943,9 +781,9 @@ export function PosScreen() {
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [cart.length, submitting, paymentOpen, heldOpen, shiftOpen])
+  }, [cart.length, submitting, paymentOpen, heldOpen, shiftOpen, setPaymentOpen])
 
-  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => { const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 font-medium"><span>Keranjang masih berisi item ({cart.length} produk)</span><Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={() => setCart([])}>Kosongkan Keranjang</Button></div>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
+  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => { const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 font-medium"><span>Keranjang masih berisi item ({cart.length} produk)</span><Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={clearCart}>Kosongkan Keranjang</Button></div>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
 
   if (!loading && catalogError && !products.length) {
     return <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold text-destructive" role="alert">Katalog POS gagal dimuat</p><p className="max-w-lg text-sm text-muted-foreground">{catalogError}</p><Button variant="outline" onClick={() => void refreshBootstrap(true)}>Coba lagi</Button></div>
@@ -1035,7 +873,7 @@ export function PosScreen() {
               <CardContent className="p-6">
                 <h2 className="text-xl font-bold">Pilih metode pembayaran</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Transaksi akan disimpan ke database dan stok langsung berkurang.
+                  {paymentMethod === "QRIS" ? "Stok akan berkurang setelah Midtrans mengonfirmasi pembayaran." : "Transaksi akan disimpan ke database dan stok langsung berkurang."}
                 </p>
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   {paymentMethods.map(([name, , Icon]) => (
@@ -1112,74 +950,21 @@ export function PosScreen() {
                   </div>
                 )}
 
-                {/* Store QRIS Display Box */}
                 {paymentMethod === "QRIS" && (
-                  <div className="mt-6 flex flex-col items-center justify-center rounded-2xl border-2 border-emerald-500/30 bg-emerald-500/5 p-5 text-center space-y-3">
-                    <div className="flex items-center justify-between w-full pb-2 border-b border-border/60">
-                      <div className="flex items-center gap-1.5 font-bold text-sm text-foreground">
-                        <QrCode className="size-4 text-emerald-600" />
-                        <span>QRIS Pembayaran Kasir</span>
-                      </div>
-                      <Badge className="bg-emerald-600 text-white font-mono text-[11px]">
-                        Tagihan: {rupiah(qrisAmount)}
-                      </Badge>
-                    </div>
-
-                    {pendingQrisOrder && qrisSecondsLeft > 0 && dynamicStoreQrisUrl ? (
-                      <div className="flex flex-col items-center rounded-2xl bg-white p-3.5 shadow-sm border border-emerald-500/20 max-w-[240px] mx-auto text-black">
-                        <div className="w-full flex items-center justify-between pb-1 border-b border-gray-100 mb-1">
-                          <span className="font-black text-[11px] text-red-600">QRIS</span>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            ✨ Nominal Terkunci
-                          </span>
-                        </div>
-                        <img
-                          src={dynamicStoreQrisUrl}
-                          alt="QRIS Toko"
-                          className="size-48 object-contain"
-                        />
-                        <div className="w-full text-center pt-1.5 border-t border-gray-100 mt-1">
-                          <p className="text-[11px] font-bold text-gray-900 truncate">
-                            {storeQris?.qrisAccountName || organization?.name || "Toko Kedai-Ku"}
-                          </p>
-                          <p className="text-[11px] font-extrabold text-emerald-600 mt-0.5">
-                            Total: {rupiah(qrisAmount)}
-                          </p>
-                        </div>
-                      </div>
+                  <div className="mt-6 rounded-2xl border bg-muted/30 p-5 text-center space-y-3">
+                    <p className="font-semibold">Pembayaran QRIS melalui Midtrans</p>
+                    {pendingQrisOrder?.paymentUrl ? (
+                      <>
+                        {dynamicStoreQrisUrl && <img src={dynamicStoreQrisUrl} alt="QR untuk membuka halaman pembayaran Midtrans" className="mx-auto size-48 rounded-xl bg-white p-2" />}
+                        <p className="text-xs text-muted-foreground">Scan untuk membuka halaman pembayaran, lalu pilih QRIS. Pesanan akan selesai setelah konfirmasi dari Midtrans.</p>
+                        <Button type="button" variant="outline" className="min-h-11" onClick={() => window.open(pendingQrisOrder.paymentUrl, "_blank", "noopener,noreferrer")}>Buka pembayaran Midtrans</Button>
+                      </>
+                    ) : pendingQrisOrder ? (
+                      <Button type="button" variant="outline" className="min-h-11" onClick={() => void renewPendingQris()} disabled={submitting}>Muat ulang tautan pembayaran</Button>
                     ) : (
-                      <div className="flex flex-col items-center justify-center py-6 px-4 space-y-2 rounded-xl bg-muted/40 border border-dashed border-border w-full">
-                        <div className="size-12 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                          <QrCode className="size-6" />
-                        </div>
-                        <p className="font-bold text-xs text-foreground">{pendingQrisOrder ? (qrisSecondsLeft <= 0 ? "Permintaan QRIS kedaluwarsa" : "Payload QRIS merchant tidak valid") : "Aktifkan permintaan pembayaran terlebih dahulu"}</p>
-                        <p className="text-[10px] text-muted-foreground max-w-xs">
-                          {pendingQrisOrder ? (qrisSecondsLeft <= 0 ? "Perbarui permintaan di bawah; sistem tetap memakai order yang sama." : "Simpan payload QRIS merchant yang dapat dibuat menjadi QR dinamis di pengaturan cabang.") : "Klik tombol di bawah untuk membuat order pending dan memulai verifikasi otomatis."}
-                        </p>
-                      </div>
+                      <p className="text-xs text-muted-foreground">Buat pesanan pending dan lanjutkan ke halaman pembayaran aman.</p>
                     )}
-
-                    {storeQris?.qrisInstructions ? (
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        {storeQris.qrisInstructions}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        {pendingQrisOrder ? "Pembayaran akan dikonfirmasi otomatis setelah dana diterima merchant." : "Order belum dibuat dan QR belum aktif."}
-                      </p>
-                    )}
-                    {pendingQrisOrder && (
-                      qrisSecondsLeft > 0 ? (
-                        <p className="rounded-lg border bg-background px-3 py-2 text-xs font-semibold" aria-live="polite">
-                          Berlaku {String(Math.floor(qrisSecondsLeft / 60)).padStart(2, "0")}:{String(qrisSecondsLeft % 60).padStart(2, "0")}
-                        </p>
-                      ) : (
-                        <Button type="button" variant="outline" className="min-h-11" onClick={() => void renewPendingQris()} disabled={submitting}>
-                          {submitting && <Loader2 className="size-4 animate-spin" />} Perbarui QRIS kedaluwarsa
-                        </Button>
-                      )
-                    )}
-                    {qrisPollingError && <p className="text-xs text-amber-700" role="status">{qrisPollingError}. Sistem akan mencoba lagi.</p>}
+                    {qrisPollingError && <p className="text-xs text-amber-700" role="status">{qrisPollingError}</p>}
                   </div>
                 )}
 
@@ -1230,13 +1015,14 @@ export function PosScreen() {
                             variant="outline"
                             size="icon"
                             className="size-8"
+                            aria-label="Kurangi jumlah bagian split bill"
                             onClick={() => {
                               const next = Math.max(2, splitCount - 1)
                               setSplitCount(next)
                               initEqualSplits(next, total)
                             }}
                           >
-                            <Minus className="size-3" />
+                            <Minus className="size-3" aria-hidden="true" />
                           </Button>
                           <span className="w-8 text-center text-base font-bold">{splitCount}</span>
                           <Button
@@ -1244,13 +1030,14 @@ export function PosScreen() {
                             variant="outline"
                             size="icon"
                             className="size-8"
+                            aria-label="Tambah jumlah bagian split bill"
                             onClick={() => {
                               const next = Math.min(20, splitCount + 1)
                               setSplitCount(next)
                               initEqualSplits(next, total)
                             }}
                           >
-                            <Plus className="size-3" />
+                            <Plus className="size-3" aria-hidden="true" />
                           </Button>
                         </div>
                       </div>
@@ -1273,6 +1060,7 @@ export function PosScreen() {
                                   variant="ghost"
                                   size="icon"
                                   className="size-7 text-destructive"
+                                  aria-label="Hapus pembayaran split"
                                   onClick={() => removeSplitPayment(item.id)}
                                 >
                                   <Trash2 className="size-3.5" />
@@ -1430,7 +1218,7 @@ export function PosScreen() {
                 <Button
                   className="mt-6 h-14 w-full bg-emerald-600 text-base hover:bg-emerald-700"
                   onClick={() => void submitOrder("paid")}
-                  disabled={submitting || quoteLoading || !quote || Boolean(pendingQrisOrder) || (paymentMethod === "QRIS" && !dynamicStoreQrisUrl) || (paymentMethod === "Split Bill" && splitTotalPaid < total)}
+                  disabled={submitting || quoteLoading || !quote || Boolean(pendingQrisOrder) || (paymentMethod === "Split Bill" && splitTotalPaid < total)}
                 >
                   {submitting ? <Loader2 className="animate-spin" /> : pendingQrisOrder ? <Loader2 className="animate-spin" /> : <ReceiptText />} {pendingQrisOrder ? "Menunggu Verifikasi QRIS" : paymentMethod === "QRIS" ? `Aktifkan QRIS • ${rupiah(total)}` : `Bayar ${rupiah(total)}`}
                 </Button>
@@ -1467,7 +1255,16 @@ export function PosScreen() {
                         {held.cartData.orderNotes && <p className="text-xs font-medium text-foreground mt-0.5">{held.cartData.orderNotes}</p>}
                         <p className="text-xs text-emerald-600 font-bold mt-1">{count} item • Estimasi {rupiah(totalEst)}</p>
                       </div>
-                      <Button type="button" variant="ghost" size="icon" className="size-7 text-destructive" onClick={() => void discardHeld(held.id)}><Trash2 className="size-3.5" /></Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-9 text-destructive"
+                        aria-label={`Hapus pesanan ditahan dari ${new Date(held.createdAt).toLocaleString("id-ID")}`}
+                        onClick={() => void discardHeld(held.id)}
+                      >
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
                     </div>
                     <Button type="button" className="w-full h-8 text-xs bg-emerald-600 hover:bg-emerald-700" onClick={() => void resumeHeldOrder(held)}>Muat ke Keranjang (Resume)</Button>
                   </div>
@@ -1480,11 +1277,46 @@ export function PosScreen() {
     </Dialog>
   )
 
+  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const renderCartPanel = (idPrefix: string, className?: string) => (
+    <PosCartPanel
+      idPrefix={idPrefix}
+      className={className}
+      cart={cart}
+      branchName={branch?.name}
+      warehouseName={warehouse?.name}
+      customers={customers}
+      tables={tables}
+      customerId={customerId}
+      selectedTableId={selectedTableId}
+      orderNote={orderNote}
+      discount={discount}
+      subtotal={subtotal}
+      discountAmount={discountAmount}
+      tax={tax}
+      total={total}
+      submitting={submitting}
+      onCustomerChange={setCustomerId}
+      onTableChange={setSelectedTableId}
+      onOrderNoteChange={setOrderNote}
+      onDiscountChange={setDiscount}
+      onClear={clearCart}
+      onRemove={removeCartItem}
+      onChangeQuantity={changeQuantity}
+      onSetQuantity={setQuantity}
+      onHold={() => void submitOrder("held")}
+      onCheckout={() => {
+        setMobileCartOpen(false)
+        setPaymentOpen(true)
+      }}
+    />
+  )
+
   return (
     <div className="grid min-h-[calc(100vh-4rem)] grid-cols-1 bg-muted/30 xl:grid-cols-[1fr_430px]">
       {shiftDialog}
       {heldDialog}
-      <section className="min-w-0 p-4 md:p-5">
+      <section className="min-w-0 p-4 pb-28 md:p-5 md:pb-28 xl:pb-5">
         <div className="mb-4 flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-2xs sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="flex items-center gap-2 font-semibold text-foreground text-sm">
@@ -1509,12 +1341,12 @@ export function PosScreen() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 sm:ml-auto">
             {offlineCount > 0 && (
-              <Button size="sm" variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs h-8" onClick={handleManualSync} disabled={syncingOffline}>
+              <Button size="sm" variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs min-h-11" onClick={() => void syncNow()} disabled={syncingOffline}>
                 <RefreshCw className={`size-3.5 mr-1 ${syncingOffline ? "animate-spin" : ""}`} /> Sinkron ({offlineCount})
               </Button>
             )}
             <Select value={String(printerWidth)} onValueChange={(value) => setPrinterWidth(value === "80" ? 80 : 58)}>
-              <SelectTrigger className="h-8 w-[92px] text-xs" aria-label="Ukuran kertas printer">
+              <SelectTrigger className="min-h-11 w-[92px] text-xs" aria-label="Ukuran kertas printer">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1525,19 +1357,20 @@ export function PosScreen() {
             <Button
               size="sm"
               variant={printerName ? "outline" : "secondary"}
-              className="text-xs h-8 gap-1.5 shadow-2xs"
+              className="text-xs min-h-11 gap-1.5 shadow-2xs"
+              aria-label={printerName ? `Printer Bluetooth terhubung: ${printerName}. Tekan untuk mengganti printer.` : "Hubungkan printer Bluetooth"}
               onClick={handleConnectPrinter}
             >
-              <Bluetooth className={`size-3.5 ${printerName ? "text-emerald-600" : "text-muted-foreground"}`} />
+              <Bluetooth className={`size-3.5 ${printerName ? "text-emerald-600" : "text-muted-foreground"}`} aria-hidden="true" />
               {printerName ? printerName.slice(0, 14) : "Printer BLE"}
             </Button>
-            <Button size="sm" variant="outline" className="relative shadow-2xs text-xs h-8" onClick={() => { void loadHeldOrders(); setHeldOpen(true) }}>
+            <Button size="sm" variant="outline" className="relative shadow-2xs text-xs min-h-11" onClick={() => { void loadHeldOrders(); setHeldOpen(true) }}>
               <Clock className="size-3.5 mr-1" /> Ditahan {heldList.length > 0 && <Badge variant="secondary" className="ml-1 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">{heldList.length}</Badge>}
             </Button>
-            <Button size="sm" variant="outline" className="shadow-2xs text-xs h-8" onClick={() => showShift("movement")}>
+            <Button size="sm" variant="outline" className="shadow-2xs text-xs min-h-11" onClick={() => showShift("movement")}>
               <Banknote className="size-3.5 mr-1" /> Mutasi
             </Button>
-            <Button size="sm" variant="destructive" className="shadow-2xs text-xs h-8" onClick={() => showShift("close")}>
+            <Button size="sm" variant="destructive" className="shadow-2xs text-xs min-h-11" onClick={() => showShift("close")}>
               Tutup shift
             </Button>
           </div>
@@ -1572,12 +1405,13 @@ export function PosScreen() {
             variant="outline"
             size="icon"
             className="size-12 bg-background shadow-xs"
+            aria-label="Fokus ke pencarian atau pemindai barcode"
             onClick={() => {
               searchInputRef.current?.focus()
               showInfo("Scan atau ketik barcode produk")
             }}
           >
-            <Barcode className="size-5" />
+            <Barcode className="size-5" aria-hidden="true" />
           </Button>
         </div>
         <ScrollArea className="mb-4 w-full whitespace-nowrap">
@@ -1664,145 +1498,41 @@ export function PosScreen() {
           )}
         </div>
       </section>
-      <aside className="flex min-h-[600px] flex-col border-l bg-background xl:h-[calc(100vh-4rem)]">
-        <div className="flex items-center justify-between border-b p-4">
-          <div>
-            <h2 className="flex items-center gap-2 font-bold">
-              <ShoppingCart className="size-5 text-emerald-600" /> Keranjang <Badge className="bg-emerald-600">{cart.reduce((sum, item) => sum + item.quantity, 0)}</Badge>
-            </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">{branch?.name} • {warehouse?.name}</p>
-          </div>
-          {cart.length > 0 && (
-            <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-destructive" onClick={() => setCart([])}>
-              <Trash2 className="mr-1 size-3.5" /> Kosongkan
-            </Button>
-          )}
-        </div>
-        <div className="grid grid-cols-2 gap-2 border-b p-3">
-          <Select value={customerId} onValueChange={setCustomerId}>
-            <SelectTrigger className="h-9 text-xs">
-              <SelectValue placeholder="Pilih pelanggan" />
-            </SelectTrigger>
-            <SelectContent>
-              {customers.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name} • {item.code}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedTableId} onValueChange={setSelectedTableId}>
-            <SelectTrigger className="h-9 text-xs">
-              <SelectValue placeholder="Pilih meja" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="takeaway">Tanpa Meja (Takeaway)</SelectItem>
-              {tables.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name} (Cap {t.capacity})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-2 p-3">
-            {!cart.length && (
-              <div className="py-16 text-center">
-                <ShoppingCart className="mx-auto size-12 text-muted-foreground/30" />
-                <p className="mt-4 font-medium">Keranjang kosong</p>
-                <p className="text-xs text-muted-foreground mt-1">Tekan F1 untuk mencari produk atau scan barcode</p>
-              </div>
-            )}
-            {cart.map((item) => (
-              <div key={item.id} className="rounded-xl border p-3 bg-card shadow-2xs">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{item.name}</p>
-                    <p className="text-xs text-muted-foreground">{rupiah(item.price)} • {item.sku}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" className="size-8 text-destructive" onClick={() => setCart((current) => current.filter((entry) => entry.id !== item.id))}>
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="flex items-center rounded-lg border bg-background">
-                    <Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, -1)}>
-                      <Minus className="size-3" />
-                    </Button>
-                    <Input
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      className="h-8 w-12 border-0 bg-transparent text-center p-0 text-sm font-semibold focus-visible:ring-0 focus-visible:ring-offset-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      value={item.quantity === 0 ? "" : item.quantity}
-                      onChange={(e) => {
-                        const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
-                        updateQuantity(item.id, isNaN(val) ? 0 : val)
-                      }}
-                      onFocus={(e) => e.target.select()}
-                    />
-                    <Button variant="ghost" size="icon" className="size-8" onClick={() => change(item.id, 1)}>
-                      <Plus className="size-3" />
-                    </Button>
-                  </div>
-                  <p className="font-bold text-foreground">{rupiah(item.price * item.quantity)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-        <div className="border-t p-4 bg-background">
-          <div className="mb-3 grid grid-cols-2 gap-2">
-            <Textarea placeholder="Catatan pesanan" className="min-h-16 resize-none text-xs" value={orderNote} onChange={(event) => setOrderNote(event.target.value)} />
-            <div>
-              <Label className="text-xs">Diskon order</Label>
-              <Input type="number" min="0" className="h-9 text-xs" value={discount} onChange={(event) => setDiscount(event.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>{rupiah(subtotal)}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-rose-600">
-                <span>Diskon</span>
-                <span>-{rupiah(discountAmount)}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Pajak</span>
-              <span>{rupiah(tax)}</span>
-            </div>
-            <Separator />
-            <div className="flex justify-between text-lg font-bold">
-              <span>Total</span>
-              <span className="text-emerald-600 dark:text-emerald-400">{rupiah(total)}</span>
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-[auto_1fr] gap-2">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-12 shadow-2xs"
-              title="Tahan Pesanan (F4)"
-              onClick={() => void submitOrder("held")}
-              disabled={!cart.length || submitting}
-            >
-              <PauseCircle className="size-5" />
-            </Button>
-            <Button
-              disabled={!cart.length}
-              className="h-12 bg-emerald-600 text-base font-bold hover:bg-emerald-700 shadow-md shadow-emerald-600/20"
-              title="Bayar (F9)"
-              onClick={() => setPaymentOpen(true)}
-            >
-              Bayar • {rupiah(total)} [F9]
-            </Button>
-          </div>
-        </div>
+      <aside className="hidden border-l xl:flex xl:h-[calc(100vh-4rem)]">
+        {renderCartPanel("desktop", "h-full w-full")}
       </aside>
+
+      <Drawer open={mobileCartOpen} onOpenChange={setMobileCartOpen}>
+        <DrawerTrigger asChild>
+          <Button
+            className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-40 h-16 justify-between rounded-2xl bg-emerald-600 px-5 text-white shadow-xl shadow-emerald-950/25 hover:bg-emerald-700 xl:hidden"
+            aria-label={`Buka keranjang, ${cartItemCount} item, total ${rupiah(total)}`}
+          >
+            <span className="flex items-center gap-3">
+              <span className="relative flex size-10 items-center justify-center rounded-xl bg-white/15">
+                <ShoppingCart className="size-5" aria-hidden="true" />
+                {cartItemCount > 0 && (
+                  <span className="absolute -right-1.5 -top-1.5 flex min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-bold text-emerald-700">
+                    {cartItemCount}
+                  </span>
+                )}
+              </span>
+              <span className="text-left">
+                <span className="block text-sm font-bold">Lihat keranjang</span>
+                <span className="block text-xs text-emerald-50">{cart.length ? `${cart.length} produk` : "Belum ada produk"}</span>
+              </span>
+            </span>
+            <span className="text-base font-extrabold">{rupiah(total)}</span>
+          </Button>
+        </DrawerTrigger>
+        <DrawerContent className="h-[88dvh] max-h-[88dvh] xl:hidden">
+          <DrawerHeader className="sr-only">
+            <DrawerTitle>Keranjang transaksi</DrawerTitle>
+            <DrawerDescription>Atur item, pelanggan, meja, diskon, dan lanjutkan pembayaran.</DrawerDescription>
+          </DrawerHeader>
+          {renderCartPanel("mobile", "flex-1")}
+        </DrawerContent>
+      </Drawer>
     </div>
   )
 }

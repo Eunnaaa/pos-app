@@ -111,6 +111,8 @@ Required:
 | `BETTER_AUTH_SECRET` | Random secret, minimum 32 characters |
 | `BETTER_AUTH_URL` | Server-side public application URL |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | Browser auth URL |
+| `UPSTASH_REDIS_REST_URL` | Distributed Redis endpoint; required in production |
+| `UPSTASH_REDIS_REST_TOKEN` | Distributed Redis token; required in production |
 
 Optional provider groups activate only when all credentials for that provider exist:
 
@@ -124,6 +126,8 @@ Optional provider groups activate only when all credentials for that provider ex
 - Email: `EMAIL_API_URL`, `EMAIL_API_KEY`
 - AI: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`
 - Webhooks: `WEBHOOK_SECRET`
+
+POS QRIS and self-order online payments require a configured Midtrans server key. They create a pending order, open Midtrans checkout, and mark the order paid only after a verified payment notification. A merchant QR image alone does not verify payment.
 
 Never expose service-role, payment, AI, or webhook secrets with a `NEXT_PUBLIC_` prefix.
 

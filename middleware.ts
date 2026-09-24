@@ -46,6 +46,9 @@ function getRedis(): Redis | null {
   if (redis !== undefined) return redis;
   const url = process.env.UPSTASH_REDIS_REST_URL?.trim();
   const token = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+  if (process.env.NODE_ENV === "production" && (!url || !token)) {
+    throw new Error("UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are required in production");
+  }
   try {
     if (url) new URL(url);
     redis = url && token ? new Redis({ url, token }) : null;

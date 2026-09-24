@@ -1,17 +1,25 @@
 import "server-only";
 import { AppError } from "@/lib/server";
 
+export type ProviderRequestOptions = {
+  timeoutMs?: number;
+};
+
 export async function providerRequest<T>(
   provider: string,
   url: string,
   init: RequestInit,
+  options: ProviderRequestOptions = {},
 ): Promise<T> {
   let response: Response;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
   try {
     response = await fetch(url, {
       ...init,
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal,
     });
   } catch {
     throw new AppError("BAD_REQUEST", `${provider} is unavailable`, { details: { provider } });

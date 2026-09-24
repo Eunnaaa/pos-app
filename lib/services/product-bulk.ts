@@ -271,6 +271,9 @@ export async function importProductsFromCSV(
 ): Promise<ImportResult> {
   const lines = csvText.trim().split("\n").filter(Boolean);
   if (lines.length < 2) throw new AppError("VALIDATION_ERROR", "CSV harus memiliki header dan minimal 1 baris data");
+  if (lines.length > 501) {
+    throw new AppError("VALIDATION_ERROR", "CSV dibatasi maksimal 500 baris produk per impor untuk mencegah timeout server");
+  }
 
   const header = lines[0].toLowerCase().split(",").map((h) => h.trim());
   const nameIdx = header.indexOf("name");

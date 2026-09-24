@@ -7,7 +7,7 @@ import { hashIdempotentRequest } from "@/lib/server/idempotency-hash";
 import { decodeCursor, encodeCursor, paginated } from "@/lib/server/pagination";
 import { calculateSettlement } from "@/lib/services/cash-settlement";
 import { addClosingTotals } from "@/lib/services/closing-totals";
-import { parseRateToBps, exclusiveTax, inclusiveTax } from "@/lib/server/tax";
+import { allocateDiscount, parseRateToBps, exclusiveTax, inclusiveTax } from "@/lib/server/tax";
 import { can, requirePermission } from "@/lib/server/rbac";
 import { assertSafeWebhookUrl, signWebhook, verifyWebhookSignature } from "@/lib/server/webhook";
 import { toJsonValue } from "@/lib/api/response";
@@ -23,6 +23,15 @@ void test("money arithmetic remains exact in rupiah minor units", () => {
 void test("money validation rejects invalid precision and currency mismatch", () => {
   assert.throws(() => parseMoney("1.005", "USD", 2), AppError);
   assert.throws(() => addMoney(money(1n, "IDR"), money(1n, "USD")), AppError);
+});
+
+void test("order discounts are allocated exactly before tax calculation", () => {
+  const discounts = allocateDiscount([100n, 200n], 100n);
+  assert.deepEqual(discounts, [33n, 67n]);
+  assert.equal(discounts.reduce((sum, amount) => sum + amount, 0n), 100n);
+  assert.equal(exclusiveTax(100n - discounts[0], 1000n) + exclusiveTax(200n - discounts[1], 1000n), 19n);
+  assert.deepEqual(allocateDiscount([1n, 1n, 1n], 2n), [1n, 1n, 0n]);
+  assert.throws(() => allocateDiscount([100n], 101n), RangeError);
 });
 
 void test("RBAC applies default least-privilege matrix", () => {

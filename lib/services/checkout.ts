@@ -4,7 +4,9 @@ import { db, type Database } from "@/db";
 import {
   cashRegisters,
   cashRegisterSessions,
+  branches,
   customers,
+  diningTables,
   kitchenTickets,
   kitchenTicketItems,
   loyaltyAccounts,
@@ -23,7 +25,7 @@ import { assertPeriodOpen, AppError } from "@/lib/server";
 import { assertCanCreateOrder } from "./subscription";
 import { postStockMovement } from "./stock-ledger";
 import { postSaleToLedger } from "./ledger";
-import { exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
+import { allocateDiscount, exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
 import { resolvePromotionDiscount, recordPromotions } from "./promotions";
 import { accrueCommission } from "./commissions";
 import { publishEvent, cacheDel, RedisKeys } from "@/lib/redis";
@@ -139,10 +141,8 @@ async function calculateCheckout(
 
   let subtotalAmount = 0n;
   let costAmount = 0n;
-  let taxAmount = 0n;
-  let exclusiveTaxAmount = 0n;
   let itemDiscountTotal = 0n;
-  const calculated = input.items.map((item) => {
+  const lines = input.items.map((item) => {
     const variant = byId.get(item.variantId)!;
     const unitPriceAmount = variant.priceAmount;
     const gross = unitPriceAmount * item.quantity;
@@ -154,25 +154,11 @@ async function calculateCheckout(
     costAmount += variant.costAmount * item.quantity;
     itemDiscountTotal += item.discountAmount;
 
-    let itemTaxAmount = 0n;
-    const taxRate = variant.taxRateId ? taxRateMap.get(variant.taxRateId) : undefined;
-    if (taxRate) {
-      const rateBps = parseRateToBps(taxRate.rate);
-      if (rateBps > 0n) {
-        if (taxRate.isInclusive) {
-          itemTaxAmount = inclusiveTax(itemTotal, rateBps);
-        } else {
-          itemTaxAmount = exclusiveTax(itemTotal, rateBps);
-          exclusiveTaxAmount += itemTaxAmount;
-        }
-        taxAmount += itemTaxAmount;
-      }
-    }
-    return { item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTaxAmount };
+    return { item, variant, unitPriceAmount, totalAmount: itemTotal };
   });
 
-  if (input.discountAmount > subtotalAmount) {
-    throw new AppError("VALIDATION_ERROR", "Order discount cannot exceed subtotal");
+  if (input.discountAmount > subtotalAmount - itemDiscountTotal) {
+    throw new AppError("VALIDATION_ERROR", "Order discount cannot exceed the amount after item discounts");
   }
 
   const taxableForPromo = subtotalAmount - itemDiscountTotal - input.discountAmount;
@@ -184,6 +170,20 @@ async function calculateCheckout(
     customerId: input.customerId,
   });
   const totalDiscountAmount = input.discountAmount + promoDiscount;
+  const allocated = allocateDiscount(lines.map((line) => line.totalAmount), totalDiscountAmount);
+  let taxAmount = 0n;
+  let exclusiveTaxAmount = 0n;
+  const calculated = lines.map((line, index) => {
+    const taxRate = line.variant.taxRateId ? taxRateMap.get(line.variant.taxRateId) : undefined;
+    const rateBps = taxRate ? parseRateToBps(taxRate.rate) : 0n;
+    const taxableAmount = line.totalAmount - allocated[index];
+    const itemTaxAmount = taxRate?.isInclusive
+      ? inclusiveTax(taxableAmount, rateBps)
+      : exclusiveTax(taxableAmount, rateBps);
+    taxAmount += itemTaxAmount;
+    if (taxRate && !taxRate.isInclusive) exclusiveTaxAmount += itemTaxAmount;
+    return { ...line, taxAmount: itemTaxAmount };
+  });
   const totalAmount = subtotalAmount - itemDiscountTotal - totalDiscountAmount + input.serviceChargeAmount + exclusiveTaxAmount;
 
   const quote: CheckoutQuote = {
@@ -209,6 +209,29 @@ export async function quoteCheckout(input: CheckoutInput, context: CheckoutConte
 export async function checkout(input: CheckoutInput, context: CheckoutContext) {
   await assertCanCreateOrder(context.organizationId);
   const result = await db.transaction(async (tx) => {
+    const [branch] = await tx.select({ id: branches.id }).from(branches).where(and(
+      eq(branches.id, input.branchId),
+      eq(branches.organizationId, context.organizationId),
+      eq(branches.isActive, true),
+    )).limit(1);
+    if (!branch) throw new AppError("FORBIDDEN", "Cabang tidak tersedia untuk organisasi ini");
+    if (input.tableId) {
+      const [table] = await tx.select({ id: diningTables.id }).from(diningTables).where(and(
+        eq(diningTables.id, input.tableId),
+        eq(diningTables.organizationId, context.organizationId),
+        eq(diningTables.branchId, input.branchId),
+        eq(diningTables.isActive, true),
+      )).limit(1);
+      if (!table) throw new AppError("FORBIDDEN", "Meja tidak tersedia untuk cabang ini");
+    }
+    if (input.customerId) {
+      const [customer] = await tx.select({ id: customers.id }).from(customers).where(and(
+        eq(customers.id, input.customerId),
+        eq(customers.organizationId, context.organizationId),
+        eq(customers.isActive, true),
+      )).limit(1);
+      if (!customer) throw new AppError("NOT_FOUND", "Customer not found");
+    }
     if (input.channel === "pos") {
       await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: input.branchId });
     }
@@ -217,7 +240,7 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       .from(warehouses)
       .where(and(eq(warehouses.id, input.warehouseId), eq(warehouses.organizationId, context.organizationId), eq(warehouses.isActive, true)))
       .limit(1);
-    if (!warehouse || (warehouse.branchId && warehouse.branchId !== input.branchId)) {
+    if (!warehouse || warehouse.branchId !== input.branchId) {
       throw new AppError("FORBIDDEN", "Gudang tidak tersedia untuk cabang ini");
     }
 

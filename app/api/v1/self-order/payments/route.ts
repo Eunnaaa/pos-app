@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
-import { apiHandler, dataResponse } from "@/lib/api";
+import { apiHandler, dataResponse, withIdempotency } from "@/lib/api";
 import { db } from "@/db";
 import { salesOrders } from "@/db/schema";
 import { AppError, parseJson } from "@/lib/server";
-import { requireSelfOrderContext } from "@/lib/server/self-order-context";
-import { createDirectQrisCharge } from "@/lib/services/self-order";
+import { requireMatchingSelfOrderContext, requireSelfOrderContext } from "@/lib/server/self-order-context";
+import { createSelfOrderPayment } from "@/lib/services/self-order";
 
 const schema = z.object({
   token: z.string().max(100).optional(),
@@ -16,7 +16,9 @@ const schema = z.object({
 
 export const POST = apiHandler(async (request) => {
   const input = await parseJson(request, schema);
-  const context = await requireSelfOrderContext(request);
+  const context = input.token
+    ? await requireMatchingSelfOrderContext(request, input.token)
+    : await requireSelfOrderContext(request);
 
   // Validasi order milik tenant yang sama dengan token
   const [order] = await db
@@ -27,10 +29,12 @@ export const POST = apiHandler(async (request) => {
   if (!order || order.organizationId !== context.organizationId) {
     throw new AppError("NOT_FOUND", "Order tidak ditemukan");
   }
-  if (order.tableId && order.tableId !== context.tableId) {
+  if (order.tableId !== context.tableId) {
     throw new AppError("FORBIDDEN", "Order bukan milik meja token ini");
   }
 
-  const charge = await createDirectQrisCharge(input.orderId);
-  return dataResponse(charge, { status: 200 });
+  return withIdempotency(request, context, `self-order.payment.${input.orderId}`, input, async () => {
+    const charge = await createSelfOrderPayment(input.orderId);
+    return dataResponse(charge, { status: 200 });
+  });
 });

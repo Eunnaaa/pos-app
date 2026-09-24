@@ -1,6 +1,6 @@
 import { and, count, eq, gte, sql } from "drizzle-orm";
 import { PLANS, PlanConfig, PlanFeatures, PlanId, TRIAL_DURATION_DAYS } from "@/config/plans";
-import { db } from "@/db";
+import { db, type Database } from "@/db";
 import {
   branches,
   products,
@@ -204,6 +204,7 @@ export async function upgradeSubscription(
     paymentProvider?: string;
     externalSubscriptionId?: string;
   },
+  database: Database = db,
 ) {
   const now = new Date();
   const currentPeriodEnd = new Date();
@@ -213,7 +214,7 @@ export async function upgradeSubscription(
     currentPeriodEnd.setDate(currentPeriodEnd.getDate() + 30);
   }
 
-  const [updated] = await db
+  const [updated] = await database
     .insert(subscriptions)
     .values({
       organizationId,

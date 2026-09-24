@@ -48,6 +48,7 @@ type MenuItem = {
 type MenuData = {
   organization: { id: string; name: string; defaultCurrency: string };
   table: { id: string; name: string; area: string | null };
+  paymentAvailable: boolean;
   categories: Array<{ id: string; name: string; slug: string; products: MenuItem[] }>;
 };
 
@@ -291,6 +292,7 @@ export function SelfOrderFlow({ token, variant = "mobile" }: Props) {
             token={token}
             items={cart.items}
             totalAmount={cart.totalAmount}
+            paymentAvailable={menu.paymentAvailable}
             isKiosk={isKiosk}
             diningType={diningType}
             customerName={customerName}
@@ -824,6 +826,7 @@ function PaymentView(props: {
   token: string;
   items: CartItem[];
   totalAmount: number;
+  paymentAvailable: boolean;
   isKiosk: boolean;
   diningType: "dine_in" | "takeaway";
   customerName: string;
@@ -837,6 +840,7 @@ function PaymentView(props: {
     token,
     items,
     totalAmount,
+    paymentAvailable,
     diningType,
     customerName,
     setCustomerName,
@@ -850,7 +854,6 @@ function PaymentView(props: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(0);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [branchQrisModal, setBranchQrisModal] = useState<{
     qrString?: string;
@@ -929,14 +932,13 @@ function PaymentView(props: {
         body: JSON.stringify({ token, orderId, paymentMethods: ["QRIS"] }),
       },
     );
-    if (!charge.data.branchQris) {
-      throw new SelfOrderApiError("QRIS merchant belum dikonfigurasi untuk cabang ini", 409);
+    if (!charge.data.invoiceUrl) {
+      throw new SelfOrderApiError("Tautan pembayaran Midtrans belum tersedia", 409);
     }
     if (new Date(charge.data.expiresAt).getTime() <= Date.now()) {
-      localStorage.removeItem(chargeStorageKey);
-      return loadPayment(orderId);
+      throw new SelfOrderApiError("Tautan pembayaran sudah kedaluwarsa. Hubungi staf untuk membantu pesanan ini.", 409);
     }
-    setBranchQrisModal({ ...charge.data.branchQris, invoiceUrl: charge.data.invoiceUrl, expiresAt: charge.data.expiresAt, orderId });
+    setBranchQrisModal({ ...(charge.data.branchQris || {}), invoiceUrl: charge.data.invoiceUrl, expiresAt: charge.data.expiresAt, orderId });
   }
 
   function stopUnavailablePayment(orderId?: string) {
@@ -966,8 +968,7 @@ function PaymentView(props: {
     setError("");
     try {
       if (pendingOrderId) {
-        setError("Pembayaran online menunggu aktivasi DOKU atau Midtrans");
-        stopUnavailablePayment(pendingOrderId);
+        await loadPayment(pendingOrderId);
         return;
       }
 
@@ -1008,25 +1009,6 @@ function PaymentView(props: {
       setSubmitting(false);
     }
   }
-
-  useEffect(() => {
-    if (!branchQrisModal) {
-      setSecondsLeft(0);
-      return;
-    }
-    const update = () => {
-      const seconds = Math.max(0, Math.ceil((new Date(branchQrisModal.expiresAt).getTime() - Date.now()) / 1000));
-      setSecondsLeft(seconds);
-      if (seconds === 0) {
-        localStorage.removeItem(chargeKeyStorageKey(token, branchQrisModal.orderId));
-        setBranchQrisModal(null);
-        setError("Permintaan QRIS kedaluwarsa. Tekan lanjutkan pembayaran untuk membuat QR baru.");
-      }
-    };
-    update();
-    const interval = window.setInterval(update, 1000);
-    return () => window.clearInterval(interval);
-  }, [branchQrisModal, token]);
 
   // Keep checking while an order is pending, even if the customer closes the QR modal.
   useEffect(() => {
@@ -1167,7 +1149,7 @@ function PaymentView(props: {
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-amber-600" />
             <div className="space-y-1 text-xs">
               <p className="font-bold">Pembayaran online belum tersedia</p>
-              <p className="leading-relaxed">QRIS Self Order akan aktif setelah owner menghubungkan DOKU atau Midtrans. Tidak diperlukan relay atau aplikasi tambahan di perangkat pelanggan.</p>
+              <p className="leading-relaxed">QRIS Self Order akan aktif setelah owner menghubungkan Midtrans.</p>
             </div>
           </div>
         ) : <p className="text-xs font-semibold text-rose-600">{error}</p>
@@ -1177,7 +1159,7 @@ function PaymentView(props: {
         className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl h-12 text-sm shadow-xs gap-2"
         size="lg"
         onClick={submit}
-        disabled={submitting || (!pendingOrderId && items.length === 0)}
+        disabled={submitting || !paymentAvailable || (!pendingOrderId && items.length === 0)}
       >
         {submitting ? (
           <>
@@ -1188,8 +1170,10 @@ function PaymentView(props: {
         )}
       </Button>
 
+      {!paymentAvailable && <p className="text-center text-xs text-amber-700" role="status">Pembayaran mandiri belum tersedia. Hubungi staf untuk memesan.</p>}
+
       <p className="text-[10px] text-center text-muted-foreground">
-        Total final termasuk pajak dikonfirmasi server sebelum QRIS ditampilkan.
+        Total final termasuk pajak dikonfirmasi server sebelum tautan pembayaran ditampilkan.
       </p>
 
       {/* Branch Dynamic QRIS Modal Dialog */}
@@ -1210,7 +1194,7 @@ function PaymentView(props: {
           </DialogHeader>
 
           <div className="p-5 space-y-4 text-center">
-            <div className="flex flex-col items-center mx-auto max-w-[260px] rounded-2xl bg-white p-3.5 shadow-md border-2 border-emerald-500/30 text-black">
+            {branchQrisModal?.qrImageUrl ? <div className="flex flex-col items-center mx-auto max-w-[260px] rounded-2xl bg-white p-3.5 shadow-md border-2 border-emerald-500/30 text-black">
               <div className="w-full flex items-center justify-between pb-1.5 border-b border-gray-100 mb-1.5">
                 <span className="font-black text-xs text-red-600">QRIS</span>
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
@@ -1236,12 +1220,12 @@ function PaymentView(props: {
                   Total: {rupiah(branchQrisModal?.amount || 0)}
                 </p>
               </div>
-            </div>
+            </div> : <p className="rounded-xl border bg-muted/40 p-4 text-sm text-foreground">Buka halaman Midtrans untuk memilih QRIS atau e-Wallet dan menyelesaikan pembayaran.</p>}
 
             <div className="p-3 rounded-xl bg-muted/40 border text-left text-xs space-y-1">
               <p className="font-bold text-[11px] text-foreground">📌 Petunjuk Pembayaran:</p>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Scan QRIS di atas via m-Banking (BCA, Mandiri, BRI, BNI) atau e-Wallet (GoPay, OVO, DANA, ShopeePay). <strong>Nominal {rupiah(branchQrisModal?.amount || 0)} otomatis terkunci.</strong>
+                Selesaikan pembayaran melalui tautan Midtrans. Status pesanan akan diperbarui setelah konfirmasi dari penyedia pembayaran.
               </p>
             </div>
 
@@ -1249,9 +1233,7 @@ function PaymentView(props: {
               <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-[11px] font-medium text-emerald-800">
                 Status pembayaran diverifikasi otomatis. Halaman ini akan diperbarui setelah dana diterima merchant.
               </p>
-              <p className="text-xs font-semibold text-foreground" aria-live="polite">
-                Berlaku {String(Math.floor(secondsLeft / 60)).padStart(2, "0")}:{String(secondsLeft % 60).padStart(2, "0")}
-              </p>
+              <p className="text-xs font-semibold text-foreground" aria-live="polite">Menunggu konfirmasi pembayaran dari Midtrans</p>
               <Button
                 className="w-full rounded-xl h-9 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
                 onClick={checkPaymentStatus}
@@ -1267,11 +1249,9 @@ function PaymentView(props: {
                 <Button variant="outline" className="w-full rounded-xl h-9 text-xs" onClick={() => {
                   if (branchQrisModal?.invoiceUrl) {
                     window.open(branchQrisModal.invoiceUrl, "_blank", "noopener,noreferrer");
-                  } else {
-                    showInfo("Midtrans Snap belum dikonfigurasi. Silakan scan QRIS di atas.");
                   }
                 }}>
-                  Bayar Online
+                  Buka Pembayaran Midtrans
                 </Button>
               </div>
               <Button

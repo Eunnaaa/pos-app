@@ -2,7 +2,8 @@ import { z } from "zod";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { withIdempotency } from "@/lib/api/idempotent";
 import { parseJson } from "@/lib/server";
-import { requireSelfOrderContext } from "@/lib/server/self-order-context";
+import { requireMatchingSelfOrderContext } from "@/lib/server/self-order-context";
+import { assertFeatureEnabled } from "@/lib/services/subscription";
 import { reorder } from "@/lib/services/self-order";
 
 const itemSchema = z.object({
@@ -21,7 +22,8 @@ const schema = z.object({
 
 export const POST = apiHandler(async (request) => {
   const input = await parseJson(request, schema);
-  const context = await requireSelfOrderContext(request);
+  const context = await requireMatchingSelfOrderContext(request, input.token);
+  await assertFeatureEnabled(context.organizationId, "selfOrderQR", "Fitur Self Order QR Meja");
   return withIdempotency(
     request,
     context,

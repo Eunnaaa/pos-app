@@ -2,7 +2,6 @@ import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
-  branches,
   organizations,
   salesOrders,
   salesPayments,
@@ -13,7 +12,7 @@ import {
 } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { getServerEnv } from "@/config/env";
-import { AppError, decryptSecret, safeEqualSecret } from "@/lib/server";
+import { AppError, safeEqualSecret } from "@/lib/server";
 import { sendSubscriptionSuccessEmail } from "@/lib/integrations/notifications";
 import { confirmOrderPayment } from "@/lib/services/order-confirmation";
 import { upgradeSubscription } from "@/lib/services/subscription";
@@ -25,6 +24,7 @@ import {
   verifyMidtransNotificationSignature,
 } from "@/lib/integrations/payments";
 import { PLANS } from "@/config/plans";
+import { resolveMidtransServerKey } from "@/lib/services/payment-credentials";
 
 const midtransSchema = z.object({
   order_id: z.string(),
@@ -69,13 +69,14 @@ async function processPaymentUpdate(
   provider: string,
   reportedAmount?: bigint,
 ) {
+  const postCommit: { confirmationEmail?: { address: string; details: Parameters<typeof sendSubscriptionSuccessEmail>[1] } } = {};
   // Normalize snap order_id if it ends with -snap
   const cleanOrderRef = orderRef.replace(/-snap$/, "");
   if (newStatus === "settled" && reportedAmount === undefined) {
     throw new AppError("VALIDATION_ERROR", "Successful payment notification must include a valid amount");
   }
 
-  return db.transaction(async (tx) => {
+  const response = await db.transaction(async (tx) => {
     // 1. Check if this is a Subscription Invoice
     if (cleanOrderRef.startsWith("SUB-")) {
       const [invoice] = await tx
@@ -96,7 +97,7 @@ async function processPaymentUpdate(
       }
 
       if (newStatus === "settled") {
-        await tx
+        const updatedInvoices = await tx
           .update(subscriptionInvoices)
           .set({
             status: "paid",
@@ -105,7 +106,12 @@ async function processPaymentUpdate(
             paymentProvider: provider,
             updatedAt: new Date(),
           })
-          .where(eq(subscriptionInvoices.id, invoice.id));
+          .where(and(eq(subscriptionInvoices.id, invoice.id), eq(subscriptionInvoices.status, "pending")))
+          .returning({ id: subscriptionInvoices.id });
+
+        if (updatedInvoices.length === 0) {
+          return dataResponse({ status: "no_change", reason: "subscription_already_paid" }, { status: 200 });
+        }
 
         const meta = (invoice.metadata || {}) as { plan?: PlanTier; billingCycle?: "monthly" | "yearly" };
         const plan = meta.plan || "pro";
@@ -116,7 +122,7 @@ async function processPaymentUpdate(
           billingCycle,
           paymentProvider: provider,
           externalSubscriptionId: externalRef,
-        });
+        }, tx as unknown as typeof db);
 
         // Send Subscription Confirmation Letter Email asynchronously
         const [org] = await tx
@@ -135,7 +141,7 @@ async function processPaymentUpdate(
         const targetEmail = ownerMember?.email || org?.email;
         if (targetEmail) {
           const planConfig = PLANS[plan] || PLANS.pro;
-          void sendSubscriptionSuccessEmail(targetEmail, {
+          postCommit.confirmationEmail = { address: targetEmail, details: {
             userName: ownerMember?.name || "Owner",
             businessName: org?.name || "Kedai-Ku",
             planName: planConfig.name,
@@ -143,7 +149,7 @@ async function processPaymentUpdate(
             amount: Number(invoice.amount),
             billingCycle,
             periodEnd: updatedSub.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          });
+          } };
         }
 
         return dataResponse({ status: "subscription_activated", invoiceNumber: cleanOrderRef, plan, provider }, { status: 200 });
@@ -236,7 +242,11 @@ async function processPaymentUpdate(
     }
 
     return dataResponse({ status: "updated", order: orderRef, provider, newStatus, paymentsUpdated: payments.length }, { status: 200 });
-  }).then((response) => response);
+  });
+  if (postCommit.confirmationEmail) {
+    void sendSubscriptionSuccessEmail(postCommit.confirmationEmail.address, postCommit.confirmationEmail.details);
+  }
+  return response;
 }
 
 export const POST = apiHandler(async (request) => {
@@ -313,24 +323,13 @@ export const POST = apiHandler(async (request) => {
     const cleanOrderRef = orderRef.replace(/-snap$/, "");
 
     // Resolve active server key: branch specific vs platform
-    let validServerKey = env.MIDTRANS_SERVER_KEY || "";
     const [paymentOrder] = await db
       .select({ branchId: salesOrders.branchId })
       .from(salesOrders)
       .where(eq(salesOrders.orderNumber, cleanOrderRef))
       .limit(1);
 
-    if (paymentOrder?.branchId) {
-      const [branchRow] = await db
-        .select({ metadata: branches.metadata })
-        .from(branches)
-        .where(eq(branches.id, paymentOrder.branchId))
-        .limit(1);
-      const bMeta = (branchRow?.metadata as Record<string, unknown>) || {};
-      if (bMeta.midtransServerKey) {
-        validServerKey = decryptSecret(bMeta.midtransServerKey).trim();
-      }
-    }
+    const validServerKey = await resolveMidtransServerKey(paymentOrder?.branchId);
 
     if (!validServerKey) throw new AppError("BAD_REQUEST", "Midtrans server key not configured");
     if (!verifyMidtransNotificationSignature({

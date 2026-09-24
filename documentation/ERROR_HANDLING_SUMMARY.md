@@ -1,4 +1,8 @@
-# Error & Success Handling Implementation Summary
+# Error & Success Handling Implementation Summary (Historical)
+
+> Dokumen ini mencatat implementasi awal. `lib/server/error-handler.ts` telah dihapus;
+> sistem aktif menggunakan `AppError` dari `lib/server/errors.ts`. Referensi kode lama di
+> bawah tidak boleh digunakan untuk implementasi baru.
 
 ## ✅ IMPLEMENTATION COMPLETE
 
@@ -329,4 +333,3 @@ export const POST = withErrorHandler(async (req) => {
 
 Generated: 2026-08-02T12:10:12.134Z
 Status: ✅ IMPLEMENTATION COMPLETE
-

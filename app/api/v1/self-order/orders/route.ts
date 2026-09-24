@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { apiHandler, dataResponse, withIdempotency } from "@/lib/api";
 import { parseJson } from "@/lib/server";
-import { requireSelfOrderContext } from "@/lib/server/self-order-context";
+import { requireMatchingSelfOrderContext } from "@/lib/server/self-order-context";
 import { createSelfOrder } from "@/lib/services/self-order";
 import { assertFeatureEnabled } from "@/lib/services/subscription";
 
@@ -22,15 +22,8 @@ const schema = z.object({
 
 export const POST = apiHandler(async (request) => {
   const input = await parseJson(request, schema);
-  const context = await requireSelfOrderContext(request);
+  const context = await requireMatchingSelfOrderContext(request, input.token);
   await assertFeatureEnabled(context.organizationId, "selfOrderQR", "Fitur Self Order QR Meja");
-  if (input.token !== context.tokenId && input.token.length > 0) {
-    const verify = await requireSelfOrderContext(request);
-    // token di body harus resolve ke context yang sama
-    if (verify.organizationId !== context.organizationId || verify.tableId !== context.tableId) {
-      return dataResponse({ error: "Token mismatch" }, { status: 400 });
-    }
-  }
   return withIdempotency(
     request,
     context,

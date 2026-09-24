@@ -24,7 +24,7 @@ export const GET = apiHandler(async (request) => {
   if (!order || order.organizationId !== context.organizationId) {
     throw new AppError("NOT_FOUND", "Order tidak ditemukan");
   }
-  if (order.tableId && order.tableId !== context.tableId) {
+  if (order.tableId !== context.tableId) {
     throw new AppError("FORBIDDEN", "Order bukan milik meja token ini");
   }
 

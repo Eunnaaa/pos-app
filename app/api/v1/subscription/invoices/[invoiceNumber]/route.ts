@@ -47,8 +47,9 @@ export const GET = apiHandler(async (request) => {
     }
 
     if (check.status === "settled") {
-      await db.transaction(async (tx) => {
-        await tx
+      const postCommit: { confirmationEmail?: { address: string; details: Parameters<typeof sendSubscriptionSuccessEmail>[1] } } = {};
+      const activated = await db.transaction(async (tx) => {
+        const updatedInvoices = await tx
           .update(subscriptionInvoices)
           .set({
             status: "paid",
@@ -57,7 +58,9 @@ export const GET = apiHandler(async (request) => {
             paymentProvider: resolvedProvider,
             updatedAt: new Date(),
           })
-          .where(eq(subscriptionInvoices.id, invoice.id));
+          .where(and(eq(subscriptionInvoices.id, invoice.id), eq(subscriptionInvoices.status, "pending")))
+          .returning({ id: subscriptionInvoices.id });
+        if (updatedInvoices.length === 0) return false;
 
         const meta = (invoice.metadata || {}) as { plan?: PlanTier; billingCycle?: "monthly" | "yearly" };
         const plan = meta.plan || "pro";
@@ -66,9 +69,9 @@ export const GET = apiHandler(async (request) => {
         const updatedSub = await upgradeSubscription(invoice.organizationId, {
           plan,
           billingCycle,
-          paymentProvider: "midtrans",
+          paymentProvider: resolvedProvider,
           externalSubscriptionId: (check.raw as Record<string, unknown>)?.transaction_id ? String((check.raw as Record<string, unknown>).transaction_id) : invoiceNumber,
-        });
+        }, tx as unknown as typeof db);
 
         const [ownerMember] = await tx
           .select({ name: user.name, email: user.email })
@@ -86,7 +89,7 @@ export const GET = apiHandler(async (request) => {
         const targetEmail = ownerMember?.email || org?.email;
         if (targetEmail) {
           const planConfig = PLANS[plan] || PLANS.pro;
-          void sendSubscriptionSuccessEmail(targetEmail, {
+          postCommit.confirmationEmail = { address: targetEmail, details: {
             userName: ownerMember?.name || "Owner",
             businessName: org?.name || "Kedai-Ku",
             planName: planConfig.name,
@@ -94,11 +97,19 @@ export const GET = apiHandler(async (request) => {
             amount: Number(invoice.amount),
             billingCycle,
             periodEnd: updatedSub.currentPeriodEnd || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          });
+          } };
         }
+        return true;
       });
-
-      invoice.status = "paid";
+      if (postCommit.confirmationEmail) {
+        void sendSubscriptionSuccessEmail(postCommit.confirmationEmail.address, postCommit.confirmationEmail.details);
+      }
+      if (activated) invoice.status = "paid";
+      else {
+        const [current] = await db.select({ status: subscriptionInvoices.status })
+          .from(subscriptionInvoices).where(eq(subscriptionInvoices.id, invoice.id)).limit(1);
+        if (current) invoice.status = current.status;
+      }
     }
   }
 

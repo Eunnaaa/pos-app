@@ -107,6 +107,23 @@ const serverEnvSchema = z.object({
       });
     }
   }
+
+  const hasRedisUrl = Boolean(env.UPSTASH_REDIS_REST_URL);
+  const hasRedisToken = Boolean(env.UPSTASH_REDIS_REST_TOKEN?.trim());
+  if (hasRedisUrl !== hasRedisToken) {
+    ctx.addIssue({
+      code: "custom",
+      path: [hasRedisUrl ? "UPSTASH_REDIS_REST_TOKEN" : "UPSTASH_REDIS_REST_URL"],
+      message: "UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN must be configured together",
+    });
+  }
+  if (env.NODE_ENV === "production" && (!hasRedisUrl || !hasRedisToken)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["UPSTASH_REDIS_REST_URL"],
+      message: "Upstash Redis is required in production so rate limits are shared across instances",
+    });
+  }
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

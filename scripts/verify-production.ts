@@ -68,6 +68,9 @@ requirePair("Apple OAuth", ["APPLE_CLIENT_ID", "APPLE_CLIENT_SECRET"]);
 requirePair("Email", ["EMAIL_API_URL", "EMAIL_API_KEY"]);
 requirePair("Upstash Redis", ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"]);
 requirePair("Sentry", ["SENTRY_DSN", "NEXT_PUBLIC_SENTRY_DSN"]);
+if (production) {
+  requireKeys(["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"], "Production distributed rate limiting");
+}
 for (const key of ["EMAIL_API_URL", "MIDTRANS_BASE_URL", "DOKU_BASE_URL", "SENTRY_DSN", "NEXT_PUBLIC_SENTRY_DSN", "UPSTASH_REDIS_REST_URL"]) {
   parseUrl(key);
 }

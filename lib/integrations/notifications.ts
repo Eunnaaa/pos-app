@@ -34,19 +34,31 @@ export function normalizeWhatsAppTarget(to: string): string {
   return target;
 }
 
-export async function sendWhatsApp(to: string, message: string) {
+export type NotificationRequestOptions = {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+};
+
+export async function sendWhatsApp(
+  to: string,
+  message: string,
+  options: NotificationRequestOptions = {},
+) {
   const env = getServerEnv();
   const config = requireProviderConfig("Fonnte", { token: env.WHATSAPP_ACCESS_TOKEN });
   const target = normalizeWhatsAppTarget(to);
   const body = new URLSearchParams({ target, message, countryCode: "62" });
   let response: Response;
+  const timeoutMs = options.timeoutMs ?? 8_000;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
   try {
     response = await fetch("https://api.fonnte.com/send", {
       method: "POST",
       headers: { authorization: config.token, "content-type": "application/x-www-form-urlencoded" },
       body: body.toString(),
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal,
     });
   } catch {
     throw new AppError("BAD_REQUEST", "Fonnte is unavailable", { details: { provider: "Fonnte" } });
@@ -61,17 +73,27 @@ export async function sendWhatsApp(to: string, message: string) {
   return payload;
 }
 
-export async function sendTelegram(chatId: string, message: string) {
+export async function sendTelegram(
+  chatId: string,
+  message: string,
+  options: NotificationRequestOptions = {},
+) {
   const env = getServerEnv();
   const config = requireProviderConfig("Telegram", { botToken: env.TELEGRAM_BOT_TOKEN });
   return providerRequest("Telegram", `https://api.telegram.org/bot${config.botToken}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, text: message }),
-  });
+    signal: options.signal,
+  }, { timeoutMs: options.timeoutMs ?? 8_000 });
 }
 
-export async function sendEmail(to: string, subject: string, html: string) {
+export async function sendEmail(
+  to: string,
+  subject: string,
+  html: string,
+  options: NotificationRequestOptions = {},
+) {
   const env = getServerEnv();
   const config = requireProviderConfig("Email", { apiUrl: env.EMAIL_API_URL, apiKey: env.EMAIL_API_KEY });
   const provider = env.EMAIL_PROVIDER;
@@ -91,13 +113,16 @@ export async function sendEmail(to: string, subject: string, html: string) {
       : { to, subject, html };
 
   let response: Response;
+  const timeoutMs = options.timeoutMs ?? 8_000;
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
   try {
     response = await fetch(config.apiUrl, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${config.apiKey}` },
       body: JSON.stringify(payload),
       cache: "no-store",
-      signal: AbortSignal.timeout(20_000),
+      signal,
     });
   } catch {
     throw new AppError("BAD_REQUEST", "Email provider is unavailable", { details: { provider } });

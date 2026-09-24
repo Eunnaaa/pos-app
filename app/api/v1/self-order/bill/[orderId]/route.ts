@@ -28,6 +28,6 @@ export const GET = apiHandler(async (request) => {
     throw new AppError("FORBIDDEN", "Bill bukan milik meja token ini");
   }
 
-  const result = await getTableBillSplit(tableId);
+  const result = await getTableBillSplit(tableId, context.organizationId);
   return dataResponse(result, { status: 200, headers: { "cache-control": "no-store" } });
 });

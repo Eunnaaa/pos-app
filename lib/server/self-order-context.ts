@@ -72,3 +72,13 @@ export async function requireSelfOrderContext(request: Request): Promise<SelfOrd
       : {}),
   };
 }
+
+/** A public request may carry its table token in several places; all must agree. */
+export async function requireMatchingSelfOrderContext(request: Request, bodyToken: string): Promise<SelfOrderContext> {
+  const urlToken = new URL(request.url).searchParams.get("token")?.trim();
+  const headerToken = request.headers.get("x-self-order-token")?.trim();
+  if ((urlToken && urlToken !== bodyToken) || (headerToken && headerToken !== bodyToken)) {
+    throw new AppError("FORBIDDEN", "Token self-order tidak cocok");
+  }
+  return requireSelfOrderContext(request);
+}

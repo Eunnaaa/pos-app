@@ -64,6 +64,8 @@ Di Vercel → Settings → Environment Variables, set:
 | `SUPABASE_URL` | `https://REF.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | (service role key) |
 | `WEBHOOK_SECRET` | (hasil openssl rand) |
+| `UPSTASH_REDIS_REST_URL` | (Upstash REST URL; wajib untuk production multi-instance) |
+| `UPSTASH_REDIS_REST_TOKEN` | (Upstash REST token) |
 | `EMAIL_API_URL` | (URL provider email) |
 | `EMAIL_API_KEY` | (API key provider email) |
 | `SENTRY_DSN` | (opsional, butuh `npm install @sentry/nextjs`) |
@@ -147,6 +149,7 @@ docker exec kedai-ku node -e "import('./db/index.ts')"
 - [ ] **Monitoring**: `SENTRY_DSN` set (butuh `npm install @sentry/nextjs`), `LOG_LEVEL=info`
 - [ ] **Security headers**: Sudah dikonfigurasi di `next.config.ts` (CSP, HSTS, COOP, CORP)
 - [ ] **Rate limiting**: Better Auth rate limits aktif + API middleware rate limiting
+- [ ] **Redis**: Upstash REST URL/token terisi; deployment production akan gagal validasi tanpa keduanya
 - [ ] **Webhooks**: `WEBHOOK_SECRET` set, Supabase DB webhook untuk auto-receipt dikonfigurasi
 - [ ] **Quality gates**: `npm run typecheck && npm run lint && npm test && npm run build` semua lulus
 - [ ] **Custom domain**: DNS pointing, SSL certificate, update semua URL env vars

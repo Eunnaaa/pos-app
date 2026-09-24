@@ -198,7 +198,7 @@ export function KitchenDisplayPage() {
             {branch?.name || "Semua Cabang"}
           </Badge>
 
-          <Button variant="outline" size="icon" className="rounded-xl" onClick={() => void load()} disabled={loading}>
+          <Button variant="outline" size="icon" className="rounded-xl" aria-label="Muat ulang tiket dapur" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? "size-4 animate-spin" : "size-4"} />
           </Button>
         </div>

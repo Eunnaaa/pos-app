@@ -3,7 +3,8 @@
 > ⚠️ **Update Penting**: Sistem error handling kanonik (canonical) adalah **`AppError`** di
 > `lib/server/errors.ts`, yang digunakan oleh `apiHandler` dan seluruh route handler aktif.
 > Modul lama `lib/server/error-handler.ts` (`ApiError`, `handleError`, `withErrorHandler`)
-> sudah **deprecated** dan tidak lagi di-export. Untuk kode baru, selalu gunakan `AppError`
+> sudah **dihapus**. Contoh lama yang masih menyebut modul tersebut bersifat historis dan tidak boleh disalin.
+> Untuk kode baru, selalu gunakan `AppError`
 > dan helper dari `lib/server/errors.ts`.
 >
 > Bagian klien (client-side) dari guide ini — `gooey-toast` toast handler (`lib/toast-handler.ts`),
@@ -30,7 +31,7 @@ Panduan komprehensif untuk implementasi error dan success handling menggunakan *
 Sistem error handling terdiri dari 3 komponen utama:
 
 - **`lib/toast-handler.ts`** - Client-side toast notifications
-- **`lib/server/error-handler.ts`** - Server-side error handling
+- **`lib/server/errors.ts`** - Error server kanonik (`AppError`, normalisasi, dan respons HTTP)
 - **`hooks/use-api-mutation.ts`** - React hook untuk mutations dengan toast
 
 ---
@@ -607,4 +608,3 @@ Sistem error handling yang comprehensive mencakup:
 - ✅ Request ID tracking
 - ✅ Duplicate prevention
 - ✅ Flexible positioning & duration
-

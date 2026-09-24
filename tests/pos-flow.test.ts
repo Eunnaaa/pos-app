@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { exclusiveTax, parseRateToBps } from "@/lib/server/tax";
 import { calculateSettlement } from "@/lib/services/cash-settlement";
@@ -173,4 +174,29 @@ void test("POS Flow: Progressive catalog pagination chunks large inventory for 6
   const finalLimit = nextLimit + 48;
   const finalPage = largeCatalog.slice(0, finalLimit);
   assert.equal(finalPage.length, 120);
+});
+
+void test("POS UI: mobile cart stays reachable and icon controls have accessible names", async () => {
+  const [screen, cartPanel] = await Promise.all([
+    readFile("components/kasir/pos-screen.tsx", "utf8"),
+    readFile("components/kasir/pos/cart-panel.tsx", "utf8"),
+  ]);
+
+  assert.match(screen, /<Drawer open=\{mobileCartOpen\}/);
+  assert.match(screen, /bottom-\[max\(0\.75rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(screen, /aria-label="Fokus ke pencarian atau pemindai barcode"/);
+  assert.match(screen, /aria-label=\{printerName \?/);
+  assert.match(cartPanel, /aria-label=\{`Hapus \$\{item\.name\} dari keranjang`\}/);
+  assert.match(cartPanel, /aria-label=\{`Kurangi jumlah \$\{item\.name\}`\}/);
+  assert.match(cartPanel, /aria-label=\{`Tambah jumlah \$\{item\.name\}`\}/);
+});
+
+void test("POS UI: complex state is delegated to focused hooks", async () => {
+  const screen = await readFile("components/kasir/pos-screen.tsx", "utf8");
+  const localStateCount = screen.match(/useState(?:<[^>]+>)?\(/g)?.length ?? 0;
+
+  assert.ok(localStateCount < 30, `expected fewer than 30 local useState calls, received ${localStateCount}`);
+  assert.match(screen, /usePosCart\(\)/);
+  assert.match(screen, /usePosPaymentState\(\)/);
+  assert.match(screen, /usePosNetworkState\(\)/);
 });

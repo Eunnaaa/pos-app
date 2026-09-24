@@ -8,6 +8,7 @@ import { AppError } from "@/lib/server/errors";
 import { validateImageBytes } from "@/lib/server/image-validation";
 import { decryptSecret, encryptSecret, safeEqualSecret } from "@/lib/server/secrets";
 import { parseJson } from "@/lib/server/validation";
+import { requireMatchingSelfOrderContext } from "@/lib/server/self-order-context";
 import { getSuperAdminEmails, isSuperAdminUser } from "@/lib/super-admin";
 
 void test("API rate-limit policies match the production contract", () => {
@@ -57,6 +58,20 @@ void test("restricted members cannot access an unassigned or omitted branch", ()
   assert.throws(() => assertBranchAccess({ role: "cashier", branchIds: [] }, "branch-b"), AppError);
   assert.doesNotThrow(() => assertBranchAccess({ role: "owner", branchIds: ["branch-a"], allBranches: true }, "branch-b"));
   assert.throws(() => assertBranchAccess({ role: "owner", branchIds: [], allBranches: true, activeBranchIds: ["branch-a"] }, "branch-b"), AppError);
+});
+
+void test("self-order rejects conflicting query, header, and body tokens before tenant lookup", async () => {
+  const queryMismatch = new Request("https://pos.example/api/v1/self-order/orders?token=table-a", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token: "table-b" }),
+  });
+  await assert.rejects(() => requireMatchingSelfOrderContext(queryMismatch, "table-b"), AppError);
+  const headerMismatch = new Request("https://pos.example/api/v1/self-order/orders", {
+    method: "POST",
+    headers: { "x-self-order-token": "table-a" },
+  });
+  await assert.rejects(() => requireMatchingSelfOrderContext(headerMismatch, "table-b"), AppError);
 });
 
 void test("super admin requires a server allowlist, verified email, and 2FA", () => {

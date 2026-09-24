@@ -56,7 +56,7 @@ export async function sendShiftReportWhatsApp(sessionId: string): Promise<boolea
   }
 
   try {
-    await sendWhatsApp(phone, buildShiftReportMessage(row));
+    await sendWhatsApp(phone, buildShiftReportMessage(row), { timeoutMs: 4000 });
     return true;
   } catch (error) {
     logger.error("shift report WhatsApp failed", { organizationId: row.organizationId, sessionId }, error);

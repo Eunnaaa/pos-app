@@ -4,12 +4,12 @@ import { importProductsFromCSV } from "@/lib/services/product-bulk";
 import { z } from "zod";
 
 const importSchema = z.object({
-  csv: z.string().min(10, "CSV data required"),
+  csv: z.string().min(10, "CSV data required").max(1024 * 1024, "Ukuran file CSV maksimal 1 MB"),
 });
 
 export const POST = apiHandler(async (request) => {
   const context = await requireApiContext(request, "inventory:write");
-  const input = await parseJson(request, importSchema);
+  const input = await parseJson(request, importSchema, 1024 * 1024);
   const result = await importProductsFromCSV(context.organizationId, input.csv);
   return dataResponse(result, { status: 201 });
 });
