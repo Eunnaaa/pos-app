@@ -24,6 +24,8 @@ import type { ApiContext } from "@/lib/api";
 import { assertPeriodOpen, AppError } from "@/lib/server";
 import { assertCanCreateOrder } from "./subscription";
 import { postStockMovement } from "./stock-ledger";
+import { reserveOrderStock } from "./stock-reservations";
+import { ONLINE_RESERVATION_MS } from "@/lib/online-reservation-policy";
 import { postSaleToLedger } from "./ledger";
 import { allocateDiscount, exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
 import { resolvePromotionDiscount, recordPromotions } from "./promotions";
@@ -274,9 +276,15 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     const isDeferred = input.payments.some((payment) => payment.method === "pay_later");
     const hasCash = input.payments.some((payment) => payment.method === "cash");
     const hasOnlinePayment = input.payments.some((payment) => Boolean(payment.provider && payment.provider.trim()));
+    if (hasOnlinePayment && input.payments.length !== 1) {
+      throw new AppError("VALIDATION_ERROR", "Pembayaran online harus menggunakan satu metode pembayaran");
+    }
     // Online provider payments are not settled at checkout; the order stays pending
     // until the payment gateway webhook confirms settlement.
-    const effectiveStatus = hasOnlinePayment && input.status === "paid" ? "pending" : input.status;
+    const effectiveStatus = hasOnlinePayment ? "pending" : input.status;
+    const reservationExpiry = hasOnlinePayment && effectiveStatus === "pending"
+      ? new Date(Date.now() + ONLINE_RESERVATION_MS)
+      : null;
     if (effectiveStatus === "paid" && paymentAmount < totalAmount && !isDeferred) throw new AppError("VALIDATION_ERROR", "Payment total is less than order total");
     if (effectiveStatus === "paid" && paymentAmount > totalAmount && !hasCash) throw new AppError("VALIDATION_ERROR", "Non-cash payment cannot exceed order total");
     const paidAmount = effectiveStatus === "paid" ? (paymentAmount > totalAmount ? totalAmount : paymentAmount) : 0n;
@@ -308,6 +316,9 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       costAmount,
       notes: input.notes,
       offlineReference: input.offlineReference,
+      metadata: reservationExpiry
+        ? { stockReservationVersion: 1, reservationExpiresAt: reservationExpiry.toISOString() }
+        : undefined,
       completedAt: effectiveStatus === "paid" ? new Date() : undefined,
     }).returning();
 
@@ -331,6 +342,21 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       totalAmount: itemTotal,
       notes: item.notes,
     }))).returning();
+
+    if (reservationExpiry) {
+      await reserveOrderStock(tx, {
+        organizationId: context.organizationId,
+        warehouseId: input.warehouseId,
+        orderId,
+        expiresAt: reservationExpiry,
+        items: calculated.map(({ item, variant }) => ({
+          variantId: variant.id,
+          quantity: item.quantity,
+          trackStock: variant.trackStock,
+          allowNegativeStock: variant.allowNegativeStock,
+        })),
+      });
+    }
 
     if (effectiveStatus === "paid" || effectiveStatus === "confirmed") {
       for (const { item, variant } of calculated) {
@@ -435,13 +461,14 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       const verificationToken = crypto.randomUUID().replaceAll("-", "");
       [receipt] = await tx.insert(receipts).values({ organizationId: context.organizationId, orderId, verificationToken }).returning();
     }
-    return { order, items: orderItems, payments, receipt, pointsEarned };
+    return { order, items: orderItems, payments, receipt, pointsEarned, reservationExpiresAt: reservationExpiry?.toISOString() ?? null };
   });
 
   // Post-commit Redis cache invalidations & real-time events
   void cacheDel(
     RedisKeys.tables(context.organizationId, input.branchId),
-    RedisKeys.catalog(context.organizationId, input.branchId)
+    RedisKeys.catalog(context.organizationId, input.branchId),
+    `tenant:${context.organizationId}:branch:${input.branchId}:warehouse:${input.warehouseId}:pos-bootstrap`,
   );
 
   if (result.order.status === "paid" || result.order.status === "confirmed") {

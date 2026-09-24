@@ -43,6 +43,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useOrganization } from "@/components/kasir/organization-provider"
+import { ONLINE_RESERVATION_MS } from "@/lib/online-reservation-policy"
 import { usePosBootstrap, type PosProduct } from "@/hooks/use-pos-bootstrap"
 import { usePosCart, type PosCartItem } from "@/hooks/use-pos-cart"
 import { usePosNetworkState } from "@/hooks/use-pos-network-state"
@@ -525,7 +526,7 @@ export function PosScreen() {
         body: JSON.stringify({ provider: "midtrans", orderId, customerName: "Pelanggan Kasir" }),
       })
       if (!response.data.paymentUrl) throw new Error("Tautan pembayaran Midtrans belum tersedia")
-      const pending = { orderId, amount, paymentUrl: response.data.paymentUrl, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+      const pending = { orderId, amount, paymentUrl: response.data.paymentUrl, expiresAt: pendingQrisOrder?.expiresAt ?? new Date(Date.now() + ONLINE_RESERVATION_MS).toISOString() }
       setPendingQrisOrder(pending)
       localStorage.setItem(pendingQrisStorageKey(branch.id), JSON.stringify(pending))
       setQrisPollingError("")
@@ -542,7 +543,18 @@ export function PosScreen() {
     const poll = async () => {
       try {
         const response = await apiFetch<CheckoutResult>(`/api/v1/sales/${pendingQrisOrder.orderId}`)
-        if (!active || response.data.order.status !== "paid" || !response.data.receipt) return
+        if (!active) return
+        if (response.data.order.status === "cancelled") {
+          if (branch?.id) localStorage.removeItem(pendingQrisStorageKey(branch.id))
+          setPendingQrisOrder(null)
+          setPaymentOpen(false)
+          showError(response.data.order.metadata?.paymentException === "refund_required"
+            ? "Pembayaran diterima setelah stok dilepas. Dana perlu dikembalikan oleh pemilik."
+            : "Waktu reservasi stok habis. Buat pesanan baru.")
+          await refreshBootstrap()
+          return
+        }
+        if (response.data.order.status !== "paid" || !response.data.receipt) return
         if (branch?.id) localStorage.removeItem(pendingQrisStorageKey(branch.id))
         setPendingQrisOrder(null)
         setQrisPollingError("")
@@ -719,7 +731,7 @@ export function PosScreen() {
         setPaymentOpen(false); resetCart(); return
       }
       if (paymentMethod === "QRIS") {
-        const pending = { orderId: response.data.order.id, amount: finalTotal, expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() }
+        const pending = { orderId: response.data.order.id, amount: finalTotal, expiresAt: response.data.reservationExpiresAt ?? new Date(Date.now() + ONLINE_RESERVATION_MS).toISOString() }
         setPendingQrisOrder(pending)
         localStorage.setItem(pendingQrisStorageKey(branch.id), JSON.stringify(pending))
         await renewPendingQris(pending.orderId, pending.amount)

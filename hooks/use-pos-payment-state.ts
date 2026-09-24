@@ -12,9 +12,11 @@ export type CheckoutResult = {
     total_amount?: string
     changeAmount?: string
     change_amount?: string
+    metadata?: { paymentException?: string }
   }
   receipt: { verificationToken?: string; verification_token?: string } | null
   pointsEarned?: string
+  reservationExpiresAt?: string | null
 }
 
 export type CheckoutQuote = {

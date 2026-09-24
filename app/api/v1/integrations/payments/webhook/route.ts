@@ -1,8 +1,9 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
   organizations,
+  notifications,
   salesOrders,
   salesPayments,
   subscriptionInvoices,
@@ -25,6 +26,9 @@ import {
 } from "@/lib/integrations/payments";
 import { PLANS } from "@/config/plans";
 import { resolveMidtransServerKey } from "@/lib/services/payment-credentials";
+import { releaseOrderReservations, reservationExpiresAt } from "@/lib/services/stock-reservations";
+import { cacheDel } from "@/lib/redis";
+import { logger } from "@/lib/server/logger";
 
 const midtransSchema = z.object({
   order_id: z.string(),
@@ -69,7 +73,11 @@ async function processPaymentUpdate(
   provider: string,
   reportedAmount?: bigint,
 ) {
-  const postCommit: { confirmationEmail?: { address: string; details: Parameters<typeof sendSubscriptionSuccessEmail>[1] } } = {};
+  const postCommit: {
+    confirmationEmail?: { address: string; details: Parameters<typeof sendSubscriptionSuccessEmail>[1] };
+    refundRequired?: { orderId: string; orderNumber: string };
+    stockCacheKey?: string;
+  } = {};
   // Normalize snap order_id if it ends with -snap
   const cleanOrderRef = orderRef.replace(/-snap$/, "");
   if (newStatus === "settled" && reportedAmount === undefined) {
@@ -168,22 +176,34 @@ async function processPaymentUpdate(
     }
 
     // 2. POS / Self-Order Sales Order Payment
+    // Serialize payment callbacks with expiry cleanup for this order.
+    await tx.execute(sql`select id from ${salesOrders} where order_number = ${cleanOrderRef} for update`);
     const [order] = await tx
       .select({
         id: salesOrders.id,
         organizationId: salesOrders.organizationId,
         branchId: salesOrders.branchId,
+        warehouseId: salesOrders.warehouseId,
         orderNumber: salesOrders.orderNumber,
         totalAmount: salesOrders.totalAmount,
         changeAmount: salesOrders.changeAmount,
         status: salesOrders.status,
         cashierUserId: salesOrders.cashierUserId,
+        metadata: salesOrders.metadata,
       })
       .from(salesOrders)
       .where(eq(salesOrders.orderNumber, cleanOrderRef))
       .limit(1);
 
     if (!order) return dataResponse({ status: "ignored", reason: "order_not_found" }, { status: 200 });
+    const expiry = reservationExpiresAt(order.metadata);
+    const reservationExpired = Boolean(expiry && expiry.getTime() <= Date.now());
+    if (order.status === "pending" && reservationExpired) {
+      await releaseOrderReservations(tx, order.organizationId, order.id, "expired");
+      await tx.update(salesOrders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
+      postCommit.stockCacheKey = `tenant:${order.organizationId}:branch:${order.branchId}:warehouse:${order.warehouseId}:pos-bootstrap`;
+    }
+    const cancelled = order.status === "cancelled" || reservationExpired;
     const payments = await tx
       .select({
         id: salesPayments.id,
@@ -191,12 +211,13 @@ async function processPaymentUpdate(
         amount: salesPayments.amount,
         status: salesPayments.status,
         provider: salesPayments.provider,
+        metadata: salesPayments.metadata,
       })
       .from(salesPayments)
       .where(and(
         eq(salesPayments.orderId, order.id),
         eq(salesPayments.provider, provider),
-        inArray(salesPayments.status, ["authorized", "pending"]),
+        inArray(salesPayments.status, cancelled ? ["authorized", "pending", "failed", "voided"] : ["authorized", "pending"]),
       ));
 
     if (payments.length === 0 && order.status === "paid") {
@@ -216,15 +237,42 @@ async function processPaymentUpdate(
         status: newStatus,
         externalReference: externalRef,
         paidAt: newStatus === "settled" ? new Date() : undefined,
+        metadata: cancelled && newStatus === "settled"
+          ? { ...(payment.metadata ?? {}), refundRequired: true, refundReason: "stock_reservation_expired", refundStatus: "pending_manual_review" }
+          : payment.metadata,
         updatedAt: new Date(),
       })
-      .where(and(eq(salesPayments.id, payment.id), inArray(salesPayments.status, ["authorized", "pending"])))
+      .where(and(eq(salesPayments.id, payment.id), inArray(salesPayments.status, cancelled ? ["authorized", "pending", "failed", "voided"] : ["authorized", "pending"])))
       .returning({ id: salesPayments.id });
 
     // A duplicate/concurrent notification may have observed the old state but
     // lost the conditional update race. It must not replay stock or ledger side effects.
     if (updatedPayments.length === 0) {
       return dataResponse({ status: "no_change", order: orderRef, reason: "payment_already_processed" }, { status: 200 });
+    }
+
+    if (cancelled && newStatus === "settled") {
+      await tx.update(salesOrders).set({
+        metadata: { ...(order.metadata ?? {}), paymentException: "refund_required", paymentExceptionAt: new Date().toISOString() },
+        updatedAt: new Date(),
+      }).where(eq(salesOrders.id, order.id));
+      await tx.insert(notifications).values({
+        organizationId: order.organizationId,
+        channel: "in_app",
+        template: "payment_refund_required",
+        recipient: "owner",
+        subject: `Pembayaran perlu dikembalikan: ${order.orderNumber}`,
+        body: `Pembayaran ${provider} diterima setelah reservasi stok berakhir. Periksa dan kembalikan dana untuk order ${order.orderNumber}.`,
+        status: "queued",
+      });
+      postCommit.refundRequired = { orderId: order.id, orderNumber: order.orderNumber };
+      return dataResponse({ status: "refund_required", order: orderRef, provider }, { status: 200 });
+    }
+
+    if (newStatus === "failed" && order.status === "pending" && expiry) {
+      await releaseOrderReservations(tx, order.organizationId, order.id, "released");
+      await tx.update(salesOrders).set({ status: "cancelled", updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
+      postCommit.stockCacheKey = `tenant:${order.organizationId}:branch:${order.branchId}:warehouse:${order.warehouseId}:pos-bootstrap`;
     }
 
     if (newStatus === "settled" && order.status !== "paid") {
@@ -246,6 +294,8 @@ async function processPaymentUpdate(
   if (postCommit.confirmationEmail) {
     void sendSubscriptionSuccessEmail(postCommit.confirmationEmail.address, postCommit.confirmationEmail.details);
   }
+  if (postCommit.stockCacheKey) void cacheDel(postCommit.stockCacheKey);
+  if (postCommit.refundRequired) logger.error("online payment requires manual refund", postCommit.refundRequired);
   return response;
 }
 

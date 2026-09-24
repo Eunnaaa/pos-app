@@ -14,6 +14,7 @@ import {
   salesPayments,
 } from "@/db/schema";
 import { postStockMovement, type DbTransaction } from "./stock-ledger";
+import { fulfillOrderReservations, reservationExpiresAt } from "./stock-reservations";
 import { postSaleToLedger } from "./ledger";
 import { accrueCommission } from "./commissions";
 import { writeAuditLog } from "@/lib/server/audit";
@@ -43,6 +44,7 @@ export async function confirmOrderPayment(tx: Tx, params: {
       cashierUserId: salesOrders.cashierUserId,
       status: salesOrders.status,
       channel: salesOrders.channel,
+      metadata: salesOrders.metadata,
     })
     .from(salesOrders)
     .where(and(eq(salesOrders.id, params.orderId), eq(salesOrders.organizationId, params.organizationId)))
@@ -73,22 +75,44 @@ export async function confirmOrderPayment(tx: Tx, params: {
 
   let pointsEarned = 0n;
 
-  // 1. Decrement stock for stockable items
-  for (const item of items) {
-    if (!item.trackStock || !item.variantId) continue;
-    await postStockMovement(tx, {
+  // 1. Turn the online order's reserved stock into sold stock. Older pending
+  // orders (created before reservations existed) keep the legacy stock path.
+  const reservationExpiry = reservationExpiresAt(order.metadata);
+  if (reservationExpiry) {
+    const tracked = items.filter((item) => item.trackStock && item.variantId);
+    const reservedItems = new Map<string, { costAmount: bigint; allowNegativeStock: boolean; quantity: bigint }>();
+    for (const item of tracked) {
+      const existing = reservedItems.get(item.variantId!);
+      reservedItems.set(item.variantId!, {
+        costAmount: item.costAmount,
+        allowNegativeStock: item.allowNegativeStock,
+        quantity: (existing?.quantity ?? 0n) + item.quantity,
+      });
+    }
+    await fulfillOrderReservations(tx, {
       organizationId: order.organizationId,
       branchId: order.branchId,
-      warehouseId: order.warehouseId,
-      variantId: item.variantId,
-      quantity: -item.quantity,
-      type: "sale",
-      referenceType: "sales_order",
-      referenceId: order.id,
-      unitCostAmount: item.costAmount,
-      actorUserId: params.actorUserId ?? undefined,
-      allowNegative: item.allowNegativeStock,
+      orderId: order.id,
+      actorUserId: params.actorUserId,
+      itemCosts: reservedItems,
     });
+  } else {
+    for (const item of items) {
+      if (!item.trackStock || !item.variantId) continue;
+      await postStockMovement(tx, {
+        organizationId: order.organizationId,
+        branchId: order.branchId,
+        warehouseId: order.warehouseId,
+        variantId: item.variantId,
+        quantity: -item.quantity,
+        type: "sale",
+        referenceType: "sales_order",
+        referenceId: order.id,
+        unitCostAmount: item.costAmount,
+        actorUserId: params.actorUserId ?? undefined,
+        allowNegative: item.allowNegativeStock,
+      });
+    }
   }
 
   // 2. Create kitchen ticket ONLY for self-order or kiosk channels that are paid

@@ -129,6 +129,8 @@ Optional provider groups activate only when all credentials for that provider ex
 
 POS QRIS and self-order online payments require a configured Midtrans server key. They create a pending order, open Midtrans checkout, and mark the order paid only after a verified payment notification. A merchant QR image alone does not verify payment.
 
+Online orders now reserve tracked stock atomically for 15 minutes before a payment link is opened. A competing order receives `INSUFFICIENT_STOCK` (409). Payment confirmation consumes the reservation; a failed payment or expired order releases it. Late successful payments after expiry leave the order cancelled and create an in-app owner notification with `refundRequired` metadata for manual reconciliation. A gateway refund is **not** issued automatically.
+
 Never expose service-role, payment, AI, or webhook secrets with a `NEXT_PUBLIC_` prefix.
 
 ## Supabase
@@ -198,9 +200,10 @@ For private buckets, generate time-limited read URLs server-side:
 `supabase/cron-jobs.sql` provides:
 
 1. **Expire held orders** every 5 minutes (pure SQL).
-2. Optional `pg_net` job posting to `/api/v1/webhooks/cron`, a secret-guarded endpoint that also runs the cleanup server-side (`WEBHOOK_SECRET`).
+2. **Expire online stock reservations** every minute in a transaction that releases stock and cancels the pending order. The SQL replaces the former self-order-only expiry job.
+3. Optional `pg_net` job posting to `/api/v1/webhooks/cron`, a secret-guarded endpoint that runs both cleanups server-side (`WEBHOOK_SECRET`).
 
-Run the SQL once in Supabase SQL Editor; edit schedule as needed.
+Run or re-run the SQL in Supabase SQL Editor after deploying this change. Verify `expire-online-stock-reservations` is active before accepting live online payments. Late gateway settlement still needs owner review and a provider-side refund.
 
 ## API
 

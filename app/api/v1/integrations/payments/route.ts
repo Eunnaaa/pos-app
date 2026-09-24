@@ -7,6 +7,7 @@ import { createMidtransPayment, createXenditPayment } from "@/lib/integrations";
 import { AppError, assertBranchAccess, parseJson } from "@/lib/server";
 import { getServerEnv } from "@/config/env";
 import { resolveMidtransServerKey } from "@/lib/services/payment-credentials";
+import { assertOnlineOrderReservable } from "@/lib/services/stock-reservations";
 
 const schema = z.object({
   provider: z.enum(["midtrans", "xendit"]),
@@ -31,6 +32,7 @@ export const POST = apiHandler(async (request) => {
   if (!order) throw new AppError("NOT_FOUND", "Order tidak ditemukan");
   assertBranchAccess(context.tenant, order.branchId);
   if (order.status !== "pending") throw new AppError("CONFLICT", "Order tidak menunggu pembayaran online");
+  const expiresAt = await assertOnlineOrderReservable(order.id);
   const [payment] = await db
     .select({ id: salesPayments.id, amount: salesPayments.amount })
     .from(salesPayments)
@@ -49,6 +51,7 @@ export const POST = apiHandler(async (request) => {
     customerEmail: input.customerEmail,
     description: `Pembayaran order ${order.orderNumber}`,
     successRedirectUrl: `${env.BETTER_AUTH_URL}/dashboard/pos?payment=${encodeURIComponent(order.orderNumber)}`,
+    expiresAt,
   };
   return withIdempotency(request, context, `payment.${input.provider}`, input, async () => {
     const result = input.provider === "midtrans"

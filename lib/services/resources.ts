@@ -184,6 +184,9 @@ export async function getResource(name: ResourceName, id: string, context: ApiCo
 }
 
 export async function createResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
+  if (name === "stock-balances" || name === "stock-movements") {
+    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
+  }
   const config = resources[name] as { table: string; read: Permission; write: Permission; fields: Record<string, Field>; search?: string[] };
   const body = await parseResourceBody(request, config, false);
   enforceBranchScope(config, body, context);
@@ -224,6 +227,9 @@ export async function createResource(name: ResourceName, request: Request, conte
 }
 
 export async function updateResource(name: ResourceName, id: string, request: Request, context: ApiContext): Promise<Response> {
+  if (name === "stock-balances" || name === "stock-movements") {
+    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
+  }
   z.string().uuid().parse(id);
   const config = resources[name];
   const body = await parseResourceBody(request, config, true);
@@ -265,6 +271,9 @@ export async function updateResource(name: ResourceName, id: string, request: Re
 }
 
 export async function deleteResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {
+  if (name === "stock-balances" || name === "stock-movements") {
+    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
+  }
   z.string().uuid().parse(id);
   const config = resources[name];
   const deleted = await db.transaction(async (tx) => {

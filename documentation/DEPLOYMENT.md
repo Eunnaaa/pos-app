@@ -11,7 +11,7 @@ Panduan lengkap untuk men-deploy Kedai-Ku ke produksi. Dua opsi hosting: **Verce
    - Salin **anon key** dan **service role key**
    - Enable Realtime replication: Database → Replication → enable pada `sales_orders`, `stock_balances`, `cash_register_sessions`
    - Run `supabase/storage-policies.sql` di SQL Editor (amankan bucket `product-images`)
-   - Run `supabase/cron-jobs.sql` di SQL Editor (expire held orders setiap 5 menit)
+   - Run `supabase/cron-jobs.sql` di SQL Editor (expire held orders dan reservasi stok online)
    - Enable PITR / backups harian
 
 2. **Secret acak** (minimal 32 karakter):
@@ -140,10 +140,11 @@ docker exec kedai-ku node -e "import('./db/index.ts')"
 
 ## Checklist Produksi (sebelum go-live)
 
-- [ ] **Database**: Supabase produksi, PITR backup aktif, storage policies + cron jobs di-run
+- [ ] **Database**: Supabase produksi, PITR backup aktif, storage policies + `supabase/cron-jobs.sql` di-run ulang; pastikan job `expire-online-stock-reservations` aktif
 - [ ] **Auth**: `BETTER_AUTH_SECRET` baru (32+ char), `TRUSTED_ORIGINS` = domain produksi, HTTPS only
 - [ ] **Email**: Provider email terkonfigurasi, email verification aktif, test kirim email
 - [ ] **Payments**: Midtrans/Xendit production (bukan sandbox), webhook URL dikonfigurasi, signature verified
+- [ ] **Stok online**: Uji dua checkout pada stok terakhir, expiry 15 menit, webhook gagal, dan notifikasi `refund_required` untuk pembayaran terlambat; proses refund dilakukan di provider oleh owner
 - [ ] **Storage**: Bucket `product-images` dengan policy public-read/service-write
 - [ ] **Realtime**: Replication enabled untuk live dashboard
 - [ ] **Monitoring**: `SENTRY_DSN` set (butuh `npm install @sentry/nextjs`), `LOG_LEVEL=info`

@@ -1,6 +1,7 @@
 import { apiHandler, dataResponse } from "@/lib/api";
 import { getServerEnv } from "@/config/env";
 import { cleanupAllExpiredHeldOrders } from "@/lib/services/pos-holds";
+import { expirePendingOnlineOrders } from "@/lib/services/stock-reservations";
 import { AppError, safeEqualSecret } from "@/lib/server";
 
 export const POST = apiHandler(async (request) => {
@@ -9,6 +10,9 @@ export const POST = apiHandler(async (request) => {
   const auth = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!auth || !safeEqualSecret(auth, env.WEBHOOK_SECRET)) throw new AppError("FORBIDDEN", "Invalid webhook secret");
 
-  const expired = await cleanupAllExpiredHeldOrders();
-  return dataResponse({ task: "expire-held-orders", expired });
+  const [heldExpired, onlineExpired] = await Promise.all([
+    cleanupAllExpiredHeldOrders(),
+    expirePendingOnlineOrders(),
+  ]);
+  return dataResponse({ task: "expire-orders", heldExpired, onlineExpired });
 });

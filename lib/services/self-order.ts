@@ -11,6 +11,7 @@ import {
   salesOrderItems,
   salesOrders,
   salesPayments,
+  stockBalances,
   kitchenTickets,
   kitchenTicketItems,
   warehouses,
@@ -20,6 +21,7 @@ import { transformImageUrl } from "@/lib/integrations/storage";
 import { createMidtransPayment } from "@/lib/integrations/payments";
 import { resolveMidtransServerKey } from "./payment-credentials";
 import { checkout, type CheckoutContext, type CheckoutInput } from "./checkout";
+import { assertOnlineOrderReservable } from "./stock-reservations";
 
 export type SelfOrderMenuItem = {
   id: string;
@@ -86,6 +88,9 @@ type MenuRow = {
   variantName: string;
   variantSku: string;
   variantPriceAmount: bigint;
+  trackStock: boolean;
+  allowNegativeStock: boolean;
+  availableQuantity: bigint | null;
   categoryIdFull: string | null;
   categoryName: string | null;
   categorySlug: string | null;
@@ -114,6 +119,9 @@ export async function getMenu(token: string): Promise<SelfOrderMenu> {
       variantName: productVariants.name,
       variantSku: productVariants.sku,
       variantPriceAmount: productVariants.priceAmount,
+      trackStock: products.trackStock,
+      allowNegativeStock: products.allowNegativeStock,
+      availableQuantity: stockBalances.available,
       categoryIdFull: categories.id,
       categoryName: categories.name,
       categorySlug: categories.slug,
@@ -121,6 +129,11 @@ export async function getMenu(token: string): Promise<SelfOrderMenu> {
     .from(products)
     .innerJoin(productVariants, eq(productVariants.productId, products.id))
     .leftJoin(categories, eq(categories.id, products.categoryId))
+    .leftJoin(stockBalances, and(
+      eq(stockBalances.variantId, productVariants.id),
+      eq(stockBalances.warehouseId, warehouse.id),
+      eq(stockBalances.organizationId, t.organizationId),
+    ))
     .where(and(
       eq(products.organizationId, t.organizationId),
       eq(products.isActive, true),
@@ -162,7 +175,7 @@ export async function getMenu(token: string): Promise<SelfOrderMenu> {
       name: row.variantName,
       sku: row.variantSku,
       priceAmount: row.variantPriceAmount,
-      available: true,
+      available: !row.trackStock || row.allowNegativeStock || (row.availableQuantity ?? 0n) > 0n,
     });
   }
 
@@ -333,6 +346,7 @@ export async function createSelfOrderPayment(orderId: string) {
   if (order.status !== "pending" || order.totalAmount <= 0n) {
     throw new AppError("CONFLICT", "Order tidak menunggu pembayaran online");
   }
+  const expiresAt = await assertOnlineOrderReservable(orderId);
   const [payment] = await db.select({ provider: salesPayments.provider, amount: salesPayments.amount })
     .from(salesPayments).where(eq(salesPayments.orderId, orderId)).limit(1);
   if (!payment || payment.provider !== "midtrans" || payment.amount !== order.totalAmount) {
@@ -346,13 +360,14 @@ export async function createSelfOrderPayment(orderId: string) {
     customerName: "Pelanggan Meja",
     description: `Self Order ${order.orderNumber}`,
     serverKey,
+    expiresAt,
   });
   if (!charge.paymentUrl) throw new AppError("CONFLICT", "Tautan pembayaran belum tersedia");
   return {
     invoiceUrl: charge.paymentUrl,
     externalId: order.orderNumber,
     branchQris: { orderNumber: order.orderNumber, amount: Number(order.totalAmount), accountName: "Midtrans" },
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    expiresAt: expiresAt.toISOString(),
   };
 }
 
@@ -368,6 +383,7 @@ export async function getOrderStatus(orderId: string) {
       tableId: salesOrders.tableId,
       occurredAt: salesOrders.occurredAt,
       completedAt: salesOrders.completedAt,
+      metadata: salesOrders.metadata,
     })
     .from(salesOrders)
     .where(eq(salesOrders.id, orderId))
@@ -410,6 +426,7 @@ export async function getOrderStatus(orderId: string) {
       totalAmount: order.totalAmount?.toString() ?? "0",
       occurredAt: order.occurredAt.toISOString(),
       completedAt: order.completedAt?.toISOString() ?? null,
+      refundRequired: order.metadata?.paymentException === "refund_required",
     },
     kitchenTicket: ticket
       ? {

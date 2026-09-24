@@ -43,7 +43,9 @@ export async function mutateStock(input: StockMutation, database: Database = db)
         average_cost_amount = case when ${input.unitCostAmount ?? null} is null then ${stockBalances.averageCostAmount} else ${input.unitCostAmount ?? 0n} end,
         version = ${stockBalances.version} + 1,
         updated_at = now()
-      where ${input.allowNegative === true} or ${stockBalances.onHand} + ${input.quantity} >= 0
+      where ${input.allowNegative === true}
+        or (${stockBalances.onHand} + ${input.quantity} >= 0
+          and ${stockBalances.available} + ${input.quantity} >= 0)
       returning id, on_hand - ${input.quantity} as before_quantity, on_hand as after_quantity
     `);
     const balance = result.rows[0];

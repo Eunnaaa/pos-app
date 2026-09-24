@@ -640,8 +640,9 @@ function ProductDetail(props: {
                   v.id === variantId && "bg-emerald-600 hover:bg-emerald-700 text-white"
                 )}
                 onClick={() => setVariantId(v.id)}
+                disabled={!v.available}
               >
-                {v.name} · {rupiah(Number(v.priceAmount))}
+                {v.name} · {v.available ? rupiah(Number(v.priceAmount)) : "Habis"}
               </Button>
             ))}
           </div>
@@ -690,7 +691,7 @@ function ProductDetail(props: {
         <Button
           size="lg"
           className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl h-11 text-sm shadow-xs"
-          disabled={!variant}
+          disabled={!variant?.available}
           onClick={() => {
             if (!variant) return;
             onAdd({
@@ -1414,7 +1415,9 @@ function OrderTimeline({ status }: { status: OrderStatus }) {
 
       {order.status === "cancelled" && (
         <p className="rounded-xl bg-rose-50 p-3 text-center text-xs font-bold text-rose-600 border border-rose-200">
-          {t("orderCancelled")}
+          {order.refundRequired
+            ? "Pembayaran diterima setelah stok pesanan habis. Pemilik sedang meninjau pengembalian dana."
+            : t("orderCancelled")}
         </p>
       )}
 

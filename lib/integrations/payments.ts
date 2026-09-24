@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto
 import { getServerEnv } from "@/config/env";
 import { safeEqualSecret } from "@/lib/server/secrets";
 import { providerRequest, requireProviderConfig } from "./http";
+import { ONLINE_RESERVATION_MINUTES, ONLINE_RESERVATION_MS } from "@/lib/online-reservation-policy";
 
 export type PaymentRequest = {
   reference: string;
@@ -15,6 +16,8 @@ export type PaymentRequest = {
   /** Slug organisasi untuk fallback payer_email bila customerEmail tidak diberikan. */
   organizationSlug?: string;
   successRedirectUrl?: string;
+  /** Absolute deadline for a stock-backed order. Subscription payments omit this. */
+  expiresAt?: Date;
 };
 
 export type PaymentResult = {
@@ -76,6 +79,13 @@ export async function createMidtransPayment(input: PaymentRequest & { serverKey?
       customer_details: { first_name: input.customerName || "Customer", email: input.customerEmail || "customer@self-order.local" },
       item_details: [{ id: input.reference, price: Math.round(input.amount), quantity: 1, name: input.description.slice(0, 50) }],
       callbacks: input.successRedirectUrl ? { finish: input.successRedirectUrl } : undefined,
+      ...(input.expiresAt ? {
+        expiry: {
+          start_time: `${new Date(input.expiresAt.getTime() - ONLINE_RESERVATION_MS + 7 * 60 * 60_000).toISOString().slice(0, 19).replace("T", " ")} +0700`,
+          unit: "minutes",
+          duration: ONLINE_RESERVATION_MINUTES,
+        },
+      } : {}),
     }),
   });
   return { provider: "midtrans", externalId: input.reference, paymentUrl: result.redirect_url, token: result.token, raw: result };
@@ -288,6 +298,7 @@ export async function createXenditPayment(input: PaymentRequest): Promise<Paymen
     description: input.description,
     success_redirect_url: input.successRedirectUrl,
     failure_redirect_url: failureRedirectUrl,
+    ...(input.expiresAt ? { invoice_duration: Math.max(1, Math.floor((input.expiresAt.getTime() - Date.now()) / 1_000)) } : {}),
   };
   if (input.paymentMethods && input.paymentMethods.length > 0) {
     body.payment_methods = Array.from(input.paymentMethods);

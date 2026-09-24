@@ -11,6 +11,7 @@ export type OrderStatus = {
     totalAmount: string;
     occurredAt: string;
     completedAt: string | null;
+    refundRequired: boolean;
   };
   kitchenTicket: {
     status: string;
@@ -49,8 +50,11 @@ export function useOrderStatus(orderId: string | null, token: string, intervalMs
           setError("");
 
           // Stop polling if order has reached final terminal state
+          const awaitingLatePayment = res.data.order.status === "cancelled"
+            && !res.data.order.refundRequired
+            && res.data.payments.some((payment) => ["authorized", "pending"].includes(payment.status));
           const isDone =
-            ["completed", "cancelled", "refunded"].includes(res.data.order.status) ||
+            (["completed", "cancelled", "refunded"].includes(res.data.order.status) && !awaitingLatePayment) ||
             res.data.kitchenTicket?.status === "served";
 
           if (isDone) {
@@ -75,8 +79,11 @@ export function useOrderStatus(orderId: string | null, token: string, intervalMs
       .then((res) => {
         if (!cancelled && res.data) {
           setStatus(res.data);
+          const awaitingLatePayment = res.data.order.status === "cancelled"
+            && !res.data.order.refundRequired
+            && res.data.payments.some((payment) => ["authorized", "pending"].includes(payment.status));
           const isDone =
-            ["completed", "cancelled", "refunded"].includes(res.data.order.status) ||
+            (["completed", "cancelled", "refunded"].includes(res.data.order.status) && !awaitingLatePayment) ||
             res.data.kitchenTicket?.status === "served";
           if (!isDone) {
             const nextInterval = res.data.order.status === "pending" ? 4_000 : 8_000;
