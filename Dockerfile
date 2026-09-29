@@ -22,11 +22,24 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Generate Drizzle migration schema
-RUN npm run db:generate
+# Public browser settings are embedded by Next.js at build time.
+ARG NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+ARG NEXT_PUBLIC_SUPABASE_URL=
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ENV NEXT_PUBLIC_BETTER_AUTH_URL=$NEXT_PUBLIC_BETTER_AUTH_URL
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 
-# Build Next.js standalone application
-RUN npm run build
+# Build with inert values; real server credentials are supplied only at runtime.
+# Migrations are committed in drizzle/ and run as a separate deployment step.
+RUN DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/postgres \
+    DATABASE_SSL=disable \
+    BETTER_AUTH_SECRET=build-only-auth-secret-with-at-least-32-chars \
+    UPSTASH_REDIS_REST_URL=https://build.invalid \
+    UPSTASH_REDIS_REST_TOKEN=build-only \
+    npm run build
 
 # 4. Production Runner Layer (Minimal & Secure)
 FROM base AS runner

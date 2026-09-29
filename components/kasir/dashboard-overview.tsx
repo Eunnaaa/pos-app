@@ -46,20 +46,16 @@ export function DashboardOverview() {
   const { organization } = useOrganization()
   const [dashboard, setDashboard] = useState<DashboardData>(emptyData)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
-  const [reloadKey, setReloadKey] = useState(0)
 
   const [days, setDays] = useState<7 | 14 | 30>(30)
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
-    setError("")
     try {
       const response = await apiFetch<DashboardData>(`/api/v1/dashboard?days=${days}`)
       setDashboard(response.data)
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Gagal mengambil dashboard"
-      if (!silent) setError(message)
       showError(message)
     } finally {
       if (!silent) setLoading(false)
@@ -71,7 +67,7 @@ export function DashboardOverview() {
     const refresh = () => void load(true)
     window.addEventListener("kedai-ku-context-change", refresh)
     return () => window.removeEventListener("kedai-ku-context-change", refresh)
-  }, [load, reloadKey])
+  }, [load])
 
   const orgId = organization?.id
   useEffect(() => {

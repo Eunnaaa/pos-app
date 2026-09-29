@@ -2,6 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { products, productVariants } from "@/db/schema";
 import { AppError } from "@/lib/server";
+import { assertCanCreateProduct } from "./subscription";
 
 export interface BulkUpdatePayload {
   productIds: string[];
@@ -146,6 +147,7 @@ export async function duplicateProduct(
   productId: string,
   newName: string,
 ): Promise<{ productId: string }> {
+  await assertCanCreateProduct(organizationId);
   // Get original product
   const [original] = await db
     .select()
@@ -294,6 +296,7 @@ export async function importProductsFromCSV(
   for (let i = 1; i < lines.length; i++) {
     const cells = parseCSVLine(lines[i]);
     try {
+      await assertCanCreateProduct(organizationId);
       const name = cells[nameIdx]?.trim();
       const sku = cells[skuIdx]?.trim();
       const price = BigInt(cells[priceIdx]?.trim() || "0");

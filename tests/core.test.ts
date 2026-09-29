@@ -11,6 +11,7 @@ import { allocateDiscount, parseRateToBps, exclusiveTax, inclusiveTax } from "@/
 import { can, requirePermission } from "@/lib/server/rbac";
 import { assertSafeWebhookUrl, signWebhook, verifyWebhookSignature } from "@/lib/server/webhook";
 import { toJsonValue } from "@/lib/api/response";
+import { allocateRefundableLineTotals, incrementalLineRefund } from "@/lib/services/refund-allocation";
 
 void test("money arithmetic remains exact in rupiah minor units", () => {
   assert.deepEqual(parseMoney("125000"), { amount: 125000n, currency: "IDR" });
@@ -32,6 +33,18 @@ void test("order discounts are allocated exactly before tax calculation", () => 
   assert.equal(exclusiveTax(100n - discounts[0], 1000n) + exclusiveTax(200n - discounts[1], 1000n), 19n);
   assert.deepEqual(allocateDiscount([1n, 1n, 1n], 2n), [1n, 1n, 0n]);
   assert.throws(() => allocateDiscount([100n], 101n), RangeError);
+});
+
+void test("refund allocation never returns more than the discounted order total", () => {
+  const allocation = allocateRefundableLineTotals([
+    { id: "coffee", amount: 30_000n, quantity: 2n },
+    { id: "snack", amount: 10_000n, quantity: 1n },
+  ], 30_001n);
+  assert.deepEqual([...allocation.entries()], [["coffee", 22_501n], ["snack", 7_500n]]);
+  assert.equal(incrementalLineRefund(22_501n, 2n, 0n, 1n), 11_250n);
+  assert.equal(incrementalLineRefund(22_501n, 2n, 1n, 1n), 11_251n);
+  assert.equal([...allocation.values()].reduce((sum, amount) => sum + amount, 0n), 30_001n);
+  assert.throws(() => incrementalLineRefund(22_501n, 2n, 2n, 1n), RangeError);
 });
 
 void test("RBAC applies default least-privilege matrix", () => {

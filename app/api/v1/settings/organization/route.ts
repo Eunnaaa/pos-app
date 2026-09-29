@@ -8,7 +8,6 @@ import { AppError, parseJson } from "@/lib/server";
 const phoneSchema = z.string().trim().max(30).nullable().optional();
 const emailSchema = z.string().trim().email().max(150).nullable().optional();
 const addressSchema = z.string().trim().max(500).nullable().optional();
-const urlSchema = z.string().trim().url().max(500).nullable().optional();
 const slugSchema = z.string().trim().min(2).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const updateSchema = z.object({

@@ -13,6 +13,7 @@ import type { ApiContext } from "@/lib/api";
 import { assertBranchAccess, assertPeriodOpen, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 import { postReturnToLedger } from "./ledger";
+import { allocateRefundableLineTotals, incrementalLineRefund } from "./refund-allocation";
 import type { Database } from "@/db";
 
 const positive = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
@@ -33,15 +34,36 @@ export const salesReturnSchema = z.object({
 
 export async function processSalesReturn(input: z.infer<typeof salesReturnSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`sales-return:${input.orderId}`}))`);
     const [order] = await tx.select().from(salesOrders).where(and(eq(salesOrders.id, input.orderId), eq(salesOrders.organizationId, context.organizationId))).limit(1);
     if (!order) throw new AppError("NOT_FOUND", "Sales order not found");
     assertBranchAccess(context.tenant, order.branchId);
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: order.branchId });
     if (!["paid", "partially_refunded"].includes(order.status)) throw new AppError("CONFLICT", "Order is not refundable");
 
-    const orderItems = await tx.select().from(salesOrderItems).where(and(eq(salesOrderItems.orderId, order.id), inArray(salesOrderItems.id, input.items.map((item) => item.orderItemId))));
-    const byId = new Map(orderItems.map((item) => [item.id, item]));
-    if (byId.size !== new Set(input.items.map((item) => item.orderItemId)).size) throw new AppError("NOT_FOUND", "One or more sales items were not found");
+    const eligiblePayments = await tx.select({ id: salesPayments.id, method: salesPayments.method, amount: salesPayments.amount })
+      .from(salesPayments)
+      .where(and(
+        eq(salesPayments.organizationId, context.organizationId),
+        eq(salesPayments.orderId, order.id),
+        eq(salesPayments.status, "settled"),
+      ));
+    const payment = input.paymentId
+      ? eligiblePayments.find((candidate) => candidate.id === input.paymentId)
+      : eligiblePayments.length === 1 ? eligiblePayments[0] : undefined;
+    if (input.paymentId && !payment) throw new AppError("NOT_FOUND", "Settled payment for this order was not found");
+    if (!input.paymentId && eligiblePayments.length > 1) {
+      throw new AppError("VALIDATION_ERROR", "paymentId wajib dipilih untuk transaksi split payment");
+    }
+    if (!payment) throw new AppError("CONFLICT", "Order tidak memiliki pembayaran settled yang dapat dikembalikan");
+
+    const allOrderItems = await tx.select().from(salesOrderItems).where(eq(salesOrderItems.orderId, order.id));
+    const byId = new Map(allOrderItems.map((item) => [item.id, item]));
+    if (input.items.some((item) => !byId.has(item.orderItemId))) throw new AppError("NOT_FOUND", "One or more sales items were not found");
+    const refundableByItem = allocateRefundableLineTotals(
+      allOrderItems.map((item) => ({ id: item.id, amount: item.totalAmount, quantity: item.quantity })),
+      order.totalAmount,
+    );
 
     const previousReturns = await tx
       .select({ orderItemId: salesReturnItems.orderItemId, quantity: sql<string>`coalesce(sum(${salesReturnItems.quantity}), 0)` })
@@ -56,10 +78,22 @@ export async function processSalesReturn(input: z.infer<typeof salesReturnSchema
       const orderItem = byId.get(inputItem.orderItemId)!;
       const remaining = orderItem.quantity - (returnedByItem.get(orderItem.id) ?? 0n);
       if (inputItem.quantity > remaining) throw new AppError("VALIDATION_ERROR", "Return quantity exceeds remaining refundable quantity");
-      const refundAmount = (orderItem.totalAmount * inputItem.quantity) / orderItem.quantity;
+      const refundAmount = incrementalLineRefund(
+        refundableByItem.get(orderItem.id) ?? 0n,
+        orderItem.quantity,
+        returnedByItem.get(orderItem.id) ?? 0n,
+        inputItem.quantity,
+      );
       totalAmount += refundAmount;
       return { inputItem, orderItem, refundAmount };
     });
+
+    const [paymentRefunds] = await tx.select({ total: sql<string>`coalesce(sum(${refunds.amount}), 0)` })
+      .from(refunds)
+      .where(and(eq(refunds.paymentId, payment.id), eq(refunds.status, "processed")));
+    if (BigInt(paymentRefunds?.total ?? "0") + totalAmount > payment.amount) {
+      throw new AppError("VALIDATION_ERROR", "Refund melebihi jumlah pembayaran yang dipilih");
+    }
 
     const returnId = crypto.randomUUID();
     const returnNumber = `RET-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${returnId.slice(0, 8).toUpperCase()}`;
@@ -104,7 +138,7 @@ export async function processSalesReturn(input: z.infer<typeof salesReturnSchema
     const [refund] = await tx.insert(refunds).values({
       organizationId: context.organizationId,
       returnId,
-      paymentId: input.paymentId,
+      paymentId: payment.id,
       amount: totalAmount,
       status: "processed",
       externalReference: input.externalReference,
@@ -118,11 +152,7 @@ export async function processSalesReturn(input: z.infer<typeof salesReturnSchema
     await tx.update(salesOrders).set({ status: refundedAmount >= order.totalAmount ? "refunded" as const : "partially_refunded" as const, costAmount: sql`${salesOrders.costAmount} - ${costAdjustment}`, updatedAt: new Date() }).where(eq(salesOrders.id, order.id));
 
     // Post to financial ledger (reverse entry)
-    let refundMethod = "cash";
-    if (input.paymentId) {
-      const [payment] = await tx.select({ method: salesPayments.method }).from(salesPayments).where(and(eq(salesPayments.id, input.paymentId), eq(salesPayments.organizationId, context.organizationId))).limit(1);
-      if (payment) refundMethod = payment.method;
-    }
+    const refundMethod = payment?.method ?? "cash";
     await postReturnToLedger(tx as unknown as Database, {
       organizationId: context.organizationId,
       branchId: order.branchId,

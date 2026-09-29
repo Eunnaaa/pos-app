@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 import { db, type Database } from "@/db";
 import { idempotencyKeys, type JsonValue } from "@/db/schema";
 import { AppError } from "./errors";
@@ -48,7 +48,7 @@ export async function claimIdempotency(
   if (existing.requestHash !== requestHash) {
     throw new AppError("IDEMPOTENCY_CONFLICT", "Idempotency key was already used with a different request");
   }
-  if (existing.status === "completed" && existing.responseStatus && existing.responseBody !== null) {
+  if (existing.status === "completed" && existing.responseStatus !== null) {
     return { state: "replay", status: existing.responseStatus, body: existing.responseBody as JsonValue };
   }
   // A previous attempt failed: allow a clean retry instead of blocking retries forever.
@@ -59,6 +59,17 @@ export async function claimIdempotency(
   if (existing.expiresAt <= now) {
     await database.delete(idempotencyKeys).where(eq(idempotencyKeys.id, existing.id));
     return claimIdempotency(input, database);
+  }
+  if (existing.status === "processing" && existing.lockedUntil && existing.lockedUntil <= now) {
+    const [reclaimed] = await database.update(idempotencyKeys)
+      .set({ lockedUntil, expiresAt, updatedAt: now })
+      .where(and(
+        eq(idempotencyKeys.id, existing.id),
+        eq(idempotencyKeys.status, "processing"),
+        lte(idempotencyKeys.lockedUntil, now),
+      ))
+      .returning({ id: idempotencyKeys.id });
+    if (reclaimed) return { state: "claimed", id: reclaimed.id };
   }
   throw new AppError("CONFLICT", "An identical request is already processing");
 }

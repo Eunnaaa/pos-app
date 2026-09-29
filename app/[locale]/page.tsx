@@ -187,6 +187,8 @@ export default async function Home({
                 </div>
                 <div className="mt-6 pt-4 border-t flex items-center gap-3.5">
                   <div className="relative size-12 shrink-0 overflow-hidden rounded-full border-2 border-emerald-500/30 shadow-xs bg-muted">
+                    {/* External testimonial images are supplied by the landing-page content. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={r.image}
                       alt={t(r.nameKey)}

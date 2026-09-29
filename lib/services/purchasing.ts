@@ -8,7 +8,7 @@ import {
   purchaseOrders,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { AppError } from "@/lib/server";
+import { assertBranchAccess, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 
 const quantity = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
@@ -31,9 +31,12 @@ export const receivePurchaseSchema = z.object({
 
 export async function receivePurchase(input: z.infer<typeof receivePurchaseSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`purchase-order:${input.purchaseOrderId}`}))`);
     const [order] = await tx.select().from(purchaseOrders).where(and(eq(purchaseOrders.id, input.purchaseOrderId), eq(purchaseOrders.organizationId, context.organizationId))).limit(1);
     if (!order) throw new AppError("NOT_FOUND", "Purchase order not found");
-    if (order.status === "cancelled" || order.status === "received") throw new AppError("CONFLICT", "Purchase order cannot receive more items");
+    assertBranchAccess(context.tenant, order.branchId);
+    if (order.status !== "submitted" && order.status !== "partially_received") throw new AppError("CONFLICT", "Purchase order cannot receive items in its current status");
+    if (input.warehouseId !== order.warehouseId) throw new AppError("VALIDATION_ERROR", "Receipt warehouse must match the purchase order");
 
     const receiptId = crypto.randomUUID();
     const receiptNumber = `GR-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${receiptId.slice(0, 8).toUpperCase()}`;

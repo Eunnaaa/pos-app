@@ -1,0 +1,11 @@
+{
+  "id": "final-audit-hardening",
+  "title": "Close final audit release blockers",
+  "description": "Harden generic resource mutations, refund allocation, expense posting, branch access, checkout settlement, idempotency recovery, and release verification found during the final audit.",
+  "status": "completed",
+  "createdAt": "2026-09-29T01:20:00.000Z",
+  "updatedAt": "2026-09-29T14:26:05.965Z",
+  "startedAt": "2026-09-29T01:22:22.883Z",
+  "completion": "Hardened resource mutations, refund allocation, expense posting, branch access, checkout settlement, idempotency recovery, and verified release readiness.",
+  "completedAt": "2026-09-29T14:26:05.965Z"
+}

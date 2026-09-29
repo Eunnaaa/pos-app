@@ -1,10 +1,10 @@
 /**
  * Next.js instrumentation hook — runs once on server startup.
  *
- * If SENTRY_DSN is set and @sentry/nextjs is installed, initializes Sentry
+ * If SENTRY_DSN is set, initializes Sentry
  * for automatic error capture and performance monitoring.
  *
- * To activate: `npm install @sentry/nextjs` and set `SENTRY_DSN` in .env
+ * To activate: set `SENTRY_DSN` in the runtime environment.
  */
 import { scrubSentryEvent } from "@/lib/observability/scrub";
 
@@ -14,7 +14,7 @@ export async function register() {
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return;
 
-  // Dynamic import to keep @sentry/nextjs optional; only runs in Node.js runtime
+  // Dynamic import only runs in the Node.js runtime.
   const optionalImport = new Function(
     "specifier",
     "return import(specifier)",
@@ -36,6 +36,6 @@ export async function register() {
     });
     console.log("[sentry] initialized");
   } catch {
-    console.warn("[sentry] SENTRY_DSN set but @sentry/nextjs not installed; run: npm install @sentry/nextjs");
+    console.warn("[sentry] initialization failed");
   }
 }

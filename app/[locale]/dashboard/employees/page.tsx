@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 import { headers } from "next/headers"
-import { auth, getAuthFromHeaders } from "@/lib/auth"
+import { getAuthFromHeaders } from "@/lib/auth"
 import { EmployeesCashierPage } from "@/components/kasir/employees-page"
 
 export default async function EmployeesPage() {

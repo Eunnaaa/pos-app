@@ -25,8 +25,7 @@ export function ContactsPage({ type }: { type: "customers" | "suppliers" }) {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState<Contact>()
   const [form, setForm] = useState<ContactForm>(empty)
-  const rawData = resource.data
-  const data = Array.isArray(rawData) ? rawData : []
+  const data = resource.data
   const visible = useMemo(() => {
     return data.filter((item) => `${item.code || ""} ${item.name || ""} ${item.email || ""} ${item.phone || ""}`.toLowerCase().includes(search.toLowerCase()))
   }, [data, search])

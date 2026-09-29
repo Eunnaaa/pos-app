@@ -1,5 +1,5 @@
 import os from "node:os";
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
+import { count, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   branches,

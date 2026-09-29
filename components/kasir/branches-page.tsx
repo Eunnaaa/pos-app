@@ -533,6 +533,8 @@ export function BranchesPage() {
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     {form.qrisImageUrl ? (
                       <div className="relative group shrink-0">
+                        {/* QR payloads can be uploaded data URLs, which next/image does not optimize. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={form.qrisImageUrl}
                           alt="QRIS Cabang"

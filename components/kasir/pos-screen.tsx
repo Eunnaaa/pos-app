@@ -967,7 +967,11 @@ export function PosScreen() {
                     <p className="font-semibold">Pembayaran QRIS melalui Midtrans</p>
                     {pendingQrisOrder?.paymentUrl ? (
                       <>
-                        {dynamicStoreQrisUrl && <img src={dynamicStoreQrisUrl} alt="QR untuk membuka halaman pembayaran Midtrans" className="mx-auto size-48 rounded-xl bg-white p-2" />}
+                        {dynamicStoreQrisUrl && (
+                          // Generated QR data URLs are intentionally rendered without image optimization.
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={dynamicStoreQrisUrl} alt="QR untuk membuka halaman pembayaran Midtrans" className="mx-auto size-48 rounded-xl bg-white p-2" />
+                        )}
                         <p className="text-xs text-muted-foreground">Scan untuk membuka halaman pembayaran, lalu pilih QRIS. Pesanan akan selesai setelah konfirmasi dari Midtrans.</p>
                         <Button type="button" variant="outline" className="min-h-11" onClick={() => window.open(pendingQrisOrder.paymentUrl, "_blank", "noopener,noreferrer")}>Buka pembayaran Midtrans</Button>
                       </>
@@ -1466,6 +1470,8 @@ export function PosScreen() {
               >
                 {product.imageUrl ? (
                   <div className="aspect-[1.5] w-full overflow-hidden bg-muted">
+                    {/* Product images can come from tenant-managed storage providers. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={product.thumbnailUrl || product.imageUrl}
                       alt={product.name}

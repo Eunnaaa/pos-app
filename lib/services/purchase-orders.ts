@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { productVariants, purchaseOrderItems, purchaseOrders, suppliers, warehouses } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { AppError } from "@/lib/server";
+import { assertBranchAccess, AppError } from "@/lib/server";
 
 const positive = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
 const amount = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
@@ -29,6 +29,7 @@ export async function createPurchaseOrder(input: z.infer<typeof createPurchaseOr
     if (input.branchId && warehouse.branchId && input.branchId !== warehouse.branchId) {
       throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
     }
+    assertBranchAccess(context.tenant, branchId);
     const variants = await Promise.all(input.items.map(async (item) => {
       const [variant] = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.id, item.variantId), eq(productVariants.organizationId, context.organizationId))).limit(1);
       if (!variant) throw new AppError("NOT_FOUND", "Product variant not found");
@@ -66,6 +67,7 @@ export async function createPurchaseOrder(input: z.infer<typeof createPurchaseOr
 export async function getPurchaseOrder(id: string, context: ApiContext) {
   const [order] = await db.select().from(purchaseOrders).where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.organizationId, context.organizationId))).limit(1);
   if (!order) throw new AppError("NOT_FOUND", "Purchase order not found");
+  assertBranchAccess(context.tenant, order.branchId);
   const items = await db.select({
     id: purchaseOrderItems.id,
     variantId: purchaseOrderItems.variantId,

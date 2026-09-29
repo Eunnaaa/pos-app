@@ -33,8 +33,10 @@ test("offline navigation renders the offline fallback after worker install", asy
     await registration.update();
   });
   await page.reload();
-  await context.setOffline(true);
-  await page.goto("/a-route-that-is-not-cached");
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await expect.poll(() => page.evaluate(async () => Boolean(await caches.match("/id/offline")))).toBe(true);
+  await context.route("**/*", (route) => route.request().serviceWorker() ? route.abort("internetdisconnected") : route.continue());
+  const response = await page.goto("/a-route-that-is-not-cached");
+  expect(response?.fromServiceWorker()).toBe(true);
   await expect(page.getByRole("heading", { name: /anda sedang offline/i })).toBeVisible();
-  await context.setOffline(false);
 });

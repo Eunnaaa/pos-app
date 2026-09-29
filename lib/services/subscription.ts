@@ -1,4 +1,4 @@
-import { and, count, eq, gte, sql } from "drizzle-orm";
+import { and, count, eq, gte } from "drizzle-orm";
 import { PLANS, PlanConfig, PlanFeatures, PlanId, TRIAL_DURATION_DAYS } from "@/config/plans";
 import { db, type Database } from "@/db";
 import {
@@ -178,6 +178,16 @@ export async function assertCanCreateMember(organizationId: string): Promise<voi
     throw new AppError(
       "PAYMENT_REQUIRED",
       `Paket Starter (Free) dibatasi 1 akun. Upgrade ke Pro untuk menambah staf kasir tanpa batas dengan hak akses terpisah.`,
+    );
+  }
+}
+
+export async function assertCanCreateWarehouse(organizationId: string): Promise<void> {
+  const { plan, usage } = await getOrganizationPlan(organizationId);
+  if (usage.warehouses >= plan.limits.maxWarehouses) {
+    throw new AppError(
+      "PAYMENT_REQUIRED",
+      `Batas gudang untuk paket ${plan.name} (${plan.limits.maxWarehouses} gudang) telah tercapai.`,
     );
   }
 }

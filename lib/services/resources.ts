@@ -2,11 +2,12 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Database } from "@/db";
 import type { Permission } from "@/lib/server";
-import { assertAccountingDateOpen, AppError, paginationSchema, parseJson, parseSearchParams } from "@/lib/server";
+import { assertAccountingDateOpen, assertBranchAccess, AppError, paginationSchema, parseJson, parseSearchParams } from "@/lib/server";
 import { dataResponse } from "@/lib/api";
 import type { ApiContext } from "@/lib/api";
 import { postExpenseToLedger } from "./ledger";
 import { ensureDefaultCategories } from "./categories";
+import { assertCanCreateProduct, assertCanCreateWarehouse, assertFeatureEnabled } from "./subscription";
 import { cacheGet, cacheSet, cacheDel, RedisKeys } from "@/lib/redis";
 
 type FieldType = "text" | "uuid" | "boolean" | "integer" | "bigint" | "date" | "timestamp" | "json";
@@ -37,7 +38,7 @@ export const resources = {
   variants: { table: "product_variants", read: "inventory:read", write: "inventory:write", search: ["name", "sku", "barcode"], fields: { productId: uuid(true), name: text(true), sku: text(true), barcode: text(), costAmount: bigint(), priceAmount: bigint(), compareAtAmount: bigint(), attributes: json(), weightGrams: integer(), isDefault: boolean(), isActive: boolean() } },
   barcodes: { table: "product_barcodes", read: "inventory:read", write: "inventory:write", search: ["value"], fields: { variantId: uuid(true), value: text(true), format: text(), isPrimary: boolean() } },
   suppliers: { table: "suppliers", read: "suppliers:read", write: "suppliers:write", search: ["code", "name", "phone", "email"], fields: { code: text(true), name: text(true), contactName: text(), email: text(), phone: text(), address: text(), taxId: text(), paymentTermsDays: integer(), isActive: boolean(), metadata: json() } },
-  customers: { table: "customers", read: "customers:read", write: "customers:write", search: ["code", "name", "phone", "email"], fields: { membershipLevelId: uuid(), code: text(true), name: text(true), email: text(), phone: text(), dateOfBirth: date(), address: text(), notes: text(), referralCode: text(), referredByCustomerId: uuid(), totalSpendAmount: bigint(), storeCreditAmount: bigint(), isActive: boolean(), metadata: json() } },
+  customers: { table: "customers", read: "customers:read", write: "customers:write", search: ["code", "name", "phone", "email"], fields: { membershipLevelId: uuid(), code: text(true), name: text(true), email: text(), phone: text(), dateOfBirth: date(), address: text(), notes: text(), referralCode: text(), referredByCustomerId: uuid(), isActive: boolean(), metadata: json() } },
   promotions: { table: "promotions", read: "sales:read", write: "sales:write", search: ["name", "code"], fields: { name: text(true), code: text(), type: text(true), valueAmount: bigint(), percentageBps: integer(), rules: json(), startsAt: timestamp(), endsAt: timestamp(), usageLimit: integer(), perCustomerLimit: integer(), isActive: boolean() } },
   branches: { table: "branches", read: "dashboard:read", write: "branches:manage", search: ["code", "name", "city"], fields: { code: text(true), name: text(true), phone: text(), email: text(), address: text(), city: text(), province: text(), postalCode: text(), timezone: text(), isActive: boolean() } },
   warehouses: { table: "warehouses", read: "inventory:read", write: "branches:manage", search: ["code", "name"], fields: { branchId: uuid(), code: text(true), name: text(true), address: text(), isDefault: boolean(), isActive: boolean() } },
@@ -56,10 +57,65 @@ export const resources = {
   shifts: { table: "employee_shifts", read: "dashboard:read", write: "employees:manage", fields: { branchId: uuid(true), employeeId: uuid(true), startsAt: timestamp(), endsAt: timestamp(), status: text(), notes: text() } },
   attendance: { table: "attendance", read: "dashboard:read", write: "employees:manage", fields: { employeeId: uuid(true), shiftId: uuid(), clockedInAt: timestamp(), clockedOutAt: timestamp(), notes: text() } },
   "membership-levels": { table: "membership_levels", read: "customers:read", write: "customers:write", search: ["name"], fields: { name: text(true), minimumSpendAmount: bigint(), pointMultiplier: integer(), benefits: json() } },
-  vouchers: { table: "vouchers", read: "customers:read", write: "customers:write", search: ["code"], fields: { customerId: uuid(), promotionId: uuid(), code: text(true), initialAmount: bigint(), remainingAmount: bigint(), status: text(), expiresAt: timestamp() } },
+  vouchers: { table: "vouchers", read: "customers:read", write: "customers:write", search: ["code"], fields: { customerId: uuid(), promotionId: uuid(), code: text(true), initialAmount: bigint(), expiresAt: timestamp() } },
 } as const satisfies Record<string, ResourceConfig>;
 
 export type ResourceName = keyof typeof resources;
+
+const readOnlyResources = new Set<ResourceName>([
+  "branches",
+  "purchase-orders",
+  "stock-transfers",
+  "stock-counts",
+  "stock-balances",
+  "stock-movements",
+]);
+
+const tenantForeignKeys: Record<string, string> = {
+  parent_id: "categories",
+  category_id: "categories",
+  brand_id: "brands",
+  unit_id: "units",
+  tax_rate_id: "tax_rates",
+  product_id: "products",
+  variant_id: "product_variants",
+  membership_level_id: "membership_levels",
+  referred_by_customer_id: "customers",
+  branch_id: "branches",
+  account_id: "financial_accounts",
+  table_id: "dining_tables",
+  customer_id: "customers",
+  promotion_id: "promotions",
+  employee_id: "employees",
+  shift_id: "employee_shifts",
+  warehouse_id: "warehouses",
+  from_warehouse_id: "warehouses",
+  to_warehouse_id: "warehouses",
+  supplier_id: "suppliers",
+};
+
+export function assertResourceMutationAllowed(name: ResourceName): void {
+  if (readOnlyResources.has(name)) {
+    throw new AppError("FORBIDDEN", `${name} hanya dapat diubah melalui alur bisnis khusus`);
+  }
+}
+
+async function assertTenantForeignKeys(body: Record<string, unknown>, context: ApiContext): Promise<void> {
+  for (const [field, table] of Object.entries(tenantForeignKeys)) {
+    const id = body[field];
+    if (typeof id !== "string") continue;
+    const result = await db.execute(sql`
+      select organization_id${table === "warehouses" ? sql`, branch_id` : sql``}
+      from ${sql.identifier(table)}
+      where id = ${id} and organization_id = ${context.organizationId}
+      limit 1
+    `);
+    const row = result.rows[0] as { branch_id?: string } | undefined;
+    if (!row) throw new AppError("NOT_FOUND", `${field} tidak ditemukan dalam organisasi ini`);
+    if (field === "branch_id") assertBranchAccess(context.tenant, id);
+    if (table === "warehouses") assertBranchAccess(context.tenant, row.branch_id);
+  }
+}
 
 function snakeCase(value: string): string {
   return value.replace(/[A-Z]/g, (character) => `_${character.toLowerCase()}`);
@@ -109,9 +165,22 @@ async function parseResourceBody(request: Request, config: ResourceConfig, parti
   );
 }
 
-function tenantScope(config: ResourceConfig, context: ApiContext) {
-  if (!config.fields.branchId || context.tenant.allBranches || !context.branchId) return sql``;
-  return sql` and branch_id = ${context.branchId}`;
+function tenantScope(name: ResourceName, config: ResourceConfig, context: ApiContext) {
+  if (context.tenant.allBranches || !context.branchId) return sql``;
+  if (config.fields.branchId) return sql` and branch_id = ${context.branchId}`;
+  if (["stock-balances", "stock-movements", "stock-counts"].includes(name)) {
+    return sql` and warehouse_id in (
+      select id from warehouses
+      where organization_id = ${context.organizationId} and branch_id = ${context.branchId}
+    )`;
+  }
+  if (name === "stock-transfers") {
+    return sql` and (
+      from_warehouse_id in (select id from warehouses where organization_id = ${context.organizationId} and branch_id = ${context.branchId})
+      or to_warehouse_id in (select id from warehouses where organization_id = ${context.organizationId} and branch_id = ${context.branchId})
+    )`;
+  }
+  return sql``;
 }
 
 function enforceBranchScope(config: ResourceConfig, body: Record<string, unknown>, context: ApiContext) {
@@ -161,7 +230,7 @@ export async function listResource(name: ResourceName, request: Request, context
     : sql``;
   const result = await db.execute(sql`
     select * from ${sql.identifier(config.table)}
-    where organization_id = ${context.organizationId}${tenantScope(config, context)}${search}
+    where organization_id = ${context.organizationId}${tenantScope(name, config, context)}${search}
     order by ${name === "categories" ? sql`sort_order asc, name asc` : sql`created_at desc, id desc`}
     limit ${query.limit + 1} offset ${offset}
   `);
@@ -178,14 +247,17 @@ export async function listResource(name: ResourceName, request: Request, context
 export async function getResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {
   z.string().uuid().parse(id);
   const config = resources[name];
-  const result = await db.execute(sql`select * from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} limit 1`);
+  const result = await db.execute(sql`select * from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(name, config, context)} limit 1`);
   if (!result.rows[0]) throw new AppError("NOT_FOUND", `${name} record not found`);
   return dataResponse(sanitizeResourceRecord(name, result.rows[0] as Record<string, unknown>));
 }
 
 export async function createResource(name: ResourceName, request: Request, context: ApiContext): Promise<Response> {
-  if (name === "stock-balances" || name === "stock-movements") {
-    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
+  assertResourceMutationAllowed(name);
+  if (name === "products") await assertCanCreateProduct(context.organizationId);
+  if (name === "warehouses") await assertCanCreateWarehouse(context.organizationId);
+  if (name === "promotions" || name === "vouchers") {
+    await assertFeatureEnabled(context.organizationId, "promotionsAndDiscounts", "Fitur Promosi dan Voucher");
   }
   const config = resources[name] as { table: string; read: Permission; write: Permission; fields: Record<string, Field>; search?: string[] };
   const body = await parseResourceBody(request, config, false);
@@ -193,8 +265,13 @@ export async function createResource(name: ResourceName, request: Request, conte
   if (config.fields.branchId && body.branch_id === undefined && context.branchId) {
     body.branch_id = context.branchId;
   }
+  await assertTenantForeignKeys(body, context);
   if (name === "promotions" && !body.starts_at) {
     body.starts_at = new Date();
+  }
+  if (name === "vouchers") {
+    body.remaining_amount = body.initial_amount ?? 0n;
+    body.status = "active";
   }
   const id = crypto.randomUUID();
   const record = await db.transaction(async (tx) => {
@@ -227,30 +304,42 @@ export async function createResource(name: ResourceName, request: Request, conte
 }
 
 export async function updateResource(name: ResourceName, id: string, request: Request, context: ApiContext): Promise<Response> {
-  if (name === "stock-balances" || name === "stock-movements") {
-    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
+  assertResourceMutationAllowed(name);
+  if (name === "promotions" || name === "vouchers") {
+    await assertFeatureEnabled(context.organizationId, "promotionsAndDiscounts", "Fitur Promosi dan Voucher");
   }
   z.string().uuid().parse(id);
   const config = resources[name];
   const body = await parseResourceBody(request, config, true);
   enforceBranchScope(config, body, context);
+  await assertTenantForeignKeys(body, context);
   const record = await db.transaction(async (tx) => {
+    let currentExpense: { branch_id: string; expense_date: string; status: string } | undefined;
     if (name === "expenses") {
-      const existing = await tx.execute<{ branch_id: string; expense_date: string; status: string }>(sql`select branch_id, expense_date::text, status from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
+      const existing = await tx.execute<{ branch_id: string; expense_date: string; status: string }>(sql`select branch_id, expense_date::text, status from expenses where id = ${id} and organization_id = ${context.organizationId} for update`);
       const current = existing.rows[0];
       if (!current?.branch_id) throw new AppError("NOT_FOUND", "Expense record not found");
+      currentExpense = current;
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: current.branch_id, date: current.expense_date });
       const targetBranch = typeof body.branch_id === "string" ? body.branch_id : current.branch_id;
       const targetDate = typeof body.expense_date === "string" ? body.expense_date : current.expense_date;
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: targetBranch, date: targetDate });
+      if (["approved", "paid"].includes(current.status)) {
+        const materialFields = ["branch_id", "expense_date", "amount", "category", "expense_number"];
+        const invalidStatusChange = body.status !== undefined
+          && body.status !== current.status
+          && !(current.status === "approved" && body.status === "paid");
+        if (invalidStatusChange || materialFields.some((field) => body[field] !== undefined)) {
+          throw new AppError("CONFLICT", "Pengeluaran yang sudah dibukukan tidak dapat diubah; buat transaksi koreksi");
+        }
+      }
     }
     const values = valuesSql({ ...body, updated_at: new Date() });
-    const result = await tx.execute(sql`update ${sql.identifier(config.table)} set ${values.updates} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} returning *`);
+    const result = await tx.execute(sql`update ${sql.identifier(config.table)} set ${values.updates} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(name, config, context)} returning *`);
     const updated = result.rows[0] as Record<string, unknown>;
     // Post to ledger when expense transitions to approved/paid
     if (name === "expenses" && (body.status === "approved" || body.status === "paid")) {
-      const prev = await tx.execute<{ status: string }>(sql`select status from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
-      const prevStatus = prev.rows[0]?.status;
+      const prevStatus = currentExpense?.status;
       if (prevStatus !== "approved" && prevStatus !== "paid") {
         await postExpenseToLedger(tx as unknown as Database, {
           organizationId: context.organizationId,
@@ -271,19 +360,20 @@ export async function updateResource(name: ResourceName, id: string, request: Re
 }
 
 export async function deleteResource(name: ResourceName, id: string, context: ApiContext): Promise<Response> {
-  if (name === "stock-balances" || name === "stock-movements") {
-    throw new AppError("FORBIDDEN", "Perubahan stok harus melalui alur inventaris");
-  }
+  assertResourceMutationAllowed(name);
   z.string().uuid().parse(id);
   const config = resources[name];
   const deleted = await db.transaction(async (tx) => {
     if (name === "expenses") {
-      const existing = await tx.execute<{ branch_id: string; expense_date: string }>(sql`select branch_id, expense_date::text from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
+      const existing = await tx.execute<{ branch_id: string; expense_date: string; status: string }>(sql`select branch_id, expense_date::text, status from expenses where id = ${id} and organization_id = ${context.organizationId} limit 1`);
       const current = existing.rows[0];
       if (!current?.branch_id) throw new AppError("NOT_FOUND", "Expense record not found");
       await assertAccountingDateOpen(tx, { organizationId: context.organizationId, branchId: current.branch_id, date: current.expense_date });
+      if (["approved", "paid"].includes(current.status)) {
+        throw new AppError("CONFLICT", "Pengeluaran yang sudah dibukukan tidak dapat dihapus; buat transaksi koreksi");
+      }
     }
-    const result = await tx.execute(sql`delete from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(config, context)} returning id`);
+    const result = await tx.execute(sql`delete from ${sql.identifier(config.table)} where id = ${id} and organization_id = ${context.organizationId}${tenantScope(name, config, context)} returning id`);
     return result.rows[0];
   });
   if (!deleted) throw new AppError("NOT_FOUND", `${name} record not found`);

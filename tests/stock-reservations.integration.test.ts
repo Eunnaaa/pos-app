@@ -9,7 +9,7 @@ test("online stock reservations serialize the last item, fulfill, and expire", {
   skip: process.env.STOCK_RESERVATION_INTEGRATION !== "true",
 }, async () => {
   const { config } = await import("dotenv");
-  config({ override: true, quiet: true });
+  config({ quiet: true });
   const baseUrl = new URL(process.env.DATABASE_URL!);
   assert.ok(["localhost", "127.0.0.1"].includes(baseUrl.hostname), "Integration test requires local PostgreSQL");
   const schema = `stock_verify_${randomUUID().replaceAll("-", "").slice(0, 12)}`;

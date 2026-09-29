@@ -26,9 +26,12 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/kasir_ku
       DATABASE_SSL: disable
       BETTER_AUTH_SECRET: ci-secret-with-at-least-32-characters
+      DATA_ENCRYPTION_KEY: ci-data-encryption-key-with-at-least-32-characters
       BETTER_AUTH_URL: http://localhost:3000
       NEXT_PUBLIC_BETTER_AUTH_URL: http://localhost:3000
       TRUSTED_ORIGINS: http://localhost:3000
+      SUPER_ADMIN_EMAILS: admin@example.com
+      WEBHOOK_SECRET: ci-webhook-secret-with-at-least-32-characters
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -40,5 +43,23 @@ jobs:
       - run: npm run verify:production
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: STOCK_RESERVATION_INTEGRATION=true npm test
       - run: npm run build
+        env:
+          UPSTASH_REDIS_REST_URL: https://build.invalid
+          UPSTASH_REDIS_REST_TOKEN: build-only
+      - run: npx playwright install --with-deps chromium
+      - run: E2E_MUTATION_ALLOWED=true npm run e2e
+      - name: Verify production PWA
+        env:
+          UPSTASH_REDIS_REST_URL: https://build.invalid
+          UPSTASH_REDIS_REST_TOKEN: build-only
+        run: |
+          npm run start > /tmp/kedai-ci-next.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS http://127.0.0.1:3000/api/v1/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          PWA_PRODUCTION_SMOKE=true PLAYWRIGHT_BASE_URL=http://127.0.0.1:3000 npm run e2e:pwa

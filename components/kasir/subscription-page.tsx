@@ -831,6 +831,8 @@ export function SubscriptionPage() {
 
                       <div className="relative size-60 flex items-center justify-center bg-white p-2 rounded-xl border border-gray-100">
                         {qrCodeDataUrl ? (
+                          // Generated QR data URLs are intentionally rendered without image optimization.
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={qrCodeDataUrl}
                             alt="QRIS Dinamis Pembayaran"

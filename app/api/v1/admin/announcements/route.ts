@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { platformAnnouncements } from "@/db/schema";

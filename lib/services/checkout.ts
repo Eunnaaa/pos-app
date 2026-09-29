@@ -208,7 +208,40 @@ export async function quoteCheckout(input: CheckoutInput, context: CheckoutConte
   return quote;
 }
 
+async function findCheckoutByOfflineReference(organizationId: string, offlineReference?: string) {
+  if (!offlineReference) return null;
+  const [order] = await db.select().from(salesOrders).where(and(
+    eq(salesOrders.organizationId, organizationId),
+    eq(salesOrders.offlineReference, offlineReference),
+  )).limit(1);
+  if (!order) return null;
+  const [items, payments, receiptRows, pointRows] = await Promise.all([
+    db.select().from(salesOrderItems).where(eq(salesOrderItems.orderId, order.id)),
+    db.select().from(salesPayments).where(eq(salesPayments.orderId, order.id)),
+    db.select().from(receipts).where(eq(receipts.orderId, order.id)).limit(1),
+    db.select({ points: loyaltyTransactions.points }).from(loyaltyTransactions).where(and(
+      eq(loyaltyTransactions.referenceType, "sales_order"),
+      eq(loyaltyTransactions.referenceId, order.id),
+    )),
+  ]);
+  return {
+    order,
+    items,
+    payments,
+    receipt: receiptRows[0] ?? null,
+    pointsEarned: pointRows.reduce((sum, row) => sum + row.points, 0n),
+    reservationExpiresAt: reservationExpiresAtFromMetadata(order.metadata),
+  };
+}
+
+function reservationExpiresAtFromMetadata(metadata: Record<string, unknown> | null): string | null {
+  const value = metadata?.reservationExpiresAt;
+  return typeof value === "string" ? value : null;
+}
+
 export async function checkout(input: CheckoutInput, context: CheckoutContext) {
+  const existing = await findCheckoutByOfflineReference(context.organizationId, input.offlineReference);
+  if (existing) return existing;
   await assertCanCreateOrder(context.organizationId);
   const result = await db.transaction(async (tx) => {
     const [branch] = await tx.select({ id: branches.id }).from(branches).where(and(
@@ -247,7 +280,10 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     }
 
     let cashSession: { id: string } | null = null;
-    if (input.channel === "pos" && input.cashSessionId && context.actorUserId) {
+    if (input.channel === "pos") {
+      if (!input.cashSessionId || !context.actorUserId) {
+        throw new AppError("CONFLICT", "Buka shift kasir sebelum melakukan checkout");
+      }
       const [session] = await tx
         .select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId })
         .from(cashRegisterSessions)
@@ -279,14 +315,26 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     if (hasOnlinePayment && input.payments.length !== 1) {
       throw new AppError("VALIDATION_ERROR", "Pembayaran online harus menggunakan satu metode pembayaran");
     }
+    if (isDeferred && input.payments.length !== 1) {
+      throw new AppError("VALIDATION_ERROR", "Pembayaran tempo tidak dapat digabungkan dengan metode lain");
+    }
     // Online provider payments are not settled at checkout; the order stays pending
     // until the payment gateway webhook confirms settlement.
-    const effectiveStatus = hasOnlinePayment ? "pending" : input.status;
+    const effectiveStatus = hasOnlinePayment
+      ? "pending"
+      : isDeferred && input.status === "paid" ? "confirmed" : input.status;
     const reservationExpiry = hasOnlinePayment && effectiveStatus === "pending"
       ? new Date(Date.now() + ONLINE_RESERVATION_MS)
       : null;
     if (effectiveStatus === "paid" && paymentAmount < totalAmount && !isDeferred) throw new AppError("VALIDATION_ERROR", "Payment total is less than order total");
     if (effectiveStatus === "paid" && paymentAmount > totalAmount && !hasCash) throw new AppError("VALIDATION_ERROR", "Non-cash payment cannot exceed order total");
+    const nonCashPaymentAmount = input.payments.filter((payment) => payment.method !== "cash").reduce((sum, payment) => sum + payment.amount, 0n);
+    if (effectiveStatus === "paid" && nonCashPaymentAmount > totalAmount) {
+      throw new AppError("VALIDATION_ERROR", "Pembayaran non-tunai tidak boleh melebihi total order");
+    }
+    if (effectiveStatus === "confirmed" && isDeferred && paymentAmount !== totalAmount) {
+      throw new AppError("VALIDATION_ERROR", "Jumlah pembayaran tempo harus sama dengan total order");
+    }
     const paidAmount = effectiveStatus === "paid" ? (paymentAmount > totalAmount ? totalAmount : paymentAmount) : 0n;
     const changeAmount = effectiveStatus === "paid" && paymentAmount > totalAmount ? paymentAmount - totalAmount : 0n;
 

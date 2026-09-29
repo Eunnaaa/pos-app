@@ -7,7 +7,7 @@ Kedai-Ku is a responsive, multi-tenant Point of Sale platform for Indonesian ret
 - Next.js 15 App Router, React 19, strict TypeScript
 - Tailwind CSS 4, shadcn/Radix UI, Recharts, TanStack Table
 - Better Auth: email/password, admin controls, 2FA, optional Google/Apple
-- Drizzle ORM + PostgreSQL/Supabase; 76 domain tables
+- Drizzle ORM + PostgreSQL/Supabase; 87 domain tables
 - REST API under `/api/v1`
 - PWA service worker + IndexedDB offline mutation queue
 - Optional Midtrans, Xendit, WhatsApp, Telegram, email, Supabase Storage, and OpenAI-compatible AI adapters
@@ -93,6 +93,8 @@ npm run start         # production server
 npm run typecheck     # strict TypeScript check
 npm run lint          # ESLint
 npm test              # Node-native core tests via tsx
+npm run e2e           # Browser smoke; isolated local transaction flow needs E2E_MUTATION_ALLOWED=true
+npm run e2e:pwa       # PWA browser tests; full offline fallback needs a production build and PWA_PRODUCTION_SMOKE=true
 npm run db:generate   # generate Drizzle migration
 npm run db:migrate    # apply migrations
 npm run db:seed       # verify DB connection; inserts no demo data
@@ -109,8 +111,12 @@ Required:
 | `DATABASE_URL` | PostgreSQL/Supabase connection string |
 | `DATABASE_SSL` | `require` for Supabase; `disable` for local Docker |
 | `BETTER_AUTH_SECRET` | Random secret, minimum 32 characters |
+| `DATA_ENCRYPTION_KEY` | Stable key for encrypted payment credentials; required by production preflight |
 | `BETTER_AUTH_URL` | Server-side public application URL |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | Browser auth URL |
+| `TRUSTED_ORIGINS` | Allowed application origins |
+| `SUPER_ADMIN_EMAILS` | Platform admin allowlist; required by production preflight |
+| `WEBHOOK_SECRET` | Signed webhook secret; required by production preflight |
 | `UPSTASH_REDIS_REST_URL` | Distributed Redis endpoint; required in production |
 | `UPSTASH_REDIS_REST_TOKEN` | Distributed Redis token; required in production |
 
@@ -125,7 +131,7 @@ Optional provider groups activate only when all credentials for that provider ex
 - Telegram: `TELEGRAM_BOT_TOKEN`
 - Email: `EMAIL_API_URL`, `EMAIL_API_KEY`
 - AI: `AI_BASE_URL`, `AI_API_KEY`, `AI_MODEL`
-- Webhooks: `WEBHOOK_SECRET`
+- Sentry: `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (configure together)
 
 POS QRIS and self-order online payments require a configured Midtrans server key. They create a pending order, open Midtrans checkout, and mark the order paid only after a verified payment notification. A merchant QR image alone does not verify payment.
 

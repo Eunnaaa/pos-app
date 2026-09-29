@@ -4,12 +4,11 @@
  * lib/offline/queue.ts with their idempotency key and replayed by the page when
  * connectivity returns. This worker only makes the application shell resilient.
  */
-const CACHE_VERSION = "kedai-ku-v3";
+const CACHE_VERSION = "kedai-ku-v4";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
-const OFFLINE_URL = "/offline";
+const OFFLINE_URLS = ["/id/offline", "/en/offline"];
 const PRECACHE_URLS = [
-  OFFLINE_URL,
   "/manifest.webmanifest",
   "/kedai-ku-icon.svg",
   "/kedai-ku-icon-maskable.svg",
@@ -22,6 +21,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {
+        // Locale-prefixed pages return 200 directly; /offline redirects through
+        // next-intl and cannot reliably be used as a precache fallback.
+        await cache.addAll(OFFLINE_URLS);
         // One unavailable optional icon must not prevent worker installation.
         await Promise.allSettled(PRECACHE_URLS.map((url) => cache.add(url)));
       })
@@ -73,8 +75,9 @@ async function networkFirstNavigation(request) {
     }
     return response;
   } catch {
+    const locale = /^\/(en|id)(?:\/|$)/.exec(new URL(request.url).pathname)?.[1] ?? "id";
     return (await caches.match(request))
-      || (await caches.match(OFFLINE_URL))
+      || (await caches.match(`/${locale}/offline`))
       || Response.error();
   }
 }

@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { stockTransferItems, stockTransfers } from "@/db/schema";
+import { productVariants, stockTransferItems, stockTransfers, warehouses } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { AppError } from "@/lib/server";
+import { assertBranchAccess, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 
 const quantity = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
@@ -25,9 +25,18 @@ export const stockTransferSchema = z.object({
 }).refine((input) => input.fromWarehouseId !== input.toWarehouseId, { message: "Source and destination warehouses must differ" });
 
 export async function adjustStock(input: z.infer<typeof stockAdjustmentSchema>, context: ApiContext) {
-  return db.transaction((tx) => postStockMovement(tx, {
+  return db.transaction(async (tx) => {
+    const [warehouse] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(and(
+      eq(warehouses.id, input.warehouseId),
+      eq(warehouses.organizationId, context.organizationId),
+      eq(warehouses.isActive, true),
+    )).limit(1);
+    if (!warehouse) throw new AppError("NOT_FOUND", "Warehouse not found");
+    assertBranchAccess(context.tenant, warehouse.branchId);
+    if (input.branchId && input.branchId !== warehouse.branchId) throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
+    return postStockMovement(tx, {
     organizationId: context.organizationId,
-    branchId: input.branchId,
+    branchId: warehouse.branchId ?? undefined,
     warehouseId: input.warehouseId,
     variantId: input.variantId,
     quantity: input.quantity,
@@ -35,11 +44,26 @@ export async function adjustStock(input: z.infer<typeof stockAdjustmentSchema>, 
     reason: input.reason,
     actorUserId: context.session.user.id,
     allowNegative: context.tenant.role === "owner" && input.allowNegative,
-  }));
+    });
+  });
 }
 
 export async function createStockTransfer(input: z.infer<typeof stockTransferSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
+    const warehouseRows = await tx.select({ id: warehouses.id, branchId: warehouses.branchId }).from(warehouses).where(and(
+      eq(warehouses.organizationId, context.organizationId),
+      inArray(warehouses.id, [input.fromWarehouseId, input.toWarehouseId]),
+      eq(warehouses.isActive, true),
+    ));
+    if (warehouseRows.length !== 2) throw new AppError("NOT_FOUND", "Source or destination warehouse not found");
+    for (const warehouse of warehouseRows) assertBranchAccess(context.tenant, warehouse.branchId);
+    const variantRows = await tx.select({ id: productVariants.id }).from(productVariants).where(and(
+      eq(productVariants.organizationId, context.organizationId),
+      inArray(productVariants.id, input.items.map((item) => item.variantId)),
+    ));
+    if (variantRows.length !== new Set(input.items.map((item) => item.variantId)).size) {
+      throw new AppError("NOT_FOUND", "One or more product variants were not found");
+    }
     const transferId = crypto.randomUUID();
     const transferNumber = `TRF-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${transferId.slice(0, 8).toUpperCase()}`;
     const [transfer] = await tx.insert(stockTransfers).values({
@@ -65,6 +89,9 @@ export async function shipStockTransfer(id: string, context: ApiContext) {
   return db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.organizationId, context.organizationId))).limit(1);
     if (!transfer) throw new AppError("NOT_FOUND", "Stock transfer not found");
+    const [source] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(eq(warehouses.id, transfer.fromWarehouseId)).limit(1);
+    if (!source) throw new AppError("NOT_FOUND", "Source warehouse not found");
+    assertBranchAccess(context.tenant, source.branchId);
     if (transfer.status !== "draft") throw new AppError("CONFLICT", "Only draft transfers can be shipped");
     const items = await tx.select().from(stockTransferItems).where(eq(stockTransferItems.transferId, id));
     for (const item of items) {
@@ -89,6 +116,9 @@ export async function receiveStockTransfer(id: string, context: ApiContext) {
   return db.transaction(async (tx) => {
     const [transfer] = await tx.select().from(stockTransfers).where(and(eq(stockTransfers.id, id), eq(stockTransfers.organizationId, context.organizationId))).limit(1);
     if (!transfer) throw new AppError("NOT_FOUND", "Stock transfer not found");
+    const [destination] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(eq(warehouses.id, transfer.toWarehouseId)).limit(1);
+    if (!destination) throw new AppError("NOT_FOUND", "Destination warehouse not found");
+    assertBranchAccess(context.tenant, destination.branchId);
     if (transfer.status !== "in_transit") throw new AppError("CONFLICT", "Only in-transit transfers can be received");
     const items = await tx.select().from(stockTransferItems).where(eq(stockTransferItems.transferId, id));
     for (const item of items) {

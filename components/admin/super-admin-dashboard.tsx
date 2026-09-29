@@ -5,41 +5,29 @@ import { useSearchParams } from "next/navigation"
 import { Link, useRouter } from "@/i18n/navigation"
 import {
   Activity,
-  AlertTriangle,
   BarChart3,
   Building2,
-  Calendar,
   CheckCircle2,
-  Clock,
-  Copy,
   CreditCard,
   Crown,
   Database,
-  ExternalLink,
   Eye,
-  Layers,
   LayoutDashboard,
   Loader2,
   Megaphone,
-  MoreHorizontal,
-  Package,
   Plus,
   QrCode,
   Receipt,
-  ReceiptText,
   RefreshCw,
   Search,
   Server,
   Settings,
-  Shield,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   TicketPercent,
   Trash2,
   TrendingUp,
-  UserCheck,
-  Users,
   Zap,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -1545,6 +1533,8 @@ export function SuperAdminDashboard() {
                     <div className="flex flex-col items-center justify-center border-2 border-dashed border-border hover:border-emerald-500/60 rounded-xl p-4 transition-colors bg-muted/20 min-h-[220px]">
                       {platformSettings.customQrisImageUrl ? (
                         <div className="space-y-3 text-center">
+                          {/* QR payloads can be uploaded data URLs, which next/image does not optimize. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={platformSettings.customQrisImageUrl}
                             alt="QRIS Platform"

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { auth, getAuthFromHeaders } from "@/lib/auth";
+import { getAuthFromHeaders } from "@/lib/auth";
 import { SelfOrderPage } from "@/components/kasir/self-order-page";
 
 export const dynamic = "force-dynamic";

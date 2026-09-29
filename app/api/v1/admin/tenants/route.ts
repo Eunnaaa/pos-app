@@ -4,10 +4,7 @@ import {
   branches,
   organizations,
   products,
-  salesOrders,
   subscriptions,
-  tenantMembers,
-  user,
 } from "@/db/schema";
 import { apiHandler, dataResponse } from "@/lib/api";
 import { AppError, requireSession } from "@/lib/server";

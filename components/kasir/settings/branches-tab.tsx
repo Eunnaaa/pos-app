@@ -74,11 +74,11 @@ export function BranchesTab() {
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<string>()
   const [devices, setDevices] = useState<PaymentDevice[]>([])
-  const [deviceOpen, setDeviceOpen] = useState(false)
+  const [, setDeviceOpen] = useState(false)
   const [deviceSaving, setDeviceSaving] = useState(false)
   const [deviceForm, setDeviceForm] = useState({ branchId: "", name: "", merchantAccountId: "" })
   const [deviceCredential, setDeviceCredential] = useState<DeviceCredential | null>(null)
-  const [directQrisEnabled, setDirectQrisEnabled] = useState(false)
+  const directQrisEnabled = false
   const [paymentEvents, setPaymentEvents] = useState<PaymentEvent[]>([])
   const [eventsLoading, setEventsLoading] = useState(false)
   const [resolutionOrderIds, setResolutionOrderIds] = useState<Record<string, string>>({})
@@ -91,18 +91,6 @@ export function BranchesTab() {
       setDevices(response.data)
     } catch {
       // Device setup is optional until QRIS_PUSH_SECRET and its migration are configured.
-    }
-  }
-
-  async function loadDirectQrisStatus() {
-    if (organization?.role !== "owner") return false
-    try {
-      const response = await apiFetch<{ enabled: boolean }>("/api/v1/integrations/qris/status")
-      setDirectQrisEnabled(response.data.enabled)
-      return response.data.enabled
-    } catch {
-      setDirectQrisEnabled(false)
-      return false
     }
   }
 
@@ -556,6 +544,8 @@ export function BranchesTab() {
                   <div className="flex flex-col sm:flex-row items-center gap-4">
                     {form.qrisImageUrl ? (
                       <div className="relative group shrink-0">
+                        {/* QR payloads can be uploaded data URLs, which next/image does not optimize. */}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={form.qrisImageUrl}
                           alt="QRIS Cabang"

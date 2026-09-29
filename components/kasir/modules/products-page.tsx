@@ -477,6 +477,8 @@ export function ProductsPage() {
                         <div className="flex items-center gap-3">
                           <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted/40">
                             {img ? (
+                              // Product images may be locally uploaded data URLs.
+                              // eslint-disable-next-line @next/next/no-img-element
                               <img src={img} alt={product.name} className="h-full w-full object-cover" />
                             ) : (
                               <div className={`flex size-full items-center justify-center text-lg ${getCategoryColor(product.category_name, product.name)}`}>
@@ -575,6 +577,8 @@ export function ProductsPage() {
                 <div className="flex items-center gap-4 rounded-xl border p-3 bg-muted/20">
                   <div className="relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-background">
                     {form.imageUrl ? (
+                      // The preview may be a local data URL before upload.
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={form.imageUrl} alt="Preview" className="h-full w-full object-cover" />
                     ) : (
                       <div className={`flex size-full items-center justify-center text-2xl ${getCategoryColor(activeCategories.find((c) => c.id === form.categoryId)?.name, form.name)}`}>

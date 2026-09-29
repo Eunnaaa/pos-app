@@ -13,7 +13,7 @@ import {
   warehouses,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { AppError } from "@/lib/server";
+import { assertBranchAccess, AppError } from "@/lib/server";
 import { writeAuditLog } from "@/lib/server/audit";
 import { postStockMovement } from "./stock-ledger";
 
@@ -62,6 +62,7 @@ export async function createStockOpname(
     if (!warehouse) {
       throw new AppError("NOT_FOUND", "Gudang tidak ditemukan");
     }
+    assertBranchAccess(context.tenant, warehouse.branchId);
 
     // 2. Query target variants that track stock
     const variantQuery = tx
@@ -173,6 +174,9 @@ export async function updateStockOpnameCounts(
       .limit(1);
 
     if (!count) throw new AppError("NOT_FOUND", "Sesi Stock Opname tidak ditemukan");
+    const [warehouse] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(eq(warehouses.id, count.warehouseId)).limit(1);
+    if (!warehouse) throw new AppError("NOT_FOUND", "Gudang tidak ditemukan");
+    assertBranchAccess(context.tenant, warehouse.branchId);
     if (count.status === "completed" || count.status === "cancelled") {
       throw new AppError("CONFLICT", "Sesi Stock Opname sudah selesai atau dibatalkan");
     }
@@ -244,6 +248,9 @@ export async function completeStockOpname(
       .limit(1);
 
     if (!count) throw new AppError("NOT_FOUND", "Sesi Stock Opname tidak ditemukan");
+    const [warehouse] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(eq(warehouses.id, count.warehouseId)).limit(1);
+    if (!warehouse) throw new AppError("NOT_FOUND", "Gudang tidak ditemukan");
+    assertBranchAccess(context.tenant, warehouse.branchId);
     if (count.status === "completed") {
       throw new AppError("CONFLICT", "Sesi Stock Opname sudah selesai");
     }
@@ -348,6 +355,9 @@ export async function cancelStockOpname(id: string, context: ApiContext) {
       .limit(1);
 
     if (!count) throw new AppError("NOT_FOUND", "Sesi Stock Opname tidak ditemukan");
+    const [warehouse] = await tx.select({ branchId: warehouses.branchId }).from(warehouses).where(eq(warehouses.id, count.warehouseId)).limit(1);
+    if (!warehouse) throw new AppError("NOT_FOUND", "Gudang tidak ditemukan");
+    assertBranchAccess(context.tenant, warehouse.branchId);
     if (count.status === "completed") {
       throw new AppError("CONFLICT", "Sesi Stock Opname yang sudah selesai tidak dapat dibatalkan");
     }
@@ -401,6 +411,7 @@ export async function listStockOpnames(context: ApiContext, warehouseId?: string
     .where(
       and(
         eq(stockCounts.organizationId, context.organizationId),
+        context.branchId ? eq(warehouses.branchId, context.branchId) : undefined,
         warehouseId ? eq(stockCounts.warehouseId, warehouseId) : undefined,
       ),
     )
@@ -426,6 +437,7 @@ export async function getStockOpnameDetail(id: string, context: ApiContext) {
       notes: stockCounts.notes,
       warehouseId: stockCounts.warehouseId,
       warehouseName: warehouses.name,
+      branchId: warehouses.branchId,
       countedBy: stockCounts.countedBy,
       userName: user.name,
       completedAt: stockCounts.completedAt,
@@ -439,6 +451,7 @@ export async function getStockOpnameDetail(id: string, context: ApiContext) {
     .limit(1);
 
   if (!count) throw new AppError("NOT_FOUND", "Sesi Stock Opname tidak ditemukan");
+  assertBranchAccess(context.tenant, count.branchId);
 
   const items = await db
     .select({

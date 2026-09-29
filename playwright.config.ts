@@ -8,9 +8,9 @@ const storageState = process.env.PLAYWRIGHT_STORAGE_STATE;
 /**
  * Playwright E2E configuration.
  *
- * Smoke tests cover public-facing pages (landing, auth, legal, help) that don't
- * require a database connection. Full checkout-flow E2E tests require a running
- * Supabase instance with seeded data — add them under tests/e2e/ when available.
+ * Public smoke tests cover landing, auth, legal, and help pages. The mutating
+ * transaction journey creates its own owner and tenant and runs only against an
+ * isolated local database with E2E_MUTATION_ALLOWED=true.
  *
  * Run: npm run e2e
  */

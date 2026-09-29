@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   AlertCircle,
@@ -876,7 +876,7 @@ function PaymentView(props: {
     window.history.replaceState({}, "", url);
   }
 
-  function completePayment(orderId: string) {
+  const completePayment = useCallback((orderId: string) => {
     localStorage.removeItem(pendingOrderStorageKey(token));
     localStorage.removeItem(checkoutKeyStorageKey(token));
     localStorage.removeItem(chargeKeyStorageKey(token, orderId));
@@ -885,7 +885,7 @@ function PaymentView(props: {
     url.searchParams.set("order_id", orderId);
     window.history.replaceState({}, "", url);
     onPaid(orderId);
-  }
+  }, [token, onPaid]);
 
   async function checkPaymentStatus() {
     if (!branchQrisModal) return;
@@ -1038,7 +1038,7 @@ function PaymentView(props: {
       active = false;
       clearInterval(interval);
     };
-  }, [pendingOrderId, token]);
+  }, [pendingOrderId, token, completePayment]);
 
   return (
     <div className="mx-auto max-w-xl space-y-5 bg-card border rounded-3xl p-5 shadow-sm">
@@ -1205,6 +1205,8 @@ function PaymentView(props: {
 
               <div className="size-52 flex items-center justify-center p-1 bg-white">
                 {branchQrisModal?.qrImageUrl ? (
+                  // Tenant QR images may be uploaded data URLs.
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={branchQrisModal.qrImageUrl}
                     alt="QRIS Pembayaran"

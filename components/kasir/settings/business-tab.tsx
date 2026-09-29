@@ -191,6 +191,8 @@ export function BusinessTab() {
               <div className="flex flex-col items-center justify-center border-2 border-dashed border-border hover:border-emerald-500/60 rounded-xl p-4 transition-colors bg-muted/20 min-h-[200px]">
                 {form.qrisImageUrl ? (
                   <div className="space-y-3 text-center">
+                    {/* QR payloads can be uploaded data URLs, which next/image does not optimize. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={form.qrisImageUrl}
                       alt="QRIS Toko"

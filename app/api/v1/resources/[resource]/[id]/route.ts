@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiHandler, requireApiContext } from "@/lib/api";
+import { apiHandler, requireApiContext, withIdempotency } from "@/lib/api";
 import {
   deleteResource,
   getResource,
@@ -26,11 +26,16 @@ export const GET = apiHandler(async (request) => {
 export const PATCH = apiHandler(async (request) => {
   const { name, id } = segments(request);
   const context = await requireApiContext(request, resources[name].write);
-  return updateResource(name, id, request, context);
+  const body = await request.clone().json();
+  return withIdempotency(request, context, `resources.${name}.update`, { id, body }, () =>
+    updateResource(name, id, request, context),
+  );
 });
 
 export const DELETE = apiHandler(async (request) => {
   const { name, id } = segments(request);
   const context = await requireApiContext(request, resources[name].write);
-  return deleteResource(name, id, context);
+  return withIdempotency(request, context, `resources.${name}.delete`, { id }, () =>
+    deleteResource(name, id, context),
+  );
 });

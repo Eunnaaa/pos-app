@@ -1,6 +1,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { auth, getAuthFromHeaders } from "@/lib/auth"
+import { getAuthFromHeaders } from "@/lib/auth"
 import { isSuperAdminUser } from "@/lib/super-admin"
 
 export default async function OnboardingLayout({

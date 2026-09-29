@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Database } from "@/db";
 import {
@@ -12,7 +12,7 @@ import {
   type JsonValue,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { assertPeriodOpen, AppError, writeAuditLog } from "@/lib/server";
+import { assertBranchAccess, assertPeriodOpen, AppError, writeAuditLog } from "@/lib/server";
 import { calculateSettlement } from "./cash-settlement";
 
 const nonnegativeMoney = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
@@ -37,6 +37,7 @@ async function getRegisterForBranch(branchId: string, organizationId: string, da
 }
 
 export async function openCashSession(input: z.infer<typeof openCashSessionSchema>, context: ApiContext) {
+  assertBranchAccess(context.tenant, input.branchId);
   return db.transaction(async (tx) => {
     const register = await getRegisterForBranch(input.branchId, context.organizationId, tx as unknown as Database);
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: register.branchId });
@@ -98,7 +99,7 @@ export async function closeCashSession(sessionId: string, input: z.infer<typeof 
     if (session.userId !== context.session.user.id && context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Hanya pemilik shift atau owner yang dapat settlement");
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: session.branchId });
 
-    const paymentRows = await tx.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), inArray(salesPayments.status, ["settled", "authorized"]))).groupBy(salesPayments.method);
+    const paymentRows = await tx.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(salesPayments.status, "settled"))).groupBy(salesPayments.method);
     const refundRows = await tx.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).innerJoin(salesOrders, eq(salesOrders.id, salesReturns.orderId)).leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(refunds.status, "processed"))).groupBy(salesPayments.method);
     const [changeRow] = await tx.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
     const movementRows = await tx.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
@@ -135,7 +136,7 @@ export async function previewSettlement(sessionId: string, context: ApiContext) 
   if (!session) throw new AppError("NOT_FOUND", "Shift kasir tidak ditemukan");
   if (session.status !== "open") throw new AppError("CONFLICT", "Shift kasir sudah ditutup");
 
-  const paymentRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), inArray(salesPayments.status, ["settled", "authorized"]))).groupBy(salesPayments.method);
+  const paymentRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(salesPayments.status, "settled"))).groupBy(salesPayments.method);
   const refundRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).innerJoin(salesOrders, eq(salesOrders.id, salesReturns.orderId)).leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(refunds.status, "processed"))).groupBy(salesPayments.method);
   const [changeRow] = await db.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
   const movementRows = await db.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);

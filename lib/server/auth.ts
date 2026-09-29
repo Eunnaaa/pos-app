@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { auth, getAuthFromHeaders, type AuthSession } from "@/lib/auth";
+import { getAuthFromHeaders, type AuthSession } from "@/lib/auth";
 import { AppError } from "./errors";
 import { resolveTenantContext, type TenantContext } from "./tenant";
 

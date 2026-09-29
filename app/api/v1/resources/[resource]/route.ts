@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { apiHandler, requireApiContext } from "@/lib/api";
+import { apiHandler, requireApiContext, withIdempotency } from "@/lib/api";
 import {
   createResource,
   listResource,
@@ -24,5 +24,8 @@ export const POST = apiHandler(async (request) => {
   const pathname = new URL(request.url).pathname.split("/").filter(Boolean);
   const name = resourceName(z.string().parse(pathname.at(-1)));
   const context = await requireApiContext(request, resources[name].write);
-  return createResource(name, request, context);
+  const body = await request.clone().json();
+  return withIdempotency(request, context, `resources.${name}.create`, body, () =>
+    createResource(name, request, context),
+  );
 });

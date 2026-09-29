@@ -17,6 +17,7 @@ Panduan lengkap untuk men-deploy Kedai-Ku ke produksi. Dua opsi hosting: **Verce
 2. **Secret acak** (minimal 32 karakter):
    ```bash
    openssl rand -base64 32  # BETTER_AUTH_SECRET
+   openssl rand -base64 32  # DATA_ENCRYPTION_KEY (simpan tetap sama antar-deploy)
    openssl rand -base64 32  # WEBHOOK_SECRET
    ```
 
@@ -56,9 +57,11 @@ Di Vercel → Settings → Environment Variables, set:
 | `DATABASE_SSL` | `require` |
 | `DB_POOL_MAX` | `10` |
 | `BETTER_AUTH_SECRET` | (hasil openssl rand) |
+| `DATA_ENCRYPTION_KEY` | (hasil openssl rand; jangan rotasi tanpa prosedur re-enkripsi kredensial) |
 | `BETTER_AUTH_URL` | `https://APP_ANDA.vercel.app` |
 | `NEXT_PUBLIC_BETTER_AUTH_URL` | `https://APP_ANDA.vercel.app` |
 | `TRUSTED_ORIGINS` | `https://APP_ANDA.vercel.app` |
+| `SUPER_ADMIN_EMAILS` | Email admin platform yang terverifikasi dan memakai 2FA |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://REF.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | (anon key) |
 | `SUPABASE_URL` | `https://REF.supabase.co` |
@@ -68,7 +71,7 @@ Di Vercel → Settings → Environment Variables, set:
 | `UPSTASH_REDIS_REST_TOKEN` | (Upstash REST token) |
 | `EMAIL_API_URL` | (URL provider email) |
 | `EMAIL_API_KEY` | (API key provider email) |
-| `SENTRY_DSN` | (opsional, butuh `npm install @sentry/nextjs`) |
+| `SENTRY_DSN` dan `NEXT_PUBLIC_SENTRY_DSN` | DSN server dan browser; isi keduanya bila Sentry digunakan |
 
 Setelah custom domain dikonfigurasi, update `BETTER_AUTH_URL`, `NEXT_PUBLIC_BETTER_AUTH_URL`, dan `TRUSTED_ORIGINS` ke domain final.
 
@@ -93,8 +96,12 @@ Vercel auto-deploy pada setiap push ke `main`. Verifikasi:
 
 ### Langkah 1: Build image
 ```bash
-docker build -t kedai-ku .
+docker build \
+  --build-arg NEXT_PUBLIC_BETTER_AUTH_URL=https://DOMAIN_ANDA.com \
+  -t kedai-ku .
 ```
+
+Jika Supabase Realtime atau Sentry browser digunakan, tambahkan `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, dan `NEXT_PUBLIC_SENTRY_DSN` sebagai build arg. Nilai `NEXT_PUBLIC_*` tertanam saat build; gunakan domain final sebelum membangun image.
 
 ### Langkah 2: Konfigurasi environment
 Buat `.env.production`:
@@ -104,9 +111,14 @@ DATABASE_URL=postgresql://postgres.REF:PASS@aws-0-REGION.pooler.supabase.com:654
 DATABASE_SSL=require
 DB_POOL_MAX=10
 BETTER_AUTH_SECRET=<32+ random chars>
+DATA_ENCRYPTION_KEY=<32+ random chars, stable across deploys>
 BETTER_AUTH_URL=https://DOMAIN_ANDA.com
 NEXT_PUBLIC_BETTER_AUTH_URL=https://DOMAIN_ANDA.com
 TRUSTED_ORIGINS=https://DOMAIN_ANDA.com
+SUPER_ADMIN_EMAILS=admin@domain-anda.com
+WEBHOOK_SECRET=<32+ random chars>
+UPSTASH_REDIS_REST_URL=https://<endpoint-upstash>
+UPSTASH_REDIS_REST_TOKEN=<token-upstash>
 # ... (sisanya sama dengan Vercel)
 ```
 
@@ -132,9 +144,11 @@ Atau nginx + certbot untuk Let's Encrypt.
 
 ### Langkah 5: Run migration
 ```bash
-docker exec kedai-ku node -e "import('./db/index.ts')"
-# Atau dari local dengan direct pooler URL
+# Jalankan dari checkout kode yang sama dengan image, memakai direct/session URL:
+DATABASE_URL=<direct-atau-session-pooler-url> DATABASE_SSL=require npm run db:migrate
 ```
+
+Image runtime hanya berisi aplikasi standalone; ia tidak menyertakan `drizzle-kit`. Jalankan migrasi sebelum mengalihkan traffic ke versi aplikasi baru, setelah backup diverifikasi.
 
 ---
 
@@ -147,7 +161,7 @@ docker exec kedai-ku node -e "import('./db/index.ts')"
 - [ ] **Stok online**: Uji dua checkout pada stok terakhir, expiry 15 menit, webhook gagal, dan notifikasi `refund_required` untuk pembayaran terlambat; proses refund dilakukan di provider oleh owner
 - [ ] **Storage**: Bucket `product-images` dengan policy public-read/service-write
 - [ ] **Realtime**: Replication enabled untuk live dashboard
-- [ ] **Monitoring**: `SENTRY_DSN` set (butuh `npm install @sentry/nextjs`), `LOG_LEVEL=info`
+- [ ] **Monitoring**: `SENTRY_DSN` dan `NEXT_PUBLIC_SENTRY_DSN` set bila Sentry aktif; `LOG_LEVEL=info`
 - [ ] **Security headers**: Sudah dikonfigurasi di `next.config.ts` (CSP, HSTS, COOP, CORP)
 - [ ] **Rate limiting**: Better Auth rate limits aktif + API middleware rate limiting
 - [ ] **Redis**: Upstash REST URL/token terisi; deployment production akan gagal validasi tanpa keduanya
