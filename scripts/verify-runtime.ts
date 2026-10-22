@@ -65,18 +65,24 @@ async function verifyRateLimit(): Promise<void> {
   else passed.push(`rate limiting: ${limited} request(s) returned HTTP 429`);
 }
 
-try {
-  await verifyHeaders();
-  await verifyHealth();
-  await verifyPwaAssets();
-  await verifyRateLimit();
-} catch (error) {
-  errors.push(error instanceof Error ? error.message : "runtime verification failed");
+async function main(): Promise<void> {
+  try {
+    await verifyHeaders();
+    await verifyHealth();
+    await verifyPwaAssets();
+    await verifyRateLimit();
+  } catch (error) {
+    errors.push(error instanceof Error ? error.message : "runtime verification failed");
+  }
+
+  for (const message of passed) process.stdout.write(`PASS: ${message}\n`);
+  if (!testRateLimit) process.stdout.write("SKIP: destructive rate-limit probe (add -- --rate-limit to run it)\n");
+  if (errors.length) {
+    for (const error of errors) process.stderr.write(`ERROR: ${error}\n`);
+    process.exitCode = 1;
+  } else {
+    process.stdout.write("Runtime verification passed.\n");
+  }
 }
 
-for (const message of passed) process.stdout.write(`PASS: ${message}\n`);
-if (!testRateLimit) process.stdout.write("SKIP: destructive rate-limit probe (add -- --rate-limit to run it)\n");
-if (errors.length) {
-  for (const error of errors) process.stderr.write(`ERROR: ${error}\n`);
-  process.exitCode = 1;
-} else process.stdout.write("Runtime verification passed.\n");
+void main();
