@@ -16,6 +16,10 @@ void test("Redis multi-tenant key generators follow strict naming structure", ()
   assert.equal(RedisKeys.kdsChannel(branchId), "channel:kds:branch-456");
   assert.equal(RedisKeys.orderEventsChannel(orgId, branchId), "events:org:org-123:branch:branch-456");
   assert.equal(RedisKeys.idempotency("key-abc"), "idempotency:key-abc");
+  assert.equal(RedisKeys.dashboard(orgId, branchId, 30), "tenant:org-123:dashboard:branch-456:30");
+  assert.equal(RedisKeys.dashboard(orgId, null, 14), "tenant:org-123:dashboard:all:14");
+  assert.equal(RedisKeys.cashierDashboard(orgId, branchId, "user-789"), "tenant:org-123:dashboard:cashier:branch-456:user-789");
+  assert.equal(RedisKeys.cashierDashboard(orgId, null, "user-789"), "tenant:org-123:dashboard:cashier:all:user-789");
 });
 
 void test("Redis client handles fail-open gracefully when unconfigured or offline", async () => {

@@ -13,6 +13,13 @@ export const RedisKeys = {
   tables: (orgId: string, branchId?: string | null) =>
     `tenant:${orgId}${branchId ? `:branch:${branchId}` : ""}:tables`,
 
+  // Dashboard Analytical Caching
+  dashboard: (orgId: string, branchId?: string | null, days: number = 30) =>
+    `tenant:${orgId}:dashboard:${branchId || "all"}:${days}`,
+
+  cashierDashboard: (orgId: string, branchId: string | null | undefined, userId: string) =>
+    `tenant:${orgId}:dashboard:cashier:${branchId || "all"}:${userId}`,
+
   // Idempotency & Concurrency Locks
   idempotency: (key: string) =>
     `idempotency:${key}`,

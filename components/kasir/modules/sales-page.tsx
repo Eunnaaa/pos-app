@@ -69,6 +69,7 @@ export function SalesPage() {
   const [summary, setSummary] = useState({ successfulOrders: 0, netAmount: "0", refundedOrders: 0 })
   const [detail, setDetail] = useState<SaleDetail>()
   const [returnOpen, setReturnOpen] = useState(false)
+  const [returnPaymentId, setReturnPaymentId] = useState<string>("")
   const [returnReason, setReturnReason] = useState("")
   const [returnQuantities, setReturnQuantities] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -149,6 +150,9 @@ export function SalesPage() {
     if (!detail) return
     setReturnQuantities(Object.fromEntries(detail.items.map((item) => [item.id, "0"])))
     setReturnReason("")
+    const settledPayments = detail.payments.filter((p) => p.status === "settled")
+    const bestPayment = [...settledPayments].sort((a, b) => Number(b.amount) - Number(a.amount))[0]
+    setReturnPaymentId(bestPayment?.id || "")
     setReturnOpen(true)
   }
 
@@ -161,7 +165,7 @@ export function SalesPage() {
     if (!items.length) return showError("Masukkan minimal satu kuantitas return")
     setSaving(true)
     try {
-      const paymentId = detail.payments.find((payment) => payment.status === "settled")?.id
+      const paymentId = returnPaymentId || detail.payments.find((payment) => payment.status === "settled")?.id
       await apiFetch("/api/v1/sales/returns", {
         method: "POST",
         body: JSON.stringify({ orderId: detail.order.id, paymentId, reason: returnReason, items }),
@@ -493,6 +497,28 @@ export function SalesPage() {
                   minLength={3}
                 />
               </div>
+              {detail && detail.payments.filter((p) => p.status === "settled").length > 1 && (
+                <div className="space-y-2">
+                  <Label>Metode Pembayaran untuk Refund</Label>
+                  <Select value={returnPaymentId} onValueChange={setReturnPaymentId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Pilih metode pembayaran refund" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {detail.payments
+                        .filter((p) => p.status === "settled")
+                        .map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.method.toUpperCase()} — {rupiah(p.amount)}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Transaksi ini menggunakan split payment. Pilih metode pembayaran yang akan dikembalikan dananya ke pelanggan.
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setReturnOpen(false)}>

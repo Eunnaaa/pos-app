@@ -12,6 +12,7 @@ import { assertBranchAccess, AppError } from "@/lib/server";
 import { postStockMovement } from "./stock-ledger";
 
 const quantity = z.union([z.string().regex(/^\d+$/), z.number().int().positive().safe()]).transform(BigInt).refine((value) => value > 0n);
+const nonnegativeQuantity = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const amount = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 
 export const receivePurchaseSchema = z.object({
@@ -22,7 +23,7 @@ export const receivePurchaseSchema = z.object({
     purchaseOrderItemId: z.string().uuid(),
     variantId: z.string().uuid(),
     acceptedQuantity: quantity,
-    rejectedQuantity: quantity.optional().default(0n),
+    rejectedQuantity: nonnegativeQuantity.optional().default(0n),
     unitCostAmount: amount,
     batchNumber: z.string().max(100).optional(),
     expiryDate: z.string().date().optional(),

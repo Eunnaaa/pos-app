@@ -1,9 +1,22 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { cacheGet, cacheSet, RedisKeys } from "@/lib/redis";
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "dashboard:read");
+  const url = new URL(request.url);
+  const bypassCache = url.searchParams.get("fresh") === "true";
+
+  const cacheKey = RedisKeys.cashierDashboard(context.organizationId, context.branchId, context.session.user.id);
+
+  if (!bypassCache) {
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return dataResponse(cached);
+    }
+  }
+
   const branchFilter = context.branchId ? sql`and branch_id = ${context.branchId}` : sql``;
   const warehouseBranchFilter = context.branchId
     ? sql`and exists (select 1 from warehouses w where w.id = sb.warehouse_id and w.branch_id = ${context.branchId})`
@@ -161,7 +174,7 @@ export const GET = apiHandler(async (request) => {
     };
   }
 
-  return dataResponse({
+  const payload = {
     summary: summary.rows[0],
     recentSales: recentSales.rows,
     shift,
@@ -169,5 +182,9 @@ export const GET = apiHandler(async (request) => {
     pendingPayments: (pendingOrders.rows[0] as Record<string, unknown>)?.count ?? 0,
     topProducts: topProducts.rows,
     lowStock: lowStock.rows,
-  });
+  };
+
+  void cacheSet(cacheKey, payload, 30);
+
+  return dataResponse(payload);
 });

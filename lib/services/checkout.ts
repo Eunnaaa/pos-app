@@ -424,8 +424,8 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
         });
       }
 
-      // Only create kitchen tickets for self-order and kiosk orders that are confirmed/paid
-      if (input.channel === "self_order" || input.channel === "kiosk") {
+      // Create kitchen tickets for self-order, kiosk, or POS dining table orders that are confirmed/paid
+      if (input.channel === "self_order" || input.channel === "kiosk" || Boolean(input.tableId)) {
         const ticketId = crypto.randomUUID();
         const ticketNumber = `KT-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${ticketId.slice(0, 8).toUpperCase()}`;
         await tx.insert(kitchenTickets).values({
@@ -517,6 +517,13 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     RedisKeys.tables(context.organizationId, input.branchId),
     RedisKeys.catalog(context.organizationId, input.branchId),
     `tenant:${context.organizationId}:branch:${input.branchId}:warehouse:${input.warehouseId}:pos-bootstrap`,
+    RedisKeys.dashboard(context.organizationId, input.branchId, 7),
+    RedisKeys.dashboard(context.organizationId, input.branchId, 14),
+    RedisKeys.dashboard(context.organizationId, input.branchId, 30),
+    RedisKeys.dashboard(context.organizationId, null, 7),
+    RedisKeys.dashboard(context.organizationId, null, 14),
+    RedisKeys.dashboard(context.organizationId, null, 30),
+    ...(context.actorUserId ? [RedisKeys.cashierDashboard(context.organizationId, input.branchId, context.actorUserId)] : []),
   );
 
   if (result.order.status === "paid" || result.order.status === "confirmed") {

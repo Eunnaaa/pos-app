@@ -1,7 +1,6 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import QRCode from "qrcode"
 import {
   Banknote,
   Barcode,
@@ -491,12 +490,14 @@ export function PosScreen() {
   // This QR opens the verified gateway checkout; merchant QR images are not used
   // because they cannot confirm payment through a provider webhook.
   useEffect(() => {
-    if (paymentMethod !== "QRIS" || !pendingQrisOrder?.paymentUrl) {
+    const paymentUrl = pendingQrisOrder?.paymentUrl
+    if (paymentMethod !== "QRIS" || !paymentUrl) {
       setDynamicStoreQrisUrl("")
       return
     }
     let active = true
-    QRCode.toDataURL(pendingQrisOrder.paymentUrl, { width: 360, margin: 1 })
+    import("qrcode")
+      .then((mod) => mod.default.toDataURL(paymentUrl, { width: 360, margin: 1 }))
       .then((url) => { if (active) setDynamicStoreQrisUrl(url) })
       .catch(() => { if (active) setDynamicStoreQrisUrl("") })
     return () => { active = false }

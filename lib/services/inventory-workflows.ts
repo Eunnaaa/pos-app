@@ -33,7 +33,7 @@ export async function adjustStock(input: z.infer<typeof stockAdjustmentSchema>, 
     )).limit(1);
     if (!warehouse) throw new AppError("NOT_FOUND", "Warehouse not found");
     assertBranchAccess(context.tenant, warehouse.branchId);
-    if (input.branchId && input.branchId !== warehouse.branchId) throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
+    if (input.branchId && warehouse.branchId && input.branchId !== warehouse.branchId) throw new AppError("FORBIDDEN", "Warehouse does not belong to branch");
     return postStockMovement(tx, {
     organizationId: context.organizationId,
     branchId: warehouse.branchId ?? undefined,

@@ -3,7 +3,7 @@ import type { Database } from "@/db";
 import { promotions, vouchers, orderPromotions } from "@/db/schema";
 import { AppError } from "@/lib/server";
 
-type Promotion = {
+export type Promotion = {
   id: string;
   organizationId: string;
   name: string;
@@ -49,16 +49,27 @@ export type ResolvedDiscount = {
 export function evaluatePromotionDiscount(promotion: Promotion, taxableAmount: bigint): bigint {
   if (taxableAmount <= 0n) return 0n;
   switch (promotion.type) {
-    case "percentage": {
+    case "percentage":
+    case "happy_hour":
+    case "flash_sale": {
       if (promotion.percentageBps <= 0) return 0n;
       const discount = (taxableAmount * BigInt(promotion.percentageBps)) / 10000n;
       return discount > taxableAmount ? taxableAmount : discount;
     }
-    case "fixed": {
+    case "fixed":
+    case "birthday": {
       return promotion.valueAmount > taxableAmount ? taxableAmount : promotion.valueAmount;
     }
-    default:
+    default: {
+      if (promotion.percentageBps && promotion.percentageBps > 0) {
+        const discount = (taxableAmount * BigInt(promotion.percentageBps)) / 10000n;
+        return discount > taxableAmount ? taxableAmount : discount;
+      }
+      if (promotion.valueAmount && promotion.valueAmount > 0n) {
+        return promotion.valueAmount > taxableAmount ? taxableAmount : promotion.valueAmount;
+      }
       return 0n;
+    }
   }
 }
 

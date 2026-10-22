@@ -1,12 +1,23 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
+import { cacheGet, cacheSet, RedisKeys } from "@/lib/redis";
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "dashboard:read");
   const url = new URL(request.url);
   const daysParam = parseInt(url.searchParams.get("days") || "30", 10);
   const days = [7, 14, 30, 90].includes(daysParam) ? daysParam : 30;
+  const bypassCache = url.searchParams.get("fresh") === "true";
+
+  const cacheKey = RedisKeys.dashboard(context.organizationId, context.branchId, days);
+
+  if (!bypassCache) {
+    const cached = await cacheGet<Record<string, unknown>>(cacheKey);
+    if (cached) {
+      return dataResponse(cached);
+    }
+  }
 
   const [summary, trend, topProducts, lowStock, recentSales] = await Promise.all([
     db.execute(sql`
@@ -78,5 +89,16 @@ export const GET = apiHandler(async (request) => {
       limit 5
     `),
   ]);
-  return dataResponse({ summary: summary.rows[0], trend: trend.rows, topProducts: topProducts.rows, lowStock: lowStock.rows, recentSales: recentSales.rows });
+
+  const payload = {
+    summary: summary.rows[0],
+    trend: trend.rows,
+    topProducts: topProducts.rows,
+    lowStock: lowStock.rows,
+    recentSales: recentSales.rows,
+  };
+
+  void cacheSet(cacheKey, payload, 45);
+
+  return dataResponse(payload);
 });
