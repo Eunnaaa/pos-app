@@ -165,13 +165,17 @@ export const refunds = pgTable(
     organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
     returnId: uuid("return_id").notNull().references(() => salesReturns.id, { onDelete: "restrict" }),
     paymentId: uuid("payment_id").references(() => salesPayments.id, { onDelete: "set null" }),
+    cashSessionId: uuid("cash_session_id").references(() => cashRegisterSessions.id, { onDelete: "restrict" }),
     amount: moneyColumn("amount"),
     status: text("status").$type<"pending" | "processed" | "failed">().default("pending").notNull(),
     externalReference: text("external_reference"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
     ...timestamps(),
   },
-  (table) => [index("refunds_return_idx").on(table.returnId)],
+  (table) => [
+    index("refunds_return_idx").on(table.returnId),
+    index("refunds_cash_session_idx").on(table.cashSessionId),
+  ],
 );
 
 export const receipts = pgTable(

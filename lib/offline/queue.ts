@@ -51,9 +51,10 @@ async function transaction<T>(mode: IDBTransactionMode, execute: (store: IDBObje
   const database = await openDatabase()
   return new Promise<T>((resolve, reject) => {
     const tx = database.transaction(STORE_NAME, mode)
-    execute(tx.objectStore(STORE_NAME), resolve, reject)
-    tx.oncomplete = () => database.close()
-    tx.onerror = () => reject(tx.error)
+    let value: T
+    execute(tx.objectStore(STORE_NAME), (result) => { value = result }, reject)
+    tx.oncomplete = () => { database.close(); resolve(value) }
+    tx.onabort = () => { database.close(); reject(tx.error) }
   })
 }
 
@@ -85,15 +86,78 @@ async function removeMutation(id: string): Promise<void> {
 
 async function updateMutation(mutation: OfflineMutation): Promise<void> {
   await transaction<void>("readwrite", (store, resolve, reject) => {
-    const request = store.put(mutation)
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(request.error)
+    const existing = store.getKey(mutation.id)
+    existing.onsuccess = () => {
+      if (existing.result === undefined) return resolve()
+      const request = store.put(mutation)
+      request.onsuccess = () => resolve()
+      request.onerror = () => reject(request.error)
+    }
+    existing.onerror = () => reject(existing.error)
   })
 }
 
 export type SyncResult = { synced: number; pending: number; failed: number }
 
 let syncInFlight: Promise<SyncResult> | null = null
+
+type OfflineRecovery = { cashSessionId: string; expectedTotalAmount: string }
+
+export function offlineCheckoutBody(mutation: OfflineMutation) {
+  if (mutation.url !== "/api/v1/pos/checkout" || mutation.method !== "POST") return null
+  if (!mutation.body || typeof mutation.body !== "object" || Array.isArray(mutation.body)) return null
+  return mutation.body as Record<string, unknown>
+}
+
+async function sendOfflineMutation(mutation: OfflineMutation, recovery?: OfflineRecovery) {
+  let verdict: ReturnType<typeof classifySyncResponse>
+  let reason = ""
+  try {
+    const response = await fetch(mutation.url, {
+      method: mutation.method,
+      headers: {
+        "content-type": "application/json",
+        "x-organization-id": mutation.organizationId,
+        ...(mutation.branchId ? { "x-branch-id": mutation.branchId } : {}),
+        "idempotency-key": mutation.idempotencyKey,
+      },
+      body: mutation.method === "DELETE" ? undefined : JSON.stringify(
+        recovery ? { ...offlineCheckoutBody(mutation), recovery } : mutation.body,
+      ),
+      credentials: "include",
+    })
+    verdict = classifySyncResponse(response.status, mutation.attempts)
+    if (verdict === "synced" && offlineCheckoutBody(mutation)) {
+      const payload = await response.json().catch(() => null)
+      if (typeof payload?.data?.order?.id !== "string") {
+        verdict = classifySyncResponse(0, mutation.attempts)
+        reason = "Server belum mengonfirmasi penjualan. Coba kembali."
+      }
+    } else if (verdict !== "synced") {
+      const payload = await response.json().catch(() => null)
+      reason = typeof payload?.error?.message === "string" ? payload.error.message : `Sinkronisasi gagal (HTTP ${response.status})`
+    }
+  } catch (error) {
+    verdict = classifySyncResponse(0, mutation.attempts)
+    reason = error instanceof Error ? error.message : "Koneksi terputus saat sinkronisasi"
+  }
+
+  if (verdict === "synced") await removeMutation(mutation.id)
+  else await updateMutation({
+    ...mutation, attempts: mutation.attempts + 1, lastError: reason,
+    failedPermanently: mutation.failedPermanently || verdict === "failed",
+  })
+  return { verdict, reason }
+}
+
+export async function retryOfflineCheckout(id: string, recovery?: OfflineRecovery) {
+  await syncInFlight
+  const mutation = (await listOfflineMutations()).find((item) => item.id === id)
+  if (!mutation) return
+  if (!offlineCheckoutBody(mutation)) throw new Error("Transaksi offline tidak ditemukan")
+  const result = await sendOfflineMutation(mutation, recovery)
+  if (result.verdict !== "synced") throw new Error(result.reason)
+}
 
 async function runOfflineSync(): Promise<SyncResult> {
   const all = await listOfflineMutations()
@@ -104,35 +168,8 @@ async function runOfflineSync(): Promise<SyncResult> {
   let failed = 0
 
   for (const mutation of queued) {
-    let verdict: ReturnType<typeof classifySyncResponse>
-    let reason = ""
-    try {
-      const response = await fetch(mutation.url, {
-        method: mutation.method,
-        headers: {
-          "content-type": "application/json",
-          "x-organization-id": mutation.organizationId,
-          ...(mutation.branchId ? { "x-branch-id": mutation.branchId } : {}),
-          "idempotency-key": mutation.idempotencyKey,
-        },
-        body: mutation.method === "DELETE" ? undefined : JSON.stringify(mutation.body),
-        credentials: "include",
-      })
-      verdict = classifySyncResponse(response.status, mutation.attempts)
-      if (verdict !== "synced") reason = `Sync failed with status ${response.status}`
-    } catch (error) {
-      // Status 0: no response at all, so treat as transient until the attempt cap.
-      verdict = classifySyncResponse(0, mutation.attempts)
-      reason = error instanceof Error ? error.message : "Unknown sync error"
-    }
-
-    if (verdict === "synced") {
-      await removeMutation(mutation.id)
-      synced += 1
-      continue
-    }
-
-    await updateMutation({ ...mutation, attempts: mutation.attempts + 1, lastError: reason, failedPermanently: verdict === "failed" })
+    const { verdict } = await sendOfflineMutation(mutation)
+    if (verdict === "synced") { synced += 1; continue }
     // Dead letter: keep going so one rejected mutation cannot strand every later one.
     if (verdict === "failed") { failed += 1; continue }
     // Transient: stop here to preserve queue order; the next online event retries.

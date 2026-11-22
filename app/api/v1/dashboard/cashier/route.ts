@@ -1,3 +1,6 @@
+import { getCashSessionAmounts } from "@/lib/services/cash-sessions";
+import { calculateSettlement } from "@/lib/services/cash-settlement";
+import { joinProcessedRefunds, joinReturnedItems, netOrderTotal } from "@/lib/services/sales-metrics";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
@@ -25,13 +28,14 @@ export const GET = apiHandler(async (request) => {
   const [summary, recentSales, activeSession, heldOrders, pendingOrders, topProducts, lowStock] = await Promise.all([
     db.execute(sql`
       select
-        coalesce(sum(total_amount), 0)::text as sales,
+        coalesce(sum(${netOrderTotal}), 0)::text as sales,
         count(*)::int as orders,
         count(distinct customer_id)::int as customers,
         coalesce(sum(cost_amount), 0)::text as cost,
-        case when count(*) > 0 then (sum(total_amount) / count(*))::text else '0' end as avg_transaction
-      from sales_orders
-      where organization_id = ${context.organizationId} ${branchFilter}
+        coalesce(avg(${netOrderTotal}), 0)::text as avg_transaction
+      from sales_orders so
+      ${joinProcessedRefunds(context.organizationId)}
+      where so.organization_id = ${context.organizationId} ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
         and cashier_user_id = ${context.session.user.id}
         and status in ('paid', 'partially_refunded', 'refunded')
         and occurred_at >= date_trunc('day', now())
@@ -87,15 +91,18 @@ export const GET = apiHandler(async (request) => {
     `),
 
     db.execute(sql`
-      select soi.item_name as name, sum(soi.quantity)::text as quantity, sum(soi.total_amount)::text as sales
+      select soi.item_name as name, sum(soi.quantity - coalesce(ri.returned_quantity, 0))::text as quantity,
+        sum(soi.total_amount - coalesce(ri.refund_amount, 0))::text as sales
       from sales_order_items soi
       join sales_orders so on so.id = soi.order_id
-      where soi.organization_id = ${context.organizationId} ${branchFilter}
+      ${joinReturnedItems(context.organizationId)}
+      where soi.organization_id = ${context.organizationId} ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
         and so.cashier_user_id = ${context.session.user.id}
         and so.status in ('paid', 'partially_refunded', 'refunded')
         and so.occurred_at >= date_trunc('day', now())
       group by soi.item_name
-      order by sum(soi.quantity) desc
+      having sum(soi.quantity - coalesce(ri.returned_quantity, 0)) > 0
+      order by sum(soi.quantity - coalesce(ri.returned_quantity, 0)) desc
       limit 5
     `),
 
@@ -117,59 +124,28 @@ export const GET = apiHandler(async (request) => {
 
   if (sessionRow) {
     const sessionId = sessionRow.id as string;
-    const [paymentBreakdown, changeTotal, movementTotals, itemsSold] = await Promise.all([
-  
+    const [amounts, itemsSold] = await Promise.all([
+      getCashSessionAmounts(sessionId),
       db.execute(sql`
-        select sp.method, coalesce(sum(sp.amount), 0)::text as amount
-        from sales_payments sp
-        inner join sales_orders so on so.id = sp.order_id
-        where so.cash_session_id = ${sessionId}
-          and sp.status = 'settled'
-          and so.status in ('paid', 'partially_refunded', 'refunded')
-        group by sp.method
-      `),
-
-      db.execute(sql`
-        select coalesce(sum(change_amount), 0)::text as amount
-        from sales_orders
-        where cash_session_id = ${sessionId}
-          and status in ('paid', 'partially_refunded', 'refunded')
-      `),
-
-      db.execute(sql`
-        select direction, coalesce(sum(amount), 0)::text as amount
-        from cash_movements
-        where session_id = ${sessionId}
-        group by direction
-      `),
-  
-      db.execute(sql`
-        select coalesce(sum(soi.quantity), 0)::text as items
+        select coalesce(sum(soi.quantity - coalesce(ri.returned_quantity, 0)), 0)::text as items
         from sales_order_items soi
         inner join sales_orders so on so.id = soi.order_id
+        ${joinReturnedItems(context.organizationId)}
         where so.cash_session_id = ${sessionId}
           and so.status in ('paid', 'partially_refunded', 'refunded')
       `),
     ]);
 
-    const payments: Record<string, string> = Object.fromEntries(paymentBreakdown.rows.map((row) => {
-      const r = row as Record<string, string>;
-      return [r.method, r.amount];
-    }));
-    const cashPayments = BigInt(payments.cash ?? "0");
-    const cashChange = BigInt((changeTotal.rows[0] as Record<string, string>)?.amount ?? "0");
-    const cashIn = BigInt((movementTotals.rows.find((r) => (r as Record<string, string>).direction === "in") as Record<string, string> | undefined)?.amount ?? "0");
-    const cashOut = BigInt((movementTotals.rows.find((r) => (r as Record<string, string>).direction === "out") as Record<string, string> | undefined)?.amount ?? "0");
-    const opening = BigInt(sessionRow.opening_amount as string);
-    const expectedCash = opening + cashPayments - cashChange + cashIn - cashOut;
-
+    const { expectedCash } = calculateSettlement({
+      ...amounts, openingAmount: BigInt(sessionRow.opening_amount as string), actuals: {},
+    });
     shift = {
       ...sessionRow,
       expected_cash: expectedCash.toString(),
-      cash_in: cashIn.toString(),
-      cash_out: cashOut.toString(),
-      cash_change: cashChange.toString(),
-      payments,
+      cash_in: amounts.cashIn.toString(),
+      cash_out: amounts.cashOut.toString(),
+      cash_change: amounts.cashChange.toString(),
+      payments: Object.fromEntries(Object.entries(amounts.payments).map(([method, amount]) => [method, amount.toString()])),
       items_sold: ((itemsSold.rows[0] as Record<string, string>)?.items ?? "0"),
     };
   }

@@ -33,6 +33,8 @@ Kedai-Ku is a responsive, multi-tenant Point of Sale platform for Indonesian ret
 
 ### 1. Install
 
+Use Node.js 22 or newer. CI and the Docker image use Node.js 22.
+
 ```bash
 npm install
 cp .env.example .env

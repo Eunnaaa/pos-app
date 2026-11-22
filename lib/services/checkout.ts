@@ -21,7 +21,7 @@ import {
   salesPayments,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
-import { assertPeriodOpen, AppError } from "@/lib/server";
+import { assertPeriodOpen, AppError, hashIdempotentRequest } from "@/lib/server";
 import { assertCanCreateOrder } from "./subscription";
 import { postStockMovement } from "./stock-ledger";
 import { reserveOrderStock } from "./stock-reservations";
@@ -30,7 +30,8 @@ import { postSaleToLedger } from "./ledger";
 import { allocateDiscount, exclusiveTax, inclusiveTax, parseRateToBps } from "@/lib/server/tax";
 import { resolvePromotionDiscount, recordPromotions } from "./promotions";
 import { accrueCommission } from "./commissions";
-import { publishEvent, cacheDel, RedisKeys } from "@/lib/redis";
+import { publishEvent, cacheDel, invalidateSalesDashboard, RedisKeys } from "@/lib/redis";
+import { lockCashSession } from "./cash-sessions";
 
 const bigintInput = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveBigint = bigintInput.refine((value) => value > 0n, "Must be greater than zero");
@@ -46,6 +47,7 @@ export const checkoutSchema = z.object({
   tableId: z.string().uuid().optional(),
   notes: z.string().max(2_000).optional(),
   offlineReference: z.string().max(200).optional(),
+  expectedTotalAmount: bigintInput.optional(),
   discountAmount: bigintInput.default(0n),
   serviceChargeAmount: bigintInput.default(0n),
   promotionCode: z.string().max(100).optional(),
@@ -66,6 +68,13 @@ export const checkoutSchema = z.object({
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+const offlineRecoverySchema = z.object({
+  cashSessionId: z.string().uuid(),
+  expectedTotalAmount: bigintInput,
+});
+export const posCheckoutSchema = checkoutSchema.extend({ recovery: offlineRecoverySchema.optional() });
+type OfflineRecovery = z.infer<typeof offlineRecoverySchema>;
 
 export type CheckoutQuote = {
   subtotalAmount: bigint;
@@ -208,13 +217,20 @@ export async function quoteCheckout(input: CheckoutInput, context: CheckoutConte
   return quote;
 }
 
-async function findCheckoutByOfflineReference(organizationId: string, offlineReference?: string) {
-  if (!offlineReference) return null;
+async function findCheckoutByOfflineReference(input: CheckoutInput, context: CheckoutContext, requestHash: string) {
+  if (!input.offlineReference) return null;
   const [order] = await db.select().from(salesOrders).where(and(
-    eq(salesOrders.organizationId, organizationId),
-    eq(salesOrders.offlineReference, offlineReference),
+    eq(salesOrders.organizationId, context.organizationId),
+    eq(salesOrders.offlineReference, input.offlineReference),
   )).limit(1);
   if (!order) return null;
+  if (order.branchId !== input.branchId || order.channel !== input.channel || order.cashierUserId !== context.actorUserId) {
+    throw new AppError("CONFLICT", "Referensi transaksi sudah digunakan");
+  }
+  const savedHash = order.metadata?.checkoutRequestHash;
+  if (typeof savedHash === "string" ? savedHash !== requestHash : order.cashSessionId !== (input.cashSessionId ?? null)) {
+    throw new AppError("IDEMPOTENCY_CONFLICT", "Referensi transaksi sudah digunakan untuk checkout yang berbeda");
+  }
   const [items, payments, receiptRows, pointRows] = await Promise.all([
     db.select().from(salesOrderItems).where(eq(salesOrderItems.orderId, order.id)),
     db.select().from(salesPayments).where(eq(salesPayments.orderId, order.id)),
@@ -239,8 +255,9 @@ function reservationExpiresAtFromMetadata(metadata: Record<string, unknown> | nu
   return typeof value === "string" ? value : null;
 }
 
-export async function checkout(input: CheckoutInput, context: CheckoutContext) {
-  const existing = await findCheckoutByOfflineReference(context.organizationId, input.offlineReference);
+export async function checkout(input: CheckoutInput, context: CheckoutContext, recovery?: OfflineRecovery) {
+  const requestHash = hashIdempotentRequest(input);
+  const existing = await findCheckoutByOfflineReference(input, context, requestHash);
   if (existing) return existing;
   await assertCanCreateOrder(context.organizationId);
   const result = await db.transaction(async (tx) => {
@@ -284,12 +301,30 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       if (!input.cashSessionId || !context.actorUserId) {
         throw new AppError("CONFLICT", "Buka shift kasir sebelum melakukan checkout");
       }
+      const sessionId = recovery?.cashSessionId ?? input.cashSessionId;
+      await lockCashSession(tx, sessionId);
+      if (recovery) {
+        if (input.status !== "paid" || !input.offlineReference || input.payments.some((payment) => payment.provider || payment.method === "pay_later")) {
+          throw new AppError("VALIDATION_ERROR", "Pemulihan hanya tersedia untuk penjualan offline yang sudah dibayar");
+        }
+        const [originalShift] = await tx.select({ id: cashRegisterSessions.id })
+          .from(cashRegisterSessions)
+          .innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId))
+          .where(and(
+            eq(cashRegisterSessions.id, input.cashSessionId),
+            eq(cashRegisterSessions.organizationId, context.organizationId),
+            eq(cashRegisterSessions.userId, context.actorUserId),
+            eq(cashRegisterSessions.status, "closed"),
+            eq(cashRegisters.branchId, input.branchId),
+          )).limit(1);
+        if (!originalShift) throw new AppError("CONFLICT", "Shift asal transaksi belum ditutup atau bukan milik Anda");
+      }
       const [session] = await tx
         .select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId })
         .from(cashRegisterSessions)
         .innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId))
         .where(and(
-          eq(cashRegisterSessions.id, input.cashSessionId),
+          eq(cashRegisterSessions.id, sessionId),
           eq(cashRegisterSessions.organizationId, context.organizationId),
           eq(cashRegisterSessions.status, "open"),
           eq(cashRegisterSessions.userId, context.actorUserId),
@@ -308,6 +343,10 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       quote,
     } = await calculateCheckout(tx as unknown as Database, input, context.organizationId);
     const { subtotalAmount, taxAmount, totalAmount } = quote;
+    const expectedTotal = input.expectedTotalAmount ?? recovery?.expectedTotalAmount;
+    if (expectedTotal !== undefined && expectedTotal !== totalAmount) {
+      throw new AppError("CONFLICT", "Total transaksi telah berubah. Periksa harga, pajak, dan diskon sebelum mencatat transaksi.");
+    }
     const paymentAmount = input.payments.reduce((sum, payment) => sum + payment.amount, 0n);
     const isDeferred = input.payments.some((payment) => payment.method === "pay_later");
     const hasCash = input.payments.some((payment) => payment.method === "cash");
@@ -364,15 +403,17 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
       costAmount,
       notes: input.notes,
       offlineReference: input.offlineReference,
-      metadata: reservationExpiry
-        ? { stockReservationVersion: 1, reservationExpiresAt: reservationExpiry.toISOString() }
-        : undefined,
+      metadata: {
+        ...(input.offlineReference ? { checkoutRequestHash: requestHash } : {}),
+        ...(recovery ? { recoveredFromCashSessionId: input.cashSessionId ?? null } : {}),
+        ...(reservationExpiry ? { stockReservationVersion: 1, reservationExpiresAt: reservationExpiry.toISOString() } : {}),
+      },
       completedAt: effectiveStatus === "paid" ? new Date() : undefined,
     }).returning();
 
     // Record applied promotions/vouchers (insert order_promotions + update usage counters)
     if (promoRecords.length) {
-      await recordPromotions(tx as unknown as Database, { organizationId: context.organizationId, orderId, records: promoRecords });
+      await recordPromotions(tx, { organizationId: context.organizationId, orderId, customerId: input.customerId, records: promoRecords });
     }
 
     const orderItems = await tx.insert(salesOrderItems).values(calculated.map(({ item, variant, unitPriceAmount, totalAmount: itemTotal, taxAmount: itemTax }) => ({
@@ -517,14 +558,8 @@ export async function checkout(input: CheckoutInput, context: CheckoutContext) {
     RedisKeys.tables(context.organizationId, input.branchId),
     RedisKeys.catalog(context.organizationId, input.branchId),
     `tenant:${context.organizationId}:branch:${input.branchId}:warehouse:${input.warehouseId}:pos-bootstrap`,
-    RedisKeys.dashboard(context.organizationId, input.branchId, 7),
-    RedisKeys.dashboard(context.organizationId, input.branchId, 14),
-    RedisKeys.dashboard(context.organizationId, input.branchId, 30),
-    RedisKeys.dashboard(context.organizationId, null, 7),
-    RedisKeys.dashboard(context.organizationId, null, 14),
-    RedisKeys.dashboard(context.organizationId, null, 30),
-    ...(context.actorUserId ? [RedisKeys.cashierDashboard(context.organizationId, input.branchId, context.actorUserId)] : []),
   );
+  await invalidateSalesDashboard(context.organizationId, input.branchId, context.actorUserId);
 
   if (result.order.status === "paid" || result.order.status === "confirmed") {
     void publishEvent(RedisKeys.kdsChannel(input.branchId), {

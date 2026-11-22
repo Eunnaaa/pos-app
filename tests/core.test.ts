@@ -11,7 +11,19 @@ import { allocateDiscount, parseRateToBps, exclusiveTax, inclusiveTax } from "@/
 import { can, requirePermission } from "@/lib/server/rbac";
 import { assertSafeWebhookUrl, signWebhook, verifyWebhookSignature } from "@/lib/server/webhook";
 import { toJsonValue } from "@/lib/api/response";
-import { allocateRefundableLineTotals, incrementalLineRefund } from "@/lib/services/refund-allocation";
+import { allocateRefundableLineTotals, allocateRefundPayments, incrementalLineRefund } from "@/lib/services/refund-allocation";
+
+test("split refunds deduct cash change and earlier refunds even across multiple cash tenders", () => {
+  const payments = [
+    { id: "cash-1", method: "cash", amount: 40_000n, used: 30_000n },
+    { id: "cash-2", method: "cash", amount: 40_000n, used: 0n },
+    { id: "card", method: "debit", amount: 40_000n, used: 5_000n },
+  ];
+  assert.deepEqual(allocateRefundPayments(payments, 65_001n, 20_000n, "card"), {
+    allocations: [{ id: "card", amount: 35_000n }, { id: "cash-2", amount: 30_000n }],
+    remaining: 1n,
+  });
+});
 
 void test("money arithmetic remains exact in rupiah minor units", () => {
   assert.deepEqual(parseMoney("125000"), { amount: 125000n, currency: "IDR" });

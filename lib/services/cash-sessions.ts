@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type Database } from "@/db";
 import {
@@ -8,15 +8,22 @@ import {
   refunds,
   salesOrders,
   salesPayments,
-  salesReturns,
   type JsonValue,
 } from "@/db/schema";
 import type { ApiContext } from "@/lib/api";
 import { assertBranchAccess, assertPeriodOpen, AppError, writeAuditLog } from "@/lib/server";
 import { calculateSettlement } from "./cash-settlement";
+import type { DbTransaction } from "./stock-ledger";
+import { ONLINE_RESERVATION_MS } from "@/lib/online-reservation-policy";
+import { reservationExpiresAt } from "./stock-reservations";
+
+export async function lockCashSession(tx: DbTransaction, sessionId: string) {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cash-session:${sessionId}`}))`);
+}
 
 const nonnegativeMoney = z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative().safe()]).transform(BigInt);
 const positiveMoney = nonnegativeMoney.refine((value) => value > 0n, "Nominal harus lebih dari nol");
+const signedMoney = z.union([z.string().regex(/^-?\d+$/), z.number().int().safe()]).transform(BigInt);
 
 export const openCashSessionSchema = z.object({
   branchId: z.string().uuid(),
@@ -24,7 +31,10 @@ export const openCashSessionSchema = z.object({
   shiftHours: z.number().int().min(1).max(24).optional(),
 });
 export const cashMovementSchema = z.object({ direction: z.enum(["in", "out"]), amount: positiveMoney, category: z.string().min(2).max(100), reason: z.string().min(3).max(500) });
-export const closeCashSessionSchema = z.object({ tenderActuals: z.record(z.string(), nonnegativeMoney), notes: z.string().max(1_000).optional() });
+export const closeCashSessionSchema = z.object({
+  tenderActuals: z.record(z.string(), signedMoney).refine((actuals) => (actuals.cash ?? 0n) >= 0n, "Kas aktual tidak boleh negatif"),
+  notes: z.string().max(1_000).optional(),
+});
 
 async function getRegisterForBranch(branchId: string, organizationId: string, database: Database = db) {
   const where = and(eq(cashRegisters.organizationId, organizationId), eq(cashRegisters.branchId, branchId), eq(cashRegisters.isActive, true));
@@ -49,8 +59,8 @@ export async function openCashSession(input: z.infer<typeof openCashSessionSchem
   });
 }
 
-export async function getActiveCashSession(context: ApiContext) {
-  const [session] = await db.select({
+export async function getActiveCashSession(context: ApiContext, database: Database | DbTransaction = db) {
+  const [session] = await database.select({
     id: cashRegisterSessions.id,
     status: cashRegisterSessions.status,
     openingAmount: cashRegisterSessions.openingAmount,
@@ -71,6 +81,7 @@ export async function getActiveCashSession(context: ApiContext) {
 
 export async function recordCashMovement(sessionId: string, input: z.infer<typeof cashMovementSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
+    await lockCashSession(tx, sessionId);
     const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(
        eq(cashRegisterSessions.id, sessionId),
        eq(cashRegisterSessions.organizationId, context.organizationId),
@@ -86,9 +97,39 @@ export async function recordCashMovement(sessionId: string, input: z.infer<typeo
   });
 }
 
+function getShiftRefunds(database: Database | DbTransaction, sessionId: string) {
+  const method = sql<string>`coalesce(${salesPayments.method}, 'cash')`;
+  return database.select({ method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` })
+    .from(refunds)
+    .leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId))
+    .where(and(eq(refunds.cashSessionId, sessionId), eq(refunds.status, "processed")))
+    .groupBy(method);
+}
+
+export async function getCashSessionAmounts(sessionId: string, database: Database | DbTransaction = db) {
+  const [paymentRows, refundRows, [changeRow], movementRows] = await Promise.all([
+    database.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` })
+      .from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId))
+      .where(and(eq(salesOrders.cashSessionId, sessionId), eq(salesPayments.status, "settled"), ne(salesOrders.status, "cancelled")))
+      .groupBy(salesPayments.method),
+    getShiftRefunds(database, sessionId),
+    database.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` })
+      .from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId)),
+    database.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` })
+      .from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction),
+  ]);
+  return {
+    payments: Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)])),
+    refunds: Object.fromEntries(refundRows.map((row) => [row.method, BigInt(row.amount)])),
+    cashChange: BigInt(changeRow?.amount ?? "0"),
+    cashIn: BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0"),
+    cashOut: BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0"),
+  };
+}
+
 export async function closeCashSession(sessionId: string, input: z.infer<typeof closeCashSessionSchema>, context: ApiContext) {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`cash-session:${sessionId}`}))`);
+    await lockCashSession(tx, sessionId);
     const [session] = await tx.select({ id: cashRegisterSessions.id, userId: cashRegisterSessions.userId, status: cashRegisterSessions.status, openingAmount: cashRegisterSessions.openingAmount, openedAt: cashRegisterSessions.openedAt, branchId: cashRegisters.branchId }).from(cashRegisterSessions).innerJoin(cashRegisters, eq(cashRegisters.id, cashRegisterSessions.registerId)).where(and(
        eq(cashRegisterSessions.id, sessionId),
        eq(cashRegisterSessions.organizationId, context.organizationId),
@@ -99,18 +140,25 @@ export async function closeCashSession(sessionId: string, input: z.infer<typeof 
     if (session.userId !== context.session.user.id && context.tenant.role !== "owner") throw new AppError("FORBIDDEN", "Hanya pemilik shift atau owner yang dapat settlement");
     await assertPeriodOpen(tx, { organizationId: context.organizationId, branchId: session.branchId });
 
-    const paymentRows = await tx.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(salesPayments.status, "settled"))).groupBy(salesPayments.method);
-    const refundRows = await tx.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).innerJoin(salesOrders, eq(salesOrders.id, salesReturns.orderId)).leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(refunds.status, "processed"))).groupBy(salesPayments.method);
-    const [changeRow] = await tx.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
-    const movementRows = await tx.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
-    const payments = Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)]));
-    const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "cash", BigInt(row.amount)]));
-    const cashIn = BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0");
-    const cashOut = BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0");
-    const requiredMethods = new Set(["cash", ...Object.keys(payments)]);
+    const pendingOnline = await tx.select({ metadata: salesOrders.metadata, occurredAt: salesOrders.occurredAt }).from(salesOrders)
+      .innerJoin(salesPayments, eq(salesPayments.orderId, salesOrders.id))
+      .where(and(
+        eq(salesOrders.cashSessionId, sessionId),
+        eq(salesOrders.status, "pending"),
+        isNotNull(salesPayments.provider),
+        inArray(salesPayments.status, ["pending", "authorized"]),
+      ));
+    const now = Date.now();
+    if (pendingOnline.some(({ metadata, occurredAt }) =>
+      (reservationExpiresAt(metadata)?.getTime() ?? occurredAt.getTime() + ONLINE_RESERVATION_MS) > now,
+    )) throw new AppError("CONFLICT", "Tunggu pembayaran online selesai atau pesanan kedaluwarsa sebelum menutup shift");
+
+    const amounts = await getCashSessionAmounts(sessionId, tx);
+    const { payments, refunds: refundByMethod } = amounts;
+    const requiredMethods = new Set(["cash", ...Object.keys(payments), ...Object.keys(refundByMethod)]);
     const missing = [...requiredMethods].filter((method) => input.tenderActuals[method] === undefined);
     if (missing.length) throw new AppError("VALIDATION_ERROR", `Actual settlement wajib diisi untuk: ${missing.join(", ")}`);
-    const settlement = calculateSettlement({ openingAmount: session.openingAmount, payments, refunds: refundByMethod, cashChange: BigInt(changeRow?.amount ?? "0"), cashIn, cashOut, actuals: input.tenderActuals });
+    const settlement = calculateSettlement({ ...amounts, openingAmount: session.openingAmount, actuals: input.tenderActuals });
     const paymentBreakdown = Object.fromEntries(Object.entries(settlement.breakdown).map(([method, value]) => [method, { expected: value.expected.toString(), actual: value.actual.toString(), variance: value.variance.toString(), paid: (payments[method] ?? 0n).toString(), refunded: (refundByMethod[method] ?? 0n).toString() }])) as Record<string, JsonValue>;
     const [closed] = await tx.update(cashRegisterSessions).set({ status: "closed", expectedClosingAmount: settlement.expectedCash, actualClosingAmount: settlement.actualCash, varianceAmount: settlement.cashVariance, paymentBreakdown, settlementNotes: input.notes, settledBy: context.session.user.id, closedAt: new Date(), updatedAt: new Date() }).where(eq(cashRegisterSessions.id, sessionId)).returning();
     await writeAuditLog({ organizationId: context.organizationId, branchId: session.branchId, actorUserId: context.session.user.id, action: "cash_session.close", resourceType: "cash_register_session", resourceId: sessionId, requestId: context.requestId, before: { status: "open" }, after: { status: "closed", expectedCash: settlement.expectedCash.toString(), actualCash: settlement.actualCash.toString(), variance: settlement.cashVariance.toString() }, metadata: { paymentBreakdown } }, tx as unknown as Database);
@@ -136,31 +184,19 @@ export async function previewSettlement(sessionId: string, context: ApiContext) 
   if (!session) throw new AppError("NOT_FOUND", "Shift kasir tidak ditemukan");
   if (session.status !== "open") throw new AppError("CONFLICT", "Shift kasir sudah ditutup");
 
-  const paymentRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${salesPayments.amount}), 0)` }).from(salesPayments).innerJoin(salesOrders, eq(salesOrders.id, salesPayments.orderId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(salesPayments.status, "settled"))).groupBy(salesPayments.method);
-  const refundRows = await db.select({ method: salesPayments.method, amount: sql<string>`coalesce(sum(${refunds.amount}), 0)` }).from(refunds).innerJoin(salesReturns, eq(salesReturns.id, refunds.returnId)).innerJoin(salesOrders, eq(salesOrders.id, salesReturns.orderId)).leftJoin(salesPayments, eq(salesPayments.id, refunds.paymentId)).where(and(eq(salesOrders.cashSessionId, sessionId), eq(refunds.status, "processed"))).groupBy(salesPayments.method);
-  const [changeRow] = await db.select({ amount: sql<string>`coalesce(sum(${salesOrders.changeAmount}), 0)` }).from(salesOrders).where(eq(salesOrders.cashSessionId, sessionId));
-  const movementRows = await db.select({ direction: cashMovements.direction, amount: sql<string>`coalesce(sum(${cashMovements.amount}), 0)` }).from(cashMovements).where(eq(cashMovements.sessionId, sessionId)).groupBy(cashMovements.direction);
-
-  const payments = Object.fromEntries(paymentRows.map((row) => [row.method, BigInt(row.amount)]));
-  const refundByMethod = Object.fromEntries(refundRows.map((row) => [row.method ?? "cash", BigInt(row.amount)]));
-  const cashIn = BigInt(movementRows.find((row) => row.direction === "in")?.amount ?? "0");
-  const cashOut = BigInt(movementRows.find((row) => row.direction === "out")?.amount ?? "0");
-
-  // Build expected breakdown (actual = expected for preview, variance = 0)
-  const methods = new Set(["cash", ...Object.keys(payments), ...Object.keys(refundByMethod)]);
-  const breakdown: Record<string, { expected: string; paid: string; refunded: string }> = {};
-  for (const method of methods) {
-    let expected = (payments[method] ?? 0n) - (refundByMethod[method] ?? 0n);
-    if (method === "cash") expected += session.openingAmount - BigInt(changeRow?.amount ?? "0") + cashIn - cashOut;
-    breakdown[method] = { expected: expected.toString(), paid: (payments[method] ?? 0n).toString(), refunded: (refundByMethod[method] ?? 0n).toString() };
-  }
-
+  const amounts = await getCashSessionAmounts(sessionId);
+  const settlement = calculateSettlement({ ...amounts, openingAmount: session.openingAmount, actuals: {} });
+  const breakdown = Object.fromEntries(Object.entries(settlement.breakdown).map(([method, value]) => [method, {
+    expected: value.expected.toString(),
+    paid: (amounts.payments[method] ?? 0n).toString(),
+    refunded: (amounts.refunds[method] ?? 0n).toString(),
+  }]));
   return {
     openingAmount: session.openingAmount.toString(),
-    cashChange: BigInt(changeRow?.amount ?? "0").toString(),
-    cashIn: cashIn.toString(),
-    cashOut: cashOut.toString(),
-    expectedCash: breakdown.cash?.expected ?? session.openingAmount.toString(),
+    cashChange: amounts.cashChange.toString(),
+    cashIn: amounts.cashIn.toString(),
+    cashOut: amounts.cashOut.toString(),
+    expectedCash: settlement.expectedCash.toString(),
     breakdown,
   };
 }

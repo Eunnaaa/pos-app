@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { DollarSign, Loader2, RefreshCw, RotateCcw, Search, ShoppingBag, Store } from "lucide-react"
-import { showError, showSuccess } from "@/lib/toast-handler"
+import { showError } from "@/lib/toast-handler"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,10 +49,12 @@ type SaleDetail = {
     status: string
     totalAmount?: string
     total_amount?: string
+    branchId: string
     branch_name?: string
   }
   items: SaleItem[]
   payments: { id: string; method: string; amount: string; status: string }[]
+  refunds: { id: string; method: string | null; provider: string | null; amount: string; status: string; externalReference: string | null }[]
   receipt?: { verificationToken?: string; verification_token?: string }
 }
 
@@ -69,10 +71,11 @@ export function SalesPage() {
   const [summary, setSummary] = useState({ successfulOrders: 0, netAmount: "0", refundedOrders: 0 })
   const [detail, setDetail] = useState<SaleDetail>()
   const [returnOpen, setReturnOpen] = useState(false)
-  const [returnPaymentId, setReturnPaymentId] = useState<string>("")
   const [returnReason, setReturnReason] = useState("")
   const [returnQuantities, setReturnQuantities] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const [refundFeedback, setRefundFeedback] = useState("")
+  const returnAttempt = useRef<{ body: string; key: string } | null>(null)
 
   const isCashier = organization?.role === "cashier"
 
@@ -137,9 +140,9 @@ export function SalesPage() {
     }
   }, [orgId, load])
 
-  async function showDetail(id: string) {
+  async function showDetail(id: string, branchId?: string) {
     try {
-      const res = await apiFetch<SaleDetail>(`/api/v1/sales/${id}`)
+      const res = await apiFetch<SaleDetail>(`/api/v1/sales/${id}`, { branchId })
       setDetail(res.data)
     } catch (caught) {
       showError(caught instanceof Error ? caught.message : "Gagal mengambil detail")
@@ -150,9 +153,6 @@ export function SalesPage() {
     if (!detail) return
     setReturnQuantities(Object.fromEntries(detail.items.map((item) => [item.id, "0"])))
     setReturnReason("")
-    const settledPayments = detail.payments.filter((p) => p.status === "settled")
-    const bestPayment = [...settledPayments].sort((a, b) => Number(b.amount) - Number(a.amount))[0]
-    setReturnPaymentId(bestPayment?.id || "")
     setReturnOpen(true)
   }
 
@@ -163,20 +163,48 @@ export function SalesPage() {
       .map((item) => ({ orderItemId: item.id, quantity: returnQuantities[item.id] || "0", restock: true }))
       .filter((item) => BigInt(item.quantity) > 0n)
     if (!items.length) return showError("Masukkan minimal satu kuantitas return")
+    const body = JSON.stringify({ orderId: detail.order.id, reason: returnReason, items })
+    if (returnAttempt.current?.body !== body) returnAttempt.current = { body, key: crypto.randomUUID() }
     setSaving(true)
     try {
-      const paymentId = returnPaymentId || detail.payments.find((payment) => payment.status === "settled")?.id
-      await apiFetch("/api/v1/sales/returns", {
+      const result = await apiFetch<{ refunds: SaleDetail["refunds"] }>("/api/v1/sales/returns", {
         method: "POST",
-        body: JSON.stringify({ orderId: detail.order.id, paymentId, reason: returnReason, items }),
+        branchId: detail.order.branchId,
+        headers: { "idempotency-key": returnAttempt.current.key },
+        body,
         queueOffline: false,
       })
-      showSuccess("Return dan refund diproses")
+      returnAttempt.current = null
+      const pending = result.data.refunds?.some((refund) => refund.status === "pending")
+      setRefundFeedback(pending ? "Retur tercatat. Pengembalian dana menunggu konfirmasi provider." : "Retur tercatat.")
       setReturnOpen(false)
-      setDetail(undefined)
+      await showDetail(detail.order.id, detail.order.branchId)
       await load()
     } catch (caught) {
       showError(caught instanceof Error ? caught.message : "Return gagal")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function confirmRefund(event: React.FormEvent<HTMLFormElement>, refundId: string) {
+    event.preventDefault()
+    if (!detail) return
+    const externalReference = String(new FormData(event.currentTarget).get("externalReference") ?? "").trim()
+    if (!externalReference) return setRefundFeedback("Masukkan referensi pengembalian dana dari provider.")
+    setSaving(true)
+    setRefundFeedback("")
+    try {
+      await apiFetch("/api/v1/sales/returns/confirm", {
+        method: "POST",
+        branchId: detail.order.branchId,
+        body: JSON.stringify({ refundId, externalReference }),
+      })
+      setRefundFeedback("Konfirmasi pengembalian dana tersimpan.")
+      await showDetail(detail.order.id, detail.order.branchId)
+      await load()
+    } catch (error) {
+      setRefundFeedback(error instanceof Error ? error.message : "Gagal menyimpan konfirmasi.")
     } finally {
       setSaving(false)
     }
@@ -355,8 +383,12 @@ export function SalesPage() {
                 {data.map((sale, index) => {
                   const isHeldOrPending = ["held", "pending", "draft"].includes(sale.status.toLowerCase())
                   const isPaid = sale.status.toLowerCase() === "paid"
+                  const openDetail = () => {
+                    setRefundFeedback("")
+                    void showDetail(sale.id, sale.branch_id)
+                  }
                   return (
-                    <TableRow key={sale.id} className="cursor-pointer" role="button" tabIndex={0} onClick={() => void showDetail(sale.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void showDetail(sale.id) } }}>
+                    <TableRow key={sale.id} className="cursor-pointer" role="button" tabIndex={0} onClick={openDetail} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openDetail() } }}>
                       <TableCell className="font-medium">{(page - 1) * 100 + index + 1}</TableCell>
                       <TableCell className="font-mono text-xs">{sale.order_number.slice(-8)}</TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
@@ -408,7 +440,7 @@ export function SalesPage() {
       </Card>
 
       <Dialog open={Boolean(detail)} onOpenChange={(open) => !open && setDetail(undefined)}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{detail?.order.orderNumber || detail?.order.order_number}</DialogTitle>
             <DialogDescription>Detail item, pembayaran, dan receipt transaksi.</DialogDescription>
@@ -449,6 +481,26 @@ export function SalesPage() {
                 </p>
                 <p className="break-all font-mono text-[11px] text-muted-foreground">Order ID: {detail.order.id}</p>
               </div>
+              {detail.refunds?.length > 0 && (
+                <section aria-label="Pengembalian dana" className="space-y-3">
+                  <h3 className="font-medium">Pengembalian dana</h3>
+                  {detail.refunds.map((refund) => (
+                    <div key={refund.id} className="space-y-2 rounded-lg border p-3 text-sm">
+                      <p><strong>{rupiah(refund.amount)}</strong> · {refund.method?.toUpperCase() ?? "Pembayaran"}</p>
+                      <p>{refund.status === "processed" ? "Tercatat" : refund.status === "pending" ? "Menunggu konfirmasi provider" : "Gagal"}</p>
+                      {refund.externalReference && <p className="break-all text-muted-foreground">Referensi {refund.externalReference}</p>}
+                      {refund.status === "pending" && refund.provider && organization?.role === "owner" && (
+                        <form className="space-y-2" onSubmit={(event) => void confirmRefund(event, refund.id)}>
+                          <Label htmlFor={`refund-reference-${refund.id}`}>Referensi dari {refund.provider}</Label>
+                          <Input id={`refund-reference-${refund.id}`} name="externalReference" required maxLength={200} />
+                          <Button type="submit" size="sm" disabled={saving}>Catat dana sudah dikembalikan</Button>
+                        </form>
+                      )}
+                    </div>
+                  ))}
+                </section>
+              )}
+              <p role="status" className="text-sm">{refundFeedback}</p>
             </div>
           )}
           <DialogFooter>
@@ -469,15 +521,16 @@ export function SalesPage() {
           <form onSubmit={submitReturn}>
             <DialogHeader>
               <DialogTitle>Return transaksi</DialogTitle>
-              <DialogDescription>Masukkan kuantitas yang dikembalikan. Stok akan ditambahkan kembali.</DialogDescription>
+              <DialogDescription>Masukkan kuantitas yang dikembalikan. Stok dikembalikan sesuai mutasi penjualan asal.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3 py-5">
               {detail?.items.map((item) => (
                 <div key={item.id} className="grid grid-cols-[1fr_100px] items-center gap-3">
-                  <Label>
+                  <Label htmlFor={`return-qty-${item.id}`}>
                     {item.itemName || item.item_name} (maks. {item.quantity})
                   </Label>
                   <Input
+                    id={`return-qty-${item.id}`}
                     type="number"
                     min="0"
                     max={item.quantity}
@@ -489,35 +542,19 @@ export function SalesPage() {
                 </div>
               ))}
               <div className="space-y-2">
-                <Label>Alasan return</Label>
+                <Label htmlFor="return-reason">Alasan retur</Label>
                 <Input
+                  id="return-reason"
                   value={returnReason}
                   onChange={(event) => setReturnReason(event.target.value)}
                   required
                   minLength={3}
                 />
               </div>
-              {detail && detail.payments.filter((p) => p.status === "settled").length > 1 && (
-                <div className="space-y-2">
-                  <Label>Metode Pembayaran untuk Refund</Label>
-                  <Select value={returnPaymentId} onValueChange={setReturnPaymentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Pilih metode pembayaran refund" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {detail.payments
-                        .filter((p) => p.status === "settled")
-                        .map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.method.toUpperCase()} — {rupiah(p.amount)}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-muted-foreground">
-                    Transaksi ini menggunakan split payment. Pilih metode pembayaran yang akan dikembalikan dananya ke pelanggan.
-                  </p>
-                </div>
+              {detail && detail.payments.filter((payment) => payment.status === "settled").length > 1 && (
+                <p className="text-sm text-muted-foreground">
+                  Refund dibagi sesuai sisa pembayaran tiap metode. Rinciannya tampil setelah retur dicatat.
+                </p>
               )}
             </div>
             <DialogFooter>

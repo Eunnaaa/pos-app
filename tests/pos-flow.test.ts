@@ -198,5 +198,5 @@ void test("POS UI: complex state is delegated to focused hooks", async () => {
   assert.ok(localStateCount < 30, `expected fewer than 30 local useState calls, received ${localStateCount}`);
   assert.match(screen, /usePosCart\(\)/);
   assert.match(screen, /usePosPaymentState\(\)/);
-  assert.match(screen, /usePosNetworkState\(\)/);
+  assert.match(screen, /usePosNetworkState\(organization\?\.id, branch\?\.id\)/);
 });

@@ -42,3 +42,30 @@ export function incrementalLineRefund(
   return (lineTotal * nextReturned) / lineQuantity
     - (lineTotal * previouslyReturned) / lineQuantity;
 }
+
+export function allocateRefundPayments(
+  payments: ReadonlyArray<{ id: string; method: string; amount: bigint; used: bigint }>,
+  total: bigint,
+  cashChange: bigint,
+  preferredId?: string,
+) {
+  const available = payments.map((payment) => {
+    const gross = payment.amount > payment.used ? payment.amount - payment.used : 0n;
+    const change = payment.method === "cash" ? (cashChange < gross ? cashChange : gross) : 0n;
+    cashChange -= change;
+    return { id: payment.id, amount: gross - change };
+  });
+  const preferred = available.findIndex((payment) => payment.id === preferredId);
+  if (preferred > 0) available.unshift(...available.splice(preferred, 1));
+
+  const allocations: { id: string; amount: bigint }[] = [];
+  let remaining = total;
+  for (const payment of available) {
+    if (remaining === 0n) break;
+    if (payment.amount <= 0n) continue;
+    const amount = payment.amount < remaining ? payment.amount : remaining;
+    allocations.push({ id: payment.id, amount });
+    remaining -= amount;
+  }
+  return { allocations, remaining };
+}

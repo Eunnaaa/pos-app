@@ -1,3 +1,4 @@
+import { joinProcessedRefunds, joinReturnedItems, netOrderTotal } from "./sales-metrics";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 
@@ -87,15 +88,9 @@ export async function salesReport(
     db.execute(sql`
       WITH net_orders AS (
         SELECT so.*,
-          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+          ${netOrderTotal} AS net_total
         FROM sales_orders so
-        LEFT JOIN (
-          SELECT sr.order_id, SUM(r.amount) AS refund_amount
-          FROM refunds r
-          JOIN sales_returns sr ON sr.id = r.return_id
-          WHERE r.status = 'processed'
-          GROUP BY sr.order_id
-        ) rr ON rr.order_id = so.id
+        ${joinProcessedRefunds(organizationId)}
         WHERE so.organization_id = ${organizationId}
           ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
           AND so.status IN ('paid', 'partially_refunded', 'refunded')
@@ -149,15 +144,7 @@ export async function salesReport(
         )::text as profit
       FROM sales_order_items soi
       JOIN sales_orders so ON so.id = soi.order_id
-      LEFT JOIN (
-        SELECT sri.order_item_id,
-          SUM(sri.quantity) AS returned_quantity,
-          SUM(sri.refund_amount) AS refund_amount
-        FROM sales_return_items sri
-        JOIN sales_returns sr ON sr.id = sri.return_id
-        WHERE sr.status = 'refunded'
-        GROUP BY sri.order_item_id
-      ) ri ON ri.order_item_id = soi.id
+      ${joinReturnedItems(organizationId)}
       WHERE soi.organization_id = ${organizationId}
         ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
         AND so.status IN ('paid', 'partially_refunded', 'refunded')
@@ -171,15 +158,9 @@ export async function salesReport(
     db.execute(sql`
       WITH net_orders AS (
         SELECT so.*,
-          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+          ${netOrderTotal} AS net_total
         FROM sales_orders so
-        LEFT JOIN (
-          SELECT sr.order_id, SUM(r.amount) AS refund_amount
-          FROM refunds r
-          JOIN sales_returns sr ON sr.id = r.return_id
-          WHERE r.status = 'processed'
-          GROUP BY sr.order_id
-        ) rr ON rr.order_id = so.id
+        ${joinProcessedRefunds(organizationId)}
         WHERE so.organization_id = ${organizationId}
           ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
           AND so.occurred_at >= ${startDate}
@@ -201,15 +182,9 @@ export async function salesReport(
     db.execute(sql`
       WITH net_orders AS (
         SELECT so.*,
-          GREATEST(so.total_amount - COALESCE(rr.refund_amount, 0), 0) AS net_total
+          ${netOrderTotal} AS net_total
         FROM sales_orders so
-        LEFT JOIN (
-          SELECT sr.order_id, SUM(r.amount) AS refund_amount
-          FROM refunds r
-          JOIN sales_returns sr ON sr.id = r.return_id
-          WHERE r.status = 'processed'
-          GROUP BY sr.order_id
-        ) rr ON rr.order_id = so.id
+        ${joinProcessedRefunds(organizationId)}
         WHERE so.organization_id = ${organizationId}
           ${branchId ? sql`AND so.branch_id = ${branchId}` : sql``}
           AND so.status IN ('paid', 'partially_refunded', 'refunded')

@@ -14,7 +14,6 @@ import {
   Printer,
   QrCode,
   ReceiptText,
-  RefreshCw,
   Search,
   ShoppingCart,
   Store,
@@ -55,6 +54,7 @@ import {
 import { apiFetch } from "@/lib/client"
 import { getCategoryEmoji, getCategoryColor } from "@/lib/services/category-images"
 import { PosCartPanel } from "@/components/kasir/pos/cart-panel"
+import { OfflineSales } from "@/components/kasir/pos/offline-sales"
 
 export type Product = PosProduct
 type CashSession = { id: string; openingAmount: string; openedAt: string; registerName: string; registerCode: string; shiftHours?: number; branchId?: string }
@@ -163,7 +163,16 @@ export function PosScreen() {
   const [printerName, setPrinterName] = useState<string | null>(null)
   const [printerWidth, setPrinterWidth] = useState<PrinterWidth>(58)
   const [printingThermal, setPrintingThermal] = useState(false)
-  const { offlineCount, isOnline, syncingOffline, syncNow } = usePosNetworkState()
+  const { offlineSales, isOnline, refreshOfflineCount } = usePosNetworkState(organization?.id, branch?.id)
+  const offlineSalesControl = <OfflineSales
+    sales={offlineSales}
+    online={isOnline}
+    cashSessionId={session?.id}
+    onRetry={async () => {
+      await refreshOfflineCount()
+      if (isOnline) await refreshBootstrap()
+    }}
+  />
   const [dynamicStoreQrisUrl, setDynamicStoreQrisUrl] = useState("")
   useEffect(() => {
     setPrinterName(getConnectedPrinterName())
@@ -723,13 +732,17 @@ export function PosScreen() {
           promotionCode: promotionCode.trim().toUpperCase() || undefined,
           voucherCode: voucherCode.trim().toUpperCase() || undefined,
           offlineReference: requestKey,
+          expectedTotalAmount: authoritativeQuote.totalAmount,
           items: validCartItems.map((item) => ({ variantId: item.id, quantity: String(item.quantity), unitPriceAmount: String(item.price), discountAmount: "0" })),
           payments: status === "paid" ? paymentsPayload : [],
         }),
       })
       if (response.queued) {
         showWarning("Transaksi disimpan offline, akan disinkronkan saat koneksi kembali")
-        setPaymentOpen(false); resetCart(); return
+        setPaymentOpen(false)
+        resetCart()
+        void refreshOfflineCount()
+        return
       }
       if (paymentMethod === "QRIS") {
         const pending = { orderId: response.data.order.id, amount: finalTotal, expiresAt: response.data.reservationExpiresAt ?? new Date(Date.now() + ONLINE_RESERVATION_MS).toISOString() }
@@ -796,7 +809,7 @@ export function PosScreen() {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [cart.length, submitting, paymentOpen, heldOpen, shiftOpen, setPaymentOpen])
 
-  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{paymentMethods.map(([name, method]) => { const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min="0" step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 font-medium"><span>Keranjang masih berisi item ({cart.length} produk)</span><Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={clearCart}>Kosongkan Keranjang</Button></div>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
+  const shiftDialog = session ? <Dialog open={shiftOpen} onOpenChange={setShiftOpen}><DialogContent><DialogHeader><DialogTitle>Kelola shift kasir</DialogTitle><DialogDescription>{session.registerName} • dibuka {new Date(session.openedAt).toLocaleString("id-ID")}</DialogDescription></DialogHeader><div className="grid grid-cols-2 gap-2"><Button type="button" variant={shiftMode === "movement" ? "default" : "outline"} onClick={() => setShiftMode("movement")}>Mutasi kas</Button><Button type="button" variant={shiftMode === "close" ? "destructive" : "outline"} onClick={() => setShiftMode("close")}>Tutup shift</Button></div>{shiftMode === "movement" ? <form onSubmit={recordMovement} className="space-y-4"><div className="space-y-2"><Label>Jenis</Label><Select value={movement.direction} onValueChange={(value: "in" | "out") => setMovement((current) => ({ ...current, direction: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="in">Kas masuk</SelectItem><SelectItem value="out">Kas keluar</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label htmlFor="movement-amount">Nominal</Label><Input id="movement-amount" type="number" min="1" step="1" value={movement.amount} onChange={(event) => setMovement((current) => ({ ...current, amount: event.target.value }))} required /></div><div className="space-y-2"><Label htmlFor="movement-category">Kategori</Label><Input id="movement-category" value={movement.category} onChange={(event) => setMovement((current) => ({ ...current, category: event.target.value }))} placeholder="Modal tambahan / petty cash" minLength={2} required /></div><div className="space-y-2"><Label htmlFor="movement-reason">Alasan</Label><Input id="movement-reason" value={movement.reason} onChange={(event) => setMovement((current) => ({ ...current, reason: event.target.value }))} minLength={3} required /></div><DialogFooter><Button type="submit" className="bg-emerald-600 hover:bg-emerald-700" disabled={submitting}>{submitting && <Loader2 className="animate-spin" />} Simpan mutasi</Button></DialogFooter></form> : <form onSubmit={closeShift} className="space-y-4"><p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">Hitung uang fisik di laci kasir. Sistem menghitung ekspektasi dan selisih otomatis.</p>{settlementPreview && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950"><p className="text-sm text-muted-foreground">Kas seharusnya</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{rupiah(Number(settlementPreview.expectedCash))}</p></div>}<div className="grid grid-cols-2 gap-3">{[...new Set(["cash", ...Object.keys(settlementPreview?.breakdown ?? {})])].map((method) => { const name = paymentMethods.find(([, key]) => key === method)?.[0] ?? method.toUpperCase(); const expected = settlementPreview?.breakdown?.[method]?.expected; return <div key={method} className="space-y-2"><Label htmlFor={`actual-${method}`}>{name} aktual{expected !== undefined && <span className="ml-1 text-xs font-normal text-muted-foreground">(seharusnya {rupiah(Number(expected))})</span>}</Label><Input id={`actual-${method}`} type="number" min={method === "cash" ? "0" : undefined} step="1" value={tenderActuals[method] ?? ""} onChange={(event) => setTenderActuals((current) => ({ ...current, [method]: event.target.value }))} required /></div> })}</div><div className="space-y-2"><Label htmlFor="settlement-notes">Catatan</Label><Textarea id="settlement-notes" value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} placeholder="Opsional: jelaskan jika ada selisih" /></div>{cart.length > 0 && <div className="flex items-center justify-between rounded-lg bg-rose-50 p-3 dark:bg-rose-950/40 text-xs text-rose-700 dark:text-rose-300 font-medium"><span>Keranjang masih berisi item ({cart.length} produk)</span><Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={clearCart}>Kosongkan Keranjang</Button></div>}<DialogFooter><Button type="submit" variant="destructive" disabled={submitting || cart.length > 0}>{submitting && <Loader2 className="animate-spin" />} Tutup dan rekonsiliasi</Button></DialogFooter></form>}</DialogContent></Dialog> : null
 
   if (!loading && catalogError && !products.length) {
     return <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-3 p-6 text-center"><p className="font-semibold text-destructive" role="alert">Katalog POS gagal dimuat</p><p className="max-w-lg text-sm text-muted-foreground">{catalogError}</p><Button variant="outline" onClick={() => void refreshBootstrap(true)}>Coba lagi</Button></div>
@@ -811,7 +824,7 @@ export function PosScreen() {
   }
 
   if (!session) {
-    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-muted/30 p-4"><Card className="w-full max-w-lg shadow-xl"><CardContent className="p-7"><div className="text-center"><span className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><Store className="size-8" /></span><h2 className="mt-5 text-2xl font-bold">Buka shift kasir</h2><p className="mt-1 text-sm text-muted-foreground">Tentukan cabang tempat kamu bertugas dan lama shift sebelum mulai bertransaksi.</p></div>{sessionError && <div className="mt-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"><p className="font-medium">Gagal memuat shift kasir</p><p className="mt-2">{sessionError}</p></div>}<form onSubmit={openShift} className="mt-6 space-y-4"><div className="space-y-2"><Label htmlFor="shift-branch">Cabang</Label><Select value={openForm.branchId} onValueChange={(value: string) => setOpenForm((current) => ({ ...current, branchId: value }))}><SelectTrigger id="shift-branch"><SelectValue placeholder="Pilih cabang" /></SelectTrigger><SelectContent>{branches.map((cabang) => <SelectItem key={cabang.id} value={cabang.id}>{cabang.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="shift-hours">Lama jaga (jam)</Label><Input id="shift-hours" type="number" min="1" max="24" step="1" value={openForm.shiftHours} onChange={(event) => setOpenForm((current) => ({ ...current, shiftHours: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="shift-opening">Kas awal (Rp)</Label><Input id="shift-opening" type="number" min="0" step="1" value={openForm.openingAmount} onChange={(event) => setOpenForm((current) => ({ ...current, openingAmount: event.target.value }))} placeholder="0" /></div><Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={submitting || !branches.length}>{submitting ? <><Loader2 className="size-4 animate-spin" /> Membuka shift...</> : "Buka shift"}</Button></form></CardContent></Card></div>
+    return <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-muted/30 p-4"><Card className="w-full max-w-lg shadow-xl"><CardContent className="p-7"><div className="text-center"><span className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><Store className="size-8" /></span><h2 className="mt-5 text-2xl font-bold">Buka shift kasir</h2><p className="mt-1 text-sm text-muted-foreground">Tentukan cabang tempat kamu bertugas dan lama shift sebelum mulai bertransaksi.</p></div>{sessionError && <div className="mt-5 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive"><p className="font-medium">Gagal memuat shift kasir</p><p className="mt-2">{sessionError}</p></div>}<form onSubmit={openShift} className="mt-6 space-y-4"><div className="space-y-2"><Label htmlFor="shift-branch">Cabang</Label><Select value={openForm.branchId} onValueChange={(value: string) => setOpenForm((current) => ({ ...current, branchId: value }))}><SelectTrigger id="shift-branch"><SelectValue placeholder="Pilih cabang" /></SelectTrigger><SelectContent>{branches.map((cabang) => <SelectItem key={cabang.id} value={cabang.id}>{cabang.name}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label htmlFor="shift-hours">Lama jaga (jam)</Label><Input id="shift-hours" type="number" min="1" max="24" step="1" value={openForm.shiftHours} onChange={(event) => setOpenForm((current) => ({ ...current, shiftHours: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="shift-opening">Kas awal (Rp)</Label><Input id="shift-opening" type="number" min="0" step="1" value={openForm.openingAmount} onChange={(event) => setOpenForm((current) => ({ ...current, openingAmount: event.target.value }))} placeholder="0" /></div><Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700" disabled={submitting || !branches.length}>{submitting ? <><Loader2 className="size-4 animate-spin" /> Membuka shift...</> : "Buka shift"}</Button></form>{offlineSales.length > 0 && <div className="mt-4">{offlineSalesControl}</div>}</CardContent></Card></div>
   }
 
   if (receipt) {
@@ -1339,11 +1352,6 @@ export function PosScreen() {
             <p className="flex items-center gap-2 font-semibold text-foreground text-sm">
               <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
               {session.registerName ? `${session.registerName} • ` : ""}Shift aktif
-              {offlineCount > 0 ? (
-                <Badge variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-[10px] px-1.5 py-0 font-normal">
-                  ⚡ {offlineCount} Antrean
-                </Badge>
-              ) : null}
               {!isOnline ? (
                 <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                   <WifiOff className="size-3 mr-1" /> Offline
@@ -1357,11 +1365,7 @@ export function PosScreen() {
             </p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 shrink-0 sm:ml-auto">
-            {offlineCount > 0 && (
-              <Button size="sm" variant="outline" className="border-amber-400 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 text-xs min-h-11" onClick={() => void syncNow()} disabled={syncingOffline}>
-                <RefreshCw className={`size-3.5 mr-1 ${syncingOffline ? "animate-spin" : ""}`} /> Sinkron ({offlineCount})
-              </Button>
-            )}
+            {offlineSalesControl}
             <Select value={String(printerWidth)} onValueChange={(value) => setPrinterWidth(value === "80" ? 80 : 58)}>
               <SelectTrigger className="min-h-11 w-[92px] text-xs" aria-label="Ukuran kertas printer">
                 <SelectValue />

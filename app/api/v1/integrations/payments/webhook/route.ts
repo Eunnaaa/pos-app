@@ -16,6 +16,7 @@ import { getServerEnv } from "@/config/env";
 import { AppError, safeEqualSecret } from "@/lib/server";
 import { sendSubscriptionSuccessEmail } from "@/lib/integrations/notifications";
 import { confirmOrderPayment } from "@/lib/services/order-confirmation";
+import { lockCashSession } from "@/lib/services/cash-sessions";
 import { upgradeSubscription } from "@/lib/services/subscription";
 import {
   generateDokuDigest,
@@ -27,7 +28,7 @@ import {
 import { PLANS } from "@/config/plans";
 import { resolveMidtransServerKey } from "@/lib/services/payment-credentials";
 import { releaseOrderReservations, reservationExpiresAt } from "@/lib/services/stock-reservations";
-import { cacheDel } from "@/lib/redis";
+import { cacheDel, invalidateSalesDashboard } from "@/lib/redis";
 import { logger } from "@/lib/server/logger";
 
 const midtransSchema = z.object({
@@ -77,6 +78,7 @@ async function processPaymentUpdate(
     confirmationEmail?: { address: string; details: Parameters<typeof sendSubscriptionSuccessEmail>[1] };
     refundRequired?: { orderId: string; orderNumber: string };
     stockCacheKey?: string;
+    dashboard?: { organizationId: string; branchId: string; cashierUserId: string | null };
   } = {};
   // Normalize snap order_id if it ends with -snap
   const cleanOrderRef = orderRef.replace(/-snap$/, "");
@@ -189,6 +191,7 @@ async function processPaymentUpdate(
         changeAmount: salesOrders.changeAmount,
         status: salesOrders.status,
         cashierUserId: salesOrders.cashierUserId,
+        cashSessionId: salesOrders.cashSessionId,
         metadata: salesOrders.metadata,
       })
       .from(salesOrders)
@@ -196,6 +199,7 @@ async function processPaymentUpdate(
       .limit(1);
 
     if (!order) return dataResponse({ status: "ignored", reason: "order_not_found" }, { status: 200 });
+    if (order.cashSessionId) await lockCashSession(tx, order.cashSessionId);
     const expiry = reservationExpiresAt(order.metadata);
     const reservationExpired = Boolean(expiry && expiry.getTime() <= Date.now());
     if (order.status === "pending" && reservationExpired) {
@@ -250,6 +254,7 @@ async function processPaymentUpdate(
     if (updatedPayments.length === 0) {
       return dataResponse({ status: "no_change", order: orderRef, reason: "payment_already_processed" }, { status: 200 });
     }
+    postCommit.dashboard = order;
 
     if (cancelled && newStatus === "settled") {
       await tx.update(salesOrders).set({
@@ -295,6 +300,10 @@ async function processPaymentUpdate(
     void sendSubscriptionSuccessEmail(postCommit.confirmationEmail.address, postCommit.confirmationEmail.details);
   }
   if (postCommit.stockCacheKey) void cacheDel(postCommit.stockCacheKey);
+  if (postCommit.dashboard) {
+    const { organizationId, branchId, cashierUserId } = postCommit.dashboard;
+    await invalidateSalesDashboard(organizationId, branchId, cashierUserId);
+  }
   if (postCommit.refundRequired) logger.error("online payment requires manual refund", postCommit.refundRequired);
   return response;
 }

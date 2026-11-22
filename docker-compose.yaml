@@ -47,6 +47,7 @@ services:
       - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
       - NEXT_PUBLIC_BETTER_AUTH_URL=${NEXT_PUBLIC_BETTER_AUTH_URL:-http://localhost:3000}
       - TRUSTED_ORIGINS=${TRUSTED_ORIGINS:-http://localhost:3000}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
       - SUPER_ADMIN_EMAILS=${SUPER_ADMIN_EMAILS:-}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
       - UPSTASH_REDIS_REST_URL=${UPSTASH_REDIS_REST_URL:-}
@@ -65,7 +66,7 @@ services:
       - XENDIT_CALLBACK_TOKEN=${XENDIT_CALLBACK_TOKEN:-}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     ports:
-      - "3000:3000"
+      - "${APP_BIND_IP:-127.0.0.1}:3000:3000"
     depends_on:
       postgres:
         condition: service_healthy

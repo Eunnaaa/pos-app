@@ -129,7 +129,7 @@ function createBetterAuthInstance(baseURL: string) {
     },
     account: {
       encryptOAuthTokens: true,
-      skipStateCookieCheck: !isProduction || env.TRUST_PROXY === "true",
+      skipStateCookieCheck: !isProduction,
       accountLinking: {
         enabled: true,
         trustedProviders: ["google", "apple", "email-password"],

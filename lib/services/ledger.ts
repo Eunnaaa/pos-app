@@ -106,12 +106,16 @@ export async function postSaleToLedger(database: LedgerDB, input: {
   });
 
   // Debit payment method accounts
-  for (const payment of input.payments) {
-    const acct = accounts[methodToAccountCode(payment.method)];
+  const totalsByMethod = new Map<string, bigint>();
+  for (const { method, amount } of input.payments) {
+    totalsByMethod.set(method, (totalsByMethod.get(method) ?? 0n) + amount);
+  }
+  for (const [method, amount] of totalsByMethod) {
+    const acct = accounts[methodToAccountCode(method)];
     await postEntry(database, {
       organizationId: input.organizationId, branchId: input.branchId, accountId: acct.id, accountType: acct.type,
-      transactionNumber: `FT-SALE-${input.orderNumber}-${payment.method}`, type: "income", direction: "debit", amount: payment.amount,
-      description: `Pembayaran ${payment.method} ${input.orderNumber}`, referenceType: "sales_order", referenceId: input.orderId, actorUserId: input.actorUserId,
+      transactionNumber: `FT-SALE-${input.orderNumber}-${method}`, type: "income", direction: "debit", amount,
+      description: `Pembayaran ${method} ${input.orderNumber}`, referenceType: "sales_order", referenceId: input.orderId, actorUserId: input.actorUserId,
     });
   }
 
@@ -130,25 +134,27 @@ export async function postReturnToLedger(database: LedgerDB, input: {
   branchId: string;
   returnId: string;
   returnNumber: string;
+  refundId: string;
   refundAmount: bigint;
-  paymentMethod?: string;
+  paymentMethod: string;
   actorUserId: string | null;
 }): Promise<void> {
   const accounts = await ensureDefaultAccounts(input.organizationId, database);
   const income = accounts["SALES-INCOME"];
-  const refundAcct = accounts[methodToAccountCode(input.paymentMethod ?? "cash")];
+  const refundAcct = accounts[methodToAccountCode(input.paymentMethod)];
+  const transactionNumber = `FT-RET-${input.returnNumber}-${input.refundId}`;
 
   // Debit income (reverse the sale)
   await postEntry(database, {
     organizationId: input.organizationId, branchId: input.branchId, accountId: income.id, accountType: income.type,
-    transactionNumber: `FT-RET-${input.returnNumber}`, type: "adjustment", direction: "debit", amount: input.refundAmount,
+    transactionNumber, type: "adjustment", direction: "debit", amount: input.refundAmount,
     description: `Pengembalian ${input.returnNumber}`, referenceType: "sales_return", referenceId: input.returnId, actorUserId: input.actorUserId,
   });
 
   // Credit the payment method account (refund out)
   await postEntry(database, {
     organizationId: input.organizationId, branchId: input.branchId, accountId: refundAcct.id, accountType: refundAcct.type,
-    transactionNumber: `FT-RET-${input.returnNumber}-${input.paymentMethod ?? "cash"}`, type: "adjustment", direction: "credit", amount: input.refundAmount,
+    transactionNumber: `${transactionNumber}-OUT`, type: "adjustment", direction: "credit", amount: input.refundAmount,
     description: `Pengembalian ${input.returnNumber}`, referenceType: "sales_return", referenceId: input.returnId, actorUserId: input.actorUserId,
   });
 }

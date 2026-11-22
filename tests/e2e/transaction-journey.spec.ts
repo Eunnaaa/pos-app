@@ -170,6 +170,19 @@ test("owner can purchase, sell, refund, and settle stock and cash within one ten
   const report = (await reportResponse.json() as { data: { summary: { totalOrders: number; totalSales: string } } }).data;
   expect(report.summary.totalOrders).toBe(1);
   expect(report.summary.totalSales).toBe("10000");
+  const overview = await request.get("/api/v1/dashboard?fresh=true", { headers: scope });
+  expect(overview.ok(), await overview.text()).toBeTruthy();
+  const dashboard = (await overview.json()).data;
+  expect(dashboard.summary.sales).toBe(report.summary.totalSales);
+  expect(dashboard.summary.profit).toBe("3000");
+  expect(dashboard.trend.at(-1).sales).toBe("10000");
+  expect(dashboard.topProducts[0].quantity).toBe("1");
+  const cashierOverview = await request.get("/api/v1/dashboard/cashier?fresh=true", { headers: scope });
+  expect(cashierOverview.ok(), await cashierOverview.text()).toBeTruthy();
+  const cashierDashboard = (await cashierOverview.json()).data;
+  expect(cashierDashboard.summary.sales).toBe("10000");
+  expect(cashierDashboard.shift.expected_cash).toBe("110000");
+  expect(cashierDashboard.shift.items_sold).toBe("1");
 
   const remainingReturn = {
     orderId: first.order.id, paymentId: first.payments[0].id, reason: "Sisa produk dikembalikan bersamaan",
@@ -191,6 +204,9 @@ test("owner can purchase, sell, refund, and settle stock and cash within one ten
   const finalReport = (await finalReportResponse.json() as { data: { summary: { totalOrders: number; totalSales: string } } }).data;
   expect(finalReport.summary.totalOrders).toBe(1);
   expect(finalReport.summary.totalSales).toBe("0");
+  const finalOverview = await request.get("/api/v1/dashboard?fresh=true", { headers: scope });
+  expect(finalOverview.ok(), await finalOverview.text()).toBeTruthy();
+  expect((await finalOverview.json()).data).toMatchObject({ summary: { sales: "0", profit: "0" }, topProducts: [] });
 
   const expense = await postData<{ id: string }>(request, "/api/v1/resources/expenses", {
     branchId: branch.id,
@@ -236,6 +252,78 @@ test("owner can purchase, sell, refund, and settle stock and cash within one ten
   );
   expect(closed.status).toBe("closed");
   expect(closed.varianceAmount).toBe("0");
+
+  const service = await postData<{ id: string }>(request, "/api/v1/resources/products", {
+    name: "Jasa Uji", slug: `jasa-uji-${suffix}`, trackStock: false, isActive: true,
+  }, mutation("service"));
+  const serviceVariant = await postData<{ id: string }>(request, "/api/v1/resources/variants", {
+    productId: service.id, name: "Regular", sku: `JASA-${suffix}`, priceAmount: "100000", isDefault: true, isActive: true,
+  }, mutation("service-variant"));
+  const secondShift = await postData<{ id: string }>(request, "/api/v1/finance/cash-sessions", {
+    branchId: branch.id, openingAmount: "100000",
+  }, mutation("second-shift"));
+  const queuedSale = {
+    ...checkout, offlineReference: `e2e-queued-${suffix}`, discountAmount: "0", expectedTotalAmount: "100000",
+    items: [{ variantId: serviceVariant.id, quantity: "1" }],
+    payments: [{ method: "cash", amount: "50000" }, { method: "debit", amount: "60000" }],
+  };
+  const closedShiftReplay = await request.post("/api/v1/pos/checkout", {
+    data: queuedSale, headers: mutation("queued-sale"),
+  });
+  expect(closedShiftReplay.status(), await closedShiftReplay.text()).toBe(409);
+  const recovered = await postData<{
+    order: { id: string; cashSessionId: string; changeAmount: string };
+    items: { id: string }[];
+  }>(request, "/api/v1/pos/checkout", {
+    ...queuedSale, recovery: { cashSessionId: secondShift.id, expectedTotalAmount: "100000" },
+  }, mutation("queued-sale"));
+  expect(recovered.order.cashSessionId).toBe(secondShift.id);
+  expect(recovered.order.changeAmount).toBe("10000");
+  const recoveredReplay = await postData<{ order: { id: string } }>(
+    request, "/api/v1/pos/checkout", queuedSale, mutation("queued-sale-recovered"),
+  );
+  expect(recoveredReplay.order.id).toBe(recovered.order.id);
+  const secondClosed = await postData<{ varianceAmount: string }>(
+    request, `/api/v1/finance/cash-sessions/${secondShift.id}/close`,
+    { tenderActuals: { cash: "140000", debit: "60000" } }, mutation("second-close"),
+  );
+  expect(secondClosed.varianceAmount).toBe("0");
+
+  const refundShift = await postData<{ id: string }>(request, "/api/v1/finance/cash-sessions", {
+    branchId: branch.id, openingAmount: "140000",
+  }, mutation("refund-shift"));
+  const splitReturn = await postData<{
+    refunds: { method: string; amount: string; cashSessionId: string }[];
+    items: { restock: boolean }[];
+  }>(request, "/api/v1/sales/returns", {
+    orderId: recovered.order.id, reason: "Retur jasa dengan pembayaran gabungan",
+    items: [{ orderItemId: recovered.items[0].id, quantity: "1", restock: true }],
+  }, mutation("split-return"));
+  expect(splitReturn.refunds).toEqual(expect.arrayContaining([
+    expect.objectContaining({ method: "cash", amount: "40000", cashSessionId: refundShift.id }),
+    expect.objectContaining({ method: "debit", amount: "60000", cashSessionId: refundShift.id }),
+  ]));
+  expect(splitReturn.refunds).toHaveLength(2);
+  expect(splitReturn.items[0].restock).toBe(false);
+  const noServiceStock = await request.get("/api/v1/resources/stock-balances", { headers: scope });
+  expect(noServiceStock.ok(), await noServiceStock.text()).toBeTruthy();
+  expect((await noServiceStock.json()).data.some((row: { variant_id: string }) => row.variant_id === serviceVariant.id)).toBe(false);
+  const activeRefundOverview = await request.get("/api/v1/dashboard/cashier?fresh=true", { headers: scope });
+  expect(activeRefundOverview.ok(), await activeRefundOverview.text()).toBeTruthy();
+  expect((await activeRefundOverview.json()).data.shift.expected_cash).toBe("100000");
+  const [refundClosed, movement] = await Promise.all([
+    postData<{ expectedClosingAmount: string; varianceAmount: string }>(
+      request, `/api/v1/finance/cash-sessions/${refundShift.id}/close`,
+      { tenderActuals: { cash: "100000", debit: "-60000" } }, mutation("refund-close"),
+    ),
+    request.post(`/api/v1/finance/cash-sessions/${refundShift.id}/movements`, {
+      data: { direction: "in", amount: "1000", category: "Modal", reason: "Mutasi dan tutup shift bersamaan" },
+      headers: mutation("movement-race"),
+    }),
+  ]);
+  expect([201, 409]).toContain(movement.status());
+  expect(refundClosed.expectedClosingAmount).toBe(movement.ok() ? "101000" : "100000");
+  expect(refundClosed.varianceAmount).toBe(movement.ok() ? "-1000" : "0");
 
   const otherTenant = await playwrightRequest.newContext({ baseURL: origin });
   try {

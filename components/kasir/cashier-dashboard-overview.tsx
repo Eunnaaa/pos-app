@@ -130,7 +130,7 @@ export function CashierDashboardOverview() {
           {/* Payment method breakdown */}
           {Object.keys(shift.payments).length > 0 && (
             <div className="mt-4 space-y-2 border-t pt-4">
-              <p className="text-xs font-medium text-muted-foreground">Pembayaran shift ini</p>
+              <p className="text-xs font-medium text-muted-foreground">Pembayaran diterima shift ini</p>
               {Object.entries(shift.payments).map(([method, amount]) => (
                 <div key={method} className="flex items-center gap-3">
                   <span className="w-20 text-xs text-muted-foreground">{methodLabels[method] ?? method}</span>
@@ -160,10 +160,10 @@ export function CashierDashboardOverview() {
 
     {/* KPI grid */}
     <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      <Kpi icon={Banknote} label="Penjualan saya" value={rupiah(summary.sales)} />
+      <Kpi icon={Banknote} label="Penjualan bersih saya" value={rupiah(summary.sales)} />
       <Kpi icon={ReceiptText} label="Transaksi" value={String(summary.orders)} />
       <Kpi icon={TrendingUp} label="Rata-rata transaksi" value={summary.orders > 0 ? rupiah(summary.avg_transaction) : "—"} />
-      <Kpi icon={Package} label="Item terjual" value={shift?.items_sold ?? "0"} />
+      <Kpi icon={Package} label="Item terjual bersih" value={shift?.items_sold ?? "0"} />
     </section>
 
     {/* Alerts */}
@@ -208,7 +208,7 @@ export function CashierDashboardOverview() {
       )}
 
       <Card className="shadow-sm">
-        <CardHeader className="flex-row items-center justify-start gap-4"><CardTitle className="text-base">Transaksi terbaru</CardTitle><Button variant="ghost" size="sm" asChild><Link href="/dashboard/sales">Semua transaksi</Link></Button></CardHeader>
+        <CardHeader className="flex-row items-center justify-start gap-4"><CardTitle className="text-base">Transaksi terbaru sebelum refund</CardTitle><Button variant="ghost" size="sm" asChild><Link href="/dashboard/sales">Semua transaksi</Link></Button></CardHeader>
         <CardContent className="space-y-2">
           {recentSales.length ? recentSales.map((sale) => (
             <div key={sale.id} className="flex items-center gap-3 rounded-xl p-3 hover:bg-muted/60">

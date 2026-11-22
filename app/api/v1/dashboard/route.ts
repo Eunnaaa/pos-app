@@ -1,13 +1,14 @@
+import { joinProcessedRefunds, joinReturnedItems, netOrderTotal } from "@/lib/services/sales-metrics";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
 import { apiHandler, dataResponse, requireApiContext } from "@/lib/api";
-import { cacheGet, cacheSet, RedisKeys } from "@/lib/redis";
+import { cacheGet, cacheSet, dashboardPeriods, RedisKeys } from "@/lib/redis";
 
 export const GET = apiHandler(async (request) => {
   const context = await requireApiContext(request, "dashboard:read");
   const url = new URL(request.url);
   const daysParam = parseInt(url.searchParams.get("days") || "30", 10);
-  const days = [7, 14, 30, 90].includes(daysParam) ? daysParam : 30;
+  const days = dashboardPeriods.includes(daysParam) ? daysParam : 30;
   const bypassCache = url.searchParams.get("fresh") === "true";
 
   const cacheKey = RedisKeys.dashboard(context.organizationId, context.branchId, days);
@@ -21,13 +22,14 @@ export const GET = apiHandler(async (request) => {
 
   const [summary, trend, topProducts, lowStock, recentSales] = await Promise.all([
     db.execute(sql`
-      select coalesce(sum(total_amount), 0)::text as sales,
-             coalesce(sum(total_amount - cost_amount), 0)::text as profit,
+      select coalesce(sum(${netOrderTotal}), 0)::text as sales,
+             coalesce(sum(${netOrderTotal} - so.cost_amount), 0)::text as profit,
              count(*)::int as orders,
              count(distinct customer_id)::int as customers
-      from sales_orders
-      where organization_id = ${context.organizationId}
-        ${context.branchId ? sql`and branch_id = ${context.branchId}` : sql``}
+      from sales_orders so
+      ${joinProcessedRefunds(context.organizationId)}
+      where so.organization_id = ${context.organizationId}
+        ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
         and status in ('paid', 'partially_refunded', 'refunded')
         and occurred_at >= date_trunc('day', now())
     `),
@@ -38,11 +40,12 @@ export const GET = apiHandler(async (request) => {
       ),
       daily_sales as (
         select date_trunc('day', occurred_at)::date as day_date,
-               sum(total_amount) as sales,
+               sum(${netOrderTotal}) as sales,
                count(*) as orders
-        from sales_orders
-        where organization_id = ${context.organizationId}
-          ${context.branchId ? sql`and branch_id = ${context.branchId}` : sql``}
+        from sales_orders so
+        ${joinProcessedRefunds(context.organizationId)}
+        where so.organization_id = ${context.organizationId}
+          ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
           and occurred_at >= (current_date - (${days - 1} || ' days')::interval)
           and status in ('paid', 'partially_refunded', 'refunded')
         group by date_trunc('day', occurred_at)::date
@@ -55,13 +58,17 @@ export const GET = apiHandler(async (request) => {
       order by ds_series.day_date asc
     `),
     db.execute(sql`
-       select soi.item_name as name, sum(soi.quantity)::text as quantity, sum(soi.total_amount)::text as sales
+       select soi.item_name as name, sum(soi.quantity - coalesce(ri.returned_quantity, 0))::text as quantity,
+        sum(soi.total_amount - coalesce(ri.refund_amount, 0))::text as sales
        from sales_order_items soi
        join sales_orders so on so.id = soi.order_id
+      ${joinReturnedItems(context.organizationId)}
        where soi.organization_id = ${context.organizationId}
          ${context.branchId ? sql`and so.branch_id = ${context.branchId}` : sql``}
          and so.status in ('paid', 'partially_refunded', 'refunded')
-       group by item_name order by sum(quantity) desc limit 5
+       group by soi.item_name
+       having sum(soi.quantity - coalesce(ri.returned_quantity, 0)) > 0
+       order by sum(soi.quantity - coalesce(ri.returned_quantity, 0)) desc limit 5
     `),
     db.execute(sql`
       select pv.id, p.name, pv.name as variant, sb.available::text as available, sb.reorder_point::text as reorder_point

@@ -115,6 +115,7 @@ DATA_ENCRYPTION_KEY=<32+ random chars, stable across deploys>
 BETTER_AUTH_URL=https://DOMAIN_ANDA.com
 NEXT_PUBLIC_BETTER_AUTH_URL=https://DOMAIN_ANDA.com
 TRUSTED_ORIGINS=https://DOMAIN_ANDA.com
+TRUST_PROXY=true
 SUPER_ADMIN_EMAILS=admin@domain-anda.com
 WEBHOOK_SECRET=<32+ random chars>
 UPSTASH_REDIS_REST_URL=https://<endpoint-upstash>
@@ -122,31 +123,31 @@ UPSTASH_REDIS_REST_TOKEN=<token-upstash>
 # ... (sisanya sama dengan Vercel)
 ```
 
-### Langkah 3: Run container
-```bash
-docker run -d \
-  --name kedai-ku \
-  --env-file .env.production \
-  -p 3000:3000 \
-  --restart unless-stopped \
-  kedai-ku
-```
-
-### Langkah 4: Reverse proxy + SSL (nginx/Caddy)
-Gunakan Caddy untuk auto-SSL:
-```
-domain-anda.com {
-  reverse_proxy localhost:3000
-}
-```
-
-Atau nginx + certbot untuk Let's Encrypt.
-
-### Langkah 5: Run migration
+### Langkah 3: Run migration
 ```bash
 # Jalankan dari checkout kode yang sama dengan image, memakai direct/session URL:
 DATABASE_URL=<direct-atau-session-pooler-url> DATABASE_SSL=require npm run db:migrate
 ```
+
+### Langkah 4: Run container
+```bash
+docker run -d \
+  --name kedai-ku \
+  --env-file .env.production \
+  -p 127.0.0.1:3000:3000 \
+  --restart unless-stopped \
+  kedai-ku
+```
+
+### Langkah 5: Reverse proxy + SSL (nginx/Caddy)
+Gunakan Caddy untuk auto-SSL:
+```
+domain-anda.com {
+  reverse_proxy 127.0.0.1:3000
+}
+```
+
+Untuk nginx, timpa `X-Forwarded-For` dengan `$remote_addr` sebelum meneruskan permintaan. Aktifkan `TRUST_PROXY=true` hanya jika port aplikasi dapat dijangkau melalui proxy tepercaya. Docker Compose memakai `APP_BIND_IP=127.0.0.1` secara default untuk proxy di host yang sama.
 
 Image runtime hanya berisi aplikasi standalone; ia tidak menyertakan `drizzle-kit`. Jalankan migrasi sebelum mengalihkan traffic ke versi aplikasi baru, setelah backup diverifikasi.
 

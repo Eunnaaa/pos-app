@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "@/db";
 import { promotions, vouchers, orderPromotions } from "@/db/schema";
 import { AppError } from "@/lib/server";
+import type { DbTransaction } from "./stock-ledger";
 
 export type Promotion = {
   id: string;
@@ -92,7 +93,7 @@ function assertVoucherValid(voucher: Voucher, now: Date, customerId?: string): v
   if (voucher.status !== "active") throw new AppError("BAD_REQUEST", "Voucher tidak aktif");
   if (voucher.expiresAt && voucher.expiresAt < now) throw new AppError("BAD_REQUEST", "Voucher sudah kedaluwarsa");
   if (voucher.remainingAmount <= 0n) throw new AppError("BAD_REQUEST", "Saldo voucher habis");
-  if (customerId && voucher.customerId && voucher.customerId !== customerId) {
+  if (voucher.customerId && voucher.customerId !== customerId) {
     throw new AppError("FORBIDDEN", "Voucher ini bukan milik pelanggan tersebut");
   }
 }
@@ -151,13 +152,44 @@ export async function resolvePromotionDiscount(tx: Database, params: {
  * Persist order_promotions rows and update voucher/promotion usage counters.
  * Must be called after the order is inserted (orderId is required for the FK).
  */
-export async function recordPromotions(tx: Database, params: {
+export async function recordPromotions(tx: DbTransaction, params: {
   organizationId: string;
   orderId: string;
+  customerId?: string;
   records: ResolvedDiscount[];
 }): Promise<void> {
   const now = new Date();
   for (const record of params.records) {
+    if (record._kind === "promotion") {
+      const [applied] = await tx.update(promotions)
+        .set({ usageCount: sql`${promotions.usageCount} + 1`, updatedAt: now })
+        .where(and(
+          eq(promotions.id, record._rowId),
+          eq(promotions.organizationId, params.organizationId),
+          eq(promotions.isActive, true),
+          lte(promotions.startsAt, now),
+          or(isNull(promotions.endsAt), gte(promotions.endsAt, now)),
+          sql`(${promotions.usageLimit} is null or ${promotions.usageCount} < ${promotions.usageLimit})`,
+        )).returning({ id: promotions.id });
+      if (!applied) throw new AppError("CONFLICT", "Kuota atau masa berlaku promo berubah. Hitung ulang checkout.");
+    } else {
+      const remaining = sql`${vouchers.remainingAmount} - ${record.discountAmount}`;
+      const [applied] = await tx.update(vouchers)
+        .set({
+          remainingAmount: remaining,
+          status: sql`case when ${remaining} = 0 then 'redeemed' else 'active' end`,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(vouchers.id, record._rowId),
+          eq(vouchers.organizationId, params.organizationId),
+          eq(vouchers.status, "active"),
+          gte(vouchers.remainingAmount, record.discountAmount),
+          or(isNull(vouchers.expiresAt), gte(vouchers.expiresAt, now)),
+          or(isNull(vouchers.customerId), params.customerId ? eq(vouchers.customerId, params.customerId) : undefined),
+        )).returning({ id: vouchers.id });
+      if (!applied) throw new AppError("CONFLICT", "Saldo atau status voucher berubah. Hitung ulang checkout.");
+    }
     await tx.insert(orderPromotions).values({
       organizationId: params.organizationId,
       orderId: params.orderId,
@@ -165,19 +197,5 @@ export async function recordPromotions(tx: Database, params: {
       code: record.code,
       discountAmount: record.discountAmount,
     });
-    if (record._kind === "promotion") {
-      await tx.update(promotions).set({ usageCount: sql`${promotions.usageCount} + 1`, updatedAt: now }).where(eq(promotions.id, record._rowId));
-    } else {
-      // Decrement voucher remaining amount and mark redeemed if exhausted
-      const [voucher] = await tx.select({ remaining: vouchers.remainingAmount }).from(vouchers).where(eq(vouchers.id, record._rowId)).limit(1);
-      if (voucher) {
-        const newRemaining = voucher.remaining - record.discountAmount;
-        await tx.update(vouchers).set({
-          remainingAmount: newRemaining,
-          status: newRemaining <= 0n ? "redeemed" : "active",
-          updatedAt: now,
-        }).where(eq(vouchers.id, record._rowId));
-      }
-    }
   }
 }
